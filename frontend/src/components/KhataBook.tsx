@@ -255,7 +255,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
       if (!knownCustomerIds.has(cId) && cEntries.length > 0) {
         let totalGave = 0;
         let totalGot = 0;
-        cuonst first = cEntries[0];
+        const first = cEntries[0];
 
         cEntries.forEach((entry) => {
           const amt = Number(entry.amount) || 0;

@@ -26,6 +26,7 @@ import { Reports } from '@/components/Reports';
 import { Expenses } from '@/components/Expenses';
 import { GSTVerificationInput } from '@/components/GSTVerificationInput';
 import { ForYouHub } from '@/components/ForYouHub';
+import { PublicCatalog } from '@/components/PublicCatalog';
 import { MoreHub } from '@/components/MoreHub';
 import { HelpCenterModal } from '@/components/HelpCenterModal';
 import {
@@ -8063,6 +8064,8 @@ function Router() {
     <Route path="/login"><Auth mode="login" /></Route>
     <Route path="/signup"><Auth mode="signup" /></Route>
     <Route path="/onboarding" component={Onboarding} />
+    <Route path="/catalog/:id" component={PublicCatalog} />
+    <Route path="/catalog" component={PublicCatalog} />
     <Route path="/dashboard"><Protected><Dashboard key="dashboard" /></Protected></Route>
     <Route path="/invoices/new"><Protected><InvoiceNew key="invoice-new" /></Protected></Route>
     <Route path="/invoices/:id"><Protected><InvoiceDetail key="invoice-detail" /></Protected></Route>

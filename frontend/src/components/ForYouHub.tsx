@@ -31,6 +31,8 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
   // Copied feedback & search states
   const [copied, setCopied] = useState(false);
   const [hsnSearchQuery, setHsnSearchQuery] = useState('');
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [catalogStockFilter, setCatalogStockFilter] = useState<'all' | 'instock' | 'outstock' | 'lowstock'>('all');
 
   // Load active business & workspace data
   useEffect(() => {
@@ -221,286 +223,322 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
 
   return (
     <div className="space-y-8 animate-fade-in pb-16">
-      {/* Top Gradient Header */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary/95 via-primary to-orange-600 p-6 sm:p-8 text-primary-foreground shadow-lg">
-        <div className="relative z-10 max-w-2xl">
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs font-bold backdrop-blur-md">
+      {/* Top Hero Banner */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-primary to-teal-800 p-6 sm:p-9 text-white shadow-xl">
+        <div className="relative z-10 max-w-3xl space-y-4">
+          <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3.5 py-1 text-xs font-bold backdrop-blur-md border border-white/20">
             <Sparkles size={14} className="text-yellow-300 animate-pulse" />
-            <span>Growth & Utilities Suite</span>
+            <span>Operational & Growth Utilities Suite</span>
           </div>
-          <h1 className="mt-3 text-2xl sm:text-3xl font-black tracking-tight text-white">
-            Toolkit <span className="text-yellow-300">✨</span>
-          </h1>
-          <p className="mt-1.5 text-xs sm:text-sm text-white/90 font-medium leading-relaxed">
-            Specialized business tools designed to supercharge your sales, automated accounting, staff payroll, and marketing campaigns.
-          </p>
+
+          <div>
+            <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-white">
+              Toolkit <span className="text-yellow-300">✨</span>
+            </h1>
+            <p className="mt-2 text-xs sm:text-sm text-white/90 font-medium leading-relaxed max-w-2xl">
+              All-in-one suite of specialized commercial calculators, GST tax directories, loyalty reward engines, and CA compliance exports.
+            </p>
+          </div>
+
+
         </div>
 
-        {/* Decorative background blur circles */}
-        <div className="absolute -right-10 -bottom-10 h-48 w-48 rounded-full bg-white/10 blur-2xl pointer-events-none" />
-        <div className="absolute right-1/3 -top-10 h-32 w-32 rounded-full bg-yellow-400/20 blur-xl pointer-events-none" />
+        {/* Decorative ambient blur elements */}
+        <div className="absolute -right-12 -bottom-12 h-64 w-64 rounded-full bg-teal-400/20 blur-3xl pointer-events-none" />
+        <div className="absolute right-1/3 -top-12 h-48 w-48 rounded-full bg-yellow-400/20 blur-2xl pointer-events-none" />
       </div>
 
-
-      {/* SECTION 1: Recommended Tools */}
+      {/* GROUP 1: Commercial & Tax Utilities */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-black text-foreground tracking-tight">Recommended Tools</h2>
-          <span className="text-[11px] font-bold text-muted-foreground">3 Tools Ready</span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* Card 1: e-Invoice */}
-          <div
-            onClick={() => setActiveModal('einvoice')}
-            className="group relative cursor-pointer rounded-2xl border border-border/80 bg-card p-5 shadow-xs transition-all hover:border-primary/50 hover:shadow-md"
-          >
-            <div className="flex items-center gap-3.5">
-              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-blue-500/10 text-blue-600 dark:text-blue-400 group-hover:scale-105 transition-transform">
-                <QrCode size={24} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-sm font-black text-foreground group-hover:text-primary transition-colors">
-                  e-Invoice & e-Way Bill
-                </h3>
-                <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">
-                  B2B IRN generation, digital signature QR, and e-way bill compliance tools.
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 flex items-center justify-between pt-3 border-t border-border/50 text-[11px] font-bold text-primary">
-              <span>Open e-Invoice Suite</span>
-              <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" />
-            </div>
-          </div>
-
-          {/* Card 2: Staff Attendance & Payroll */}
-          <div
-            onClick={() => setActiveModal('attendance')}
-            className="group relative cursor-pointer rounded-2xl border border-border/80 bg-card p-5 shadow-xs transition-all hover:border-primary/50 hover:shadow-md"
-          >
-            <div className="flex items-center gap-3.5">
-              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 group-hover:scale-105 transition-transform">
-                <Calendar size={24} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-sm font-black text-foreground group-hover:text-primary transition-colors">
-                  Staff Attendance & Payroll
-                </h3>
-                <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">
-                  Daily staff clock-in, salary calculator, advance vouchers, and pay slips.
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 flex items-center justify-between pt-3 border-t border-border/50 text-[11px] font-bold text-primary">
-              <span>Manage Attendance ({staffList.length} staff)</span>
-              <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" />
-            </div>
-          </div>
-
-          {/* Card 3: Desktop Software & Cloud Sync */}
-          <div
-            onClick={() => setActiveModal('cloud-sync')}
-            className="group relative cursor-pointer rounded-2xl border border-border/80 bg-card p-5 shadow-xs transition-all hover:border-primary/50 hover:shadow-md"
-          >
-            <div className="flex items-center gap-3.5">
-              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-purple-500/10 text-purple-600 dark:text-purple-400 group-hover:scale-105 transition-transform">
-                <Smartphone size={24} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-sm font-black text-foreground group-hover:text-primary transition-colors">
-                  Desktop & Cloud Sync
-                </h3>
-                <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">
-                  Multi-counter POS synchronization, offline backup, and encrypted cloud storage.
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 flex items-center justify-between pt-3 border-t border-border/50 text-[11px] font-bold text-primary">
-              <span>View Sync Status</span>
-              <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* SECTION 2: Marketing & Sales */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-black text-foreground tracking-tight">Marketing & Sales</h2>
-          <span className="text-[11px] font-bold text-muted-foreground">Boost Revenue</span>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-          {/* Tile 1: WhatsApp Marketing */}
-          <div
-            onClick={() => toast.info('Coming Soon!', { description: 'WhatsApp Marketing will be available in an upcoming update.' })}
-            className="group relative flex flex-col items-center text-center p-4 sm:p-5 rounded-2xl border border-border/80 bg-card hover:bg-muted/40 transition-all cursor-pointer shadow-xs hover:border-primary/40 overflow-hidden"
-          >
-            <span className="absolute top-2 right-2 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
-              Coming Soon
-            </span>
-            <div className="grid h-13 w-13 place-items-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform mb-3">
-              <MessageSquare size={24} />
-            </div>
-            <h4 className="text-xs sm:text-sm font-extrabold text-foreground">WhatsApp Marketing</h4>
-            <p className="text-[10px] text-muted-foreground mt-1">Offers, greetings & flyers</p>
-          </div>
-
-          {/* Tile 2: Email Marketing */}
-          <div
-            onClick={() => toast.info('Coming Soon!', { description: 'Email Marketing will be available in an upcoming update.' })}
-            className="group relative flex flex-col items-center text-center p-4 sm:p-5 rounded-2xl border border-border/80 bg-card hover:bg-muted/40 transition-all cursor-pointer shadow-xs hover:border-primary/40 overflow-hidden"
-          >
-            <span className="absolute top-2 right-2 rounded-full bg-blue-500/10 px-2 py-0.5 text-[9px] font-bold text-blue-600 dark:text-blue-400">
-              Coming Soon
-            </span>
-            <div className="grid h-13 w-13 place-items-center rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform mb-3">
-              <Mail size={24} />
-            </div>
-            <h4 className="text-xs sm:text-sm font-extrabold text-foreground">Email Marketing</h4>
-            <p className="text-[10px] text-muted-foreground mt-1">Campaigns, offers & newsletters</p>
-          </div>
-
-          {/* Tile 3: Reward Points */}
-          <div
-            onClick={() => setActiveModal('reward-points')}
-            className="group flex flex-col items-center text-center p-4 sm:p-5 rounded-2xl border border-border/80 bg-card hover:bg-muted/40 transition-all cursor-pointer shadow-xs hover:border-primary/40"
-          >
-            <div className="grid h-13 w-13 place-items-center rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform mb-3">
-              <Gift size={24} />
-            </div>
-            <h4 className="text-xs sm:text-sm font-extrabold text-foreground">Reward Points</h4>
-            <p className="text-[10px] text-muted-foreground mt-1">Loyalty points & cashback</p>
-          </div>
-
-          {/* Tile 4: Online Store */}
-          <div
-            onClick={() => setActiveModal('online-store')}
-            className="group flex flex-col items-center text-center p-4 sm:p-5 rounded-2xl border border-border/80 bg-card hover:bg-muted/40 transition-all cursor-pointer shadow-xs hover:border-primary/40"
-          >
-            <div className="grid h-13 w-13 place-items-center rounded-full bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform mb-3">
-              <Store size={24} />
-            </div>
-            <h4 className="text-xs sm:text-sm font-extrabold text-foreground">Online Store</h4>
-            <p className="text-[10px] text-muted-foreground mt-1">Shareable product catalog</p>
-          </div>
-        </div>
-      </div>
-
-      {/* SECTION 3: Accounting & CA Suite */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-black text-foreground tracking-tight">Accounting & CA Suite</h2>
-          <span className="text-[11px] font-bold text-muted-foreground">Compliance & Books</span>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
-          {/* Tile 1: GST Filing */}
-          <div
-            onClick={() => setActiveModal('gst-filing')}
-            className="group flex flex-col items-center text-center p-4 rounded-2xl border border-border/80 bg-card hover:bg-muted/40 transition-all cursor-pointer shadow-xs hover:border-primary/40"
-          >
-            <div className="grid h-12 w-12 place-items-center rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform mb-2.5">
-              <FileText size={22} />
-            </div>
-            <h4 className="text-xs font-extrabold text-foreground">GST Filing</h4>
-            <p className="text-[10px] text-muted-foreground mt-0.5">GSTR-1 & 3B</p>
-          </div>
-
-          {/* Tile 2: CA Reports Sharing */}
-          <div
-            onClick={() => setActiveModal('ca-reports')}
-            className="group flex flex-col items-center text-center p-4 rounded-2xl border border-border/80 bg-card hover:bg-muted/40 transition-all cursor-pointer shadow-xs hover:border-primary/40"
-          >
-            <div className="grid h-12 w-12 place-items-center rounded-full bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 group-hover:scale-110 transition-transform mb-2.5">
-              <ShieldCheck size={22} />
-            </div>
-            <h4 className="text-xs font-extrabold text-foreground">CA Sharing</h4>
-            <p className="text-[10px] text-muted-foreground mt-0.5">1-click package</p>
-          </div>
-
-          {/* Tile 3: Data Export to Tally */}
-          <div
-            onClick={() => setActiveModal('tally-export')}
-            className="group flex flex-col items-center text-center p-4 rounded-2xl border border-border/80 bg-card hover:bg-muted/40 transition-all cursor-pointer shadow-xs hover:border-primary/40"
-          >
-            <div className="grid h-12 w-12 place-items-center rounded-full bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform mb-2.5">
-              <Download size={22} />
-            </div>
-            <h4 className="text-xs font-extrabold text-foreground">Export to Tally</h4>
-            <p className="text-[10px] text-muted-foreground mt-0.5">XML & Excel</p>
-          </div>
-        </div>
-      </div>
-
-      {/* SECTION 4: Business Efficiency (Smart Calculator) */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-black text-foreground tracking-tight">Business Efficiency</h2>
-          <span className="text-[11px] font-bold text-muted-foreground">Calculators & Tools</span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Smart Calculator Card */}
-          <div
-            onClick={() => setActiveModal('smart-calculator')}
-            className="group cursor-pointer rounded-2xl border border-border/80 bg-card p-5 shadow-xs transition-all hover:border-primary/50 hover:shadow-md"
-          >
-            <div className="flex items-start gap-4">
-              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400 group-hover:scale-105 transition-transform">
-                <Calculator size={24} />
-              </div>
-              <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-black text-foreground group-hover:text-primary transition-colors">
-                    Smart GST & Margin Calculator
-                  </h3>
-                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-extrabold text-primary">
-                    Interactive
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="grid h-6 w-6 place-items-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs font-bold">1</span>
+                    <h2 className="text-base font-black text-foreground tracking-tight">Commercial & Tax Utilities</h2>
+                  </div>
+                  <span className="text-[11px] font-bold text-muted-foreground">Instant Real-time Engines</span>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                  Compute GST inclusive/exclusive rates, reverse tax calculations, gross margins, and retail markup percentages in seconds.
-                </p>
-                <div className="mt-3 flex items-center gap-1.5 text-xs font-bold text-primary">
-                  <span>Open Calculator</span>
-                  <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" />
-                </div>
-              </div>
-            </div>
-          </div>
 
-          {/* Quick GST Rate Finder Tile */}
-          <div
-            onClick={() => setActiveModal('gst-finder')}
-            className="group cursor-pointer rounded-2xl border border-border/80 bg-card p-5 shadow-xs transition-all hover:border-primary/50 hover:shadow-md"
-          >
-            <div className="flex items-start gap-4">
-              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-blue-500/15 text-blue-600 dark:text-blue-400 group-hover:scale-105 transition-transform">
-                <Percent size={24} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-black text-foreground group-hover:text-primary transition-colors">
-                    HSN & GST Rate Finder
-                  </h3>
-                  <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-extrabold text-blue-600 dark:text-blue-400">
-                    Slab Directory
-                  </span>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {/* Tool 1: Smart GST & Margin Calculator */}
+                  <div
+                    onClick={() => setActiveModal('smart-calculator')}
+                    className="group relative cursor-pointer rounded-3xl border border-border/80 bg-card p-5 sm:p-6 shadow-2xs transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg"
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="grid h-13 w-13 shrink-0 place-items-center rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400 group-hover:scale-105 transition-transform border border-amber-500/20 shadow-xs">
+                        <Calculator size={26} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <h3 className="text-sm sm:text-base font-black text-foreground group-hover:text-primary transition-colors">
+                            Smart GST & Profit Margin Calculator
+                          </h3>
+                          <span className="shrink-0 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-extrabold text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                            Interactive Tool
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                          Calculate GST inclusive/exclusive prices, reverse tax rates from MRP, profit margin %, and retail markup in real-time.
+                        </p>
+                        <div className="mt-4 flex items-center justify-between pt-3 border-t border-border/60 text-xs font-bold text-primary">
+                          <span className="inline-flex items-center gap-1">
+                            <span>Open Commercial Calculator</span>
+                            <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
+                          </span>
+                          <span className="text-[10px] text-muted-foreground font-normal">3 Modes Included</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Tool 2: HSN & GST Rate Directory */}
+                  <div
+                    onClick={() => setActiveModal('gst-finder')}
+                    className="group relative cursor-pointer rounded-3xl border border-border/80 bg-card p-5 sm:p-6 shadow-2xs transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg"
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="grid h-13 w-13 shrink-0 place-items-center rounded-2xl bg-blue-500/15 text-blue-600 dark:text-blue-400 group-hover:scale-105 transition-transform border border-blue-500/20 shadow-xs">
+                        <Percent size={26} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <h3 className="text-sm sm:text-base font-black text-foreground group-hover:text-primary transition-colors">
+                            HSN & GST Tax Slab Directory
+                          </h3>
+                          <span className="shrink-0 rounded-full bg-blue-500/10 px-2.5 py-0.5 text-[10px] font-extrabold text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                            Official Directory
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                          Lookup official Indian GST tax slabs (0%, 5%, 12%, 18%, 28%) and HSN/SAC codes across all retail goods and services.
+                        </p>
+                        <div className="mt-4 flex items-center justify-between pt-3 border-t border-border/60 text-xs font-bold text-primary">
+                          <span className="inline-flex items-center gap-1">
+                            <span>Search HSN & SAC Codes</span>
+                            <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
+                          </span>
+                          <span className="text-[10px] text-muted-foreground font-normal">Searchable Directory</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                  Lookup official Indian GST tax slabs (0%, 5%, 12%, 18%, 28%) and HSN/SAC codes across all retail goods and commercial services.
-                </p>
-                <div className="mt-3 flex items-center gap-1.5 text-xs font-bold text-primary">
-                  <span>Search HSN Codes</span>
-                  <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" />
+              </div>
+
+            {/* GROUP 2: Compliance & CA Audit Suite */}
+            <div className="space-y-4 pt-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="grid h-6 w-6 place-items-center rounded-lg bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 text-xs font-bold">2</span>
+                    <h2 className="text-base font-black text-foreground tracking-tight">Compliance & CA Audit Suite</h2>
+                  </div>
+                  <span className="text-[11px] font-bold text-muted-foreground">GST & Tally Integration</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {/* Tool 1: GST Filing */}
+                  <div
+                    onClick={() => setActiveModal('gst-filing')}
+                    className="group relative cursor-pointer rounded-3xl border border-border/80 bg-card p-5 shadow-2xs transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-3.5">
+                        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-500/15 text-blue-600 dark:text-blue-400 group-hover:scale-105 transition-transform border border-blue-500/20 shadow-xs">
+                          <FileText size={24} />
+                        </div>
+                        <span className="rounded-full bg-blue-500/10 px-2.5 py-0.5 text-[10px] font-extrabold text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                          GSTR-1 & 3B
+                        </span>
+                      </div>
+                      <h3 className="text-sm font-black text-foreground group-hover:text-primary transition-colors">
+                        GST Return Filing Breakdown
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                        Automated B2B/B2C taxable buckets, total GST collected, and monthly tax liability summaries.
+                      </p>
+                    </div>
+                    <div className="mt-4 flex items-center justify-between pt-3 border-t border-border/60 text-xs font-bold text-primary">
+                      <span>Launch Tax Summary</span>
+                      <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" />
+                    </div>
+                  </div>
+
+                  {/* Tool 2: CA Reports Sharing */}
+                  <div
+                    onClick={() => setActiveModal('ca-reports')}
+                    className="group relative cursor-pointer rounded-3xl border border-border/80 bg-card p-5 shadow-2xs transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-3.5">
+                        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 group-hover:scale-105 transition-transform border border-cyan-500/20 shadow-xs">
+                          <ShieldCheck size={24} />
+                        </div>
+                        <span className="rounded-full bg-cyan-500/10 px-2.5 py-0.5 text-[10px] font-extrabold text-cyan-600 dark:text-cyan-400 border border-cyan-500/20">
+                          PDF Audit Pack
+                        </span>
+                      </div>
+                      <h3 className="text-sm font-black text-foreground group-hover:text-primary transition-colors">
+                        1-Click CA Audit Package
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                        Export formatted 5-section PDF financial statement packs for your Chartered Accountant.
+                      </p>
+                    </div>
+                    <div className="mt-4 flex items-center justify-between pt-3 border-t border-border/60 text-xs font-bold text-primary">
+                      <span>Export CA Package</span>
+                      <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" />
+                    </div>
+                  </div>
+
+                  {/* Tool 3: Tally Export */}
+                  <div
+                    onClick={() => setActiveModal('tally-export')}
+                    className="group relative cursor-pointer rounded-3xl border border-border/80 bg-card p-5 shadow-2xs transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-3.5">
+                        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 group-hover:scale-105 transition-transform border border-indigo-500/20 shadow-xs">
+                          <Download size={24} />
+                        </div>
+                        <span className="rounded-full bg-indigo-500/10 px-2.5 py-0.5 text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                          XML & JSON
+                        </span>
+                      </div>
+                      <h3 className="text-sm font-black text-foreground group-hover:text-primary transition-colors">
+                        Data Export to Tally ERP
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                        Download company sales vouchers, party ledgers, and inventory XML for Tally sync.
+                      </p>
+                    </div>
+                    <div className="mt-4 flex items-center justify-between pt-3 border-t border-border/60 text-xs font-bold text-primary">
+                      <span>Export Tally Vouchers</span>
+                      <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" />
+                  </div>
+                </div>
+              </div>
+
+              {/* GROUP 3: Sales & Marketing Engine */}
+              <div className="space-y-4 pt-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="grid h-6 w-6 place-items-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-bold">3</span>
+                    <h2 className="text-base font-black text-foreground tracking-tight">Sales & Marketing Engine</h2>
+                  </div>
+                  <span className="text-[11px] font-bold text-muted-foreground">Boost Revenue & Loyalty</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* Tool 1: WhatsApp Marketing */}
+                  <div
+                    onClick={() => toast.info('Coming Soon!', { description: 'WhatsApp Marketing will be available in an upcoming update.' })}
+                    className="group relative cursor-pointer rounded-3xl border border-border/80 bg-card p-5 shadow-2xs transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg flex flex-col justify-between overflow-hidden"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-3.5">
+                        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 group-hover:scale-105 transition-transform border border-emerald-500/20 shadow-xs">
+                          <MessageSquare size={24} />
+                        </div>
+                        <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                          Coming Soon
+                        </span>
+                      </div>
+                      <h3 className="text-sm font-black text-foreground group-hover:text-primary transition-colors">
+                        WhatsApp Marketing
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                        Personalized WhatsApp greeting flyers, promo brochures, and digital visiting cards.
+                      </p>
+                    </div>
+                    <div className="mt-4 flex items-center justify-between pt-3 border-t border-border/60 text-xs font-bold text-primary">
+                      <span>WhatsApp Center</span>
+                      <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" />
+                    </div>
+                  </div>
+
+                  {/* Tool 2: Email Marketing */}
+                  <div
+                    onClick={() => toast.info('Coming Soon!', { description: 'Email Marketing will be available in an upcoming update.' })}
+                    className="group relative cursor-pointer rounded-3xl border border-border/80 bg-card p-5 shadow-2xs transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg flex flex-col justify-between overflow-hidden"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-3.5">
+                        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-500/15 text-blue-600 dark:text-blue-400 group-hover:scale-105 transition-transform border border-blue-500/20 shadow-xs">
+                          <Mail size={24} />
+                        </div>
+                        <span className="rounded-full bg-blue-500/10 px-2.5 py-0.5 text-[10px] font-extrabold text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                          Coming Soon
+                        </span>
+                      </div>
+                      <h3 className="text-sm font-black text-foreground group-hover:text-primary transition-colors">
+                        Email Marketing Studio
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                        Automated customer offer templates, promo codes, and seasonal email newsletters.
+                      </p>
+                    </div>
+                    <div className="mt-4 flex items-center justify-between pt-3 border-t border-border/60 text-xs font-bold text-primary">
+                      <span>Email Studio</span>
+                      <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" />
+                    </div>
+                  </div>
+
+                  {/* Tool 3: Reward Points */}
+                  <div
+                    onClick={() => setActiveModal('reward-points')}
+                    className="group relative cursor-pointer rounded-3xl border border-border/80 bg-card p-5 shadow-2xs transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-3.5">
+                        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400 group-hover:scale-105 transition-transform border border-amber-500/20 shadow-xs">
+                          <Gift size={24} />
+                        </div>
+                        <span className="rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-extrabold text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                          Loyalty Engine
+                        </span>
+                      </div>
+                      <h3 className="text-sm font-black text-foreground group-hover:text-primary transition-colors">
+                        Reward Points & Cashback
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                        Configure customer purchase loyalty points, cashback rates, and auto-redemption rules.
+                      </p>
+                    </div>
+                    <div className="mt-4 flex items-center justify-between pt-3 border-t border-border/60 text-xs font-bold text-primary">
+                      <span>Manage Rewards</span>
+                      <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" />
+                    </div>
+                  </div>
+
+                  {/* Tool 4: Online Store */}
+                  <div
+                    onClick={() => setActiveModal('online-store')}
+                    className="group relative cursor-pointer rounded-3xl border border-border/80 bg-card p-5 shadow-2xs transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-3.5">
+                        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 group-hover:scale-105 transition-transform border border-indigo-500/20 shadow-xs">
+                          <Store size={24} />
+                        </div>
+                        <span className="rounded-full bg-indigo-500/10 px-2.5 py-0.5 text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                          Digital Catalog
+                        </span>
+                      </div>
+                      <h3 className="text-sm font-black text-foreground group-hover:text-primary transition-colors">
+                        Online Store Catalog
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                        Share your digital product catalog link with customers for instant WhatsApp ordering.
+                      </p>
+                    </div>
+                    <div className="mt-4 flex items-center justify-between pt-3 border-t border-border/60 text-xs font-bold text-primary">
+                      <span>Share Store Link</span>
+                      <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
 
       {/* ========================================================================= */}
       {/* MODALS & DETAILED INTERACTIVE TOOLS                                        */}
@@ -1513,79 +1551,254 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
 
 
 
-      {/* MODAL 10: Online Store / Digital Catalog */}
-      {activeModal === 'online-store' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-xs animate-fade-in">
-          <div className="card-shell w-full max-w-lg p-6 animate-rise shadow-2xl border border-border max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-4 border-b border-border">
-              <div className="flex items-center gap-2.5">
-                <div className="grid h-9 w-9 place-items-center rounded-xl bg-indigo-500/15 text-indigo-600 dark:text-indigo-400">
-                  <Store size={20} />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-foreground">Digital Catalog & Online Store</h3>
-                  <p className="text-[11px] text-muted-foreground">Share live product link with customers</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setActiveModal(null)}
-                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <X size={18} />
-              </button>
-            </div>
+      {/* MODAL 10: Online Store / Digital Catalog (Read-Only Stock Inspector) */}
+      {activeModal === 'online-store' && (() => {
+        const inStockCount = products.filter(p => (Number(p.stock_quantity ?? p.stock ?? 0)) > 4).length;
+        const lowStockCount = products.filter(p => {
+          const qty = Number(p.stock_quantity ?? p.stock ?? 0);
+          return qty > 0 && qty <= 4;
+        }).length;
+        const outOfStockCount = products.filter(p => (Number(p.stock_quantity ?? p.stock ?? 0)) <= 0).length;
 
-            <div className="mt-4 space-y-3">
-              <div className="p-3.5 rounded-xl bg-muted/40 border border-border/60 flex items-center justify-between">
-                <div className="min-w-0 flex-1 pr-2">
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase">Store Catalog Link</p>
-                  <p className="text-xs font-mono font-bold text-foreground truncate">
-                    {window.location.origin}/catalog/{businessName.toLowerCase().replace(/\s+/g, '-') || 'shop'}
-                  </p>
+        const filteredCatalog = products.filter(p => {
+          const qty = Number(p.stock_quantity ?? p.stock ?? 0);
+          const matchesSearch = !catalogSearch || 
+            (p.name && p.name.toLowerCase().includes(catalogSearch.toLowerCase())) ||
+            (p.category && p.category.toLowerCase().includes(catalogSearch.toLowerCase())) ||
+            (p.hsn_code && String(p.hsn_code).includes(catalogSearch));
+
+          if (!matchesSearch) return false;
+          if (catalogStockFilter === 'instock') return qty > 4;
+          if (catalogStockFilter === 'lowstock') return qty > 0 && qty <= 4;
+          if (catalogStockFilter === 'outstock') return qty <= 0;
+          return true;
+        });
+
+        const storeUrl = `${window.location.origin}/catalog/${businessName.toLowerCase().replace(/\s+/g, '-') || 'shop'}`;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-fade-in">
+            <div className="card-shell w-full max-w-2xl p-6 sm:p-7 animate-rise shadow-2xl border border-border max-h-[92vh] flex flex-col">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-border">
+                <div className="flex items-center gap-3">
+                  <div className="grid h-11 w-11 place-items-center rounded-2xl bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 shadow-xs">
+                    <Store size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-base sm:text-lg font-black text-foreground tracking-tight">Digital Store Catalog & Stock Inspector</h3>
+                    <p className="text-xs text-muted-foreground font-medium">Read-Only Stock Availability & Price Directory</p>
+                  </div>
                 </div>
                 <button
-                  onClick={() => copyToClipboard(`${window.location.origin}/catalog/${businessName.toLowerCase().replace(/\s+/g, '-') || 'shop'}`)}
-                  className="rounded-lg bg-card border border-border px-3 py-1.5 text-xs font-bold text-foreground hover:bg-muted flex items-center gap-1 shrink-0"
+                  onClick={() => setActiveModal(null)}
+                  className="rounded-xl p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  title="Close"
                 >
-                  {copied ? <Check size={13} /> : <Copy size={13} />}
-                  <span>{copied ? 'Copied' : 'Copy'}</span>
+                  <X size={18} />
                 </button>
               </div>
 
-              <div className="rounded-xl border border-border/70 p-3 space-y-2">
-                <p className="text-xs font-bold text-foreground">Active Catalog Items ({products.length} Products)</p>
-                <div className="max-h-40 overflow-y-auto divide-y divide-border/40">
-                  {products.slice(0, 5).map(p => (
-                    <div key={p.id} className="py-2 flex items-center justify-between text-xs">
-                      <div>
-                        <p className="font-bold text-foreground">{p.name}</p>
-                        <p className="text-[10px] text-muted-foreground">Stock: {p.stock_quantity ?? p.stock ?? 0} {p.unit || 'pcs'}</p>
-                      </div>
-                      <span className="font-black text-primary">₹{Number(p.selling_price || p.price || 0).toLocaleString('en-IN')}</span>
+              <div className="py-4 space-y-4 overflow-y-auto flex-1 pr-1">
+
+
+                {/* Live Store Link Bar */}
+                <div className="p-3.5 rounded-2xl bg-muted/50 border border-border/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-extrabold text-muted-foreground uppercase tracking-wider">Shareable Read-Only Catalog Link</p>
+                    <p className="text-xs font-mono font-bold text-foreground truncate mt-0.5">
+                      {storeUrl}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => copyToClipboard(storeUrl)}
+                    className="rounded-xl bg-card border border-border/80 px-3.5 py-2 text-xs font-bold text-foreground hover:bg-muted transition-colors flex items-center justify-center gap-1.5 shrink-0 shadow-xs"
+                  >
+                    {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                    <span>{copied ? 'Link Copied!' : 'Copy Catalog Link'}</span>
+                  </button>
+                </div>
+
+                {/* Stock Overview Stat Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <div className="rounded-2xl border border-border/70 bg-card p-3 text-center">
+                    <p className="text-[10px] font-extrabold text-muted-foreground uppercase">Total Products</p>
+                    <p className="text-base font-black text-foreground mt-0.5">{products.length}</p>
+                  </div>
+                  <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-center">
+                    <p className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 uppercase">In Stock</p>
+                    <p className="text-base font-black text-emerald-600 dark:text-emerald-400 mt-0.5">{inStockCount}</p>
+                  </div>
+                  <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-center">
+                    <p className="text-[10px] font-extrabold text-amber-600 dark:text-amber-400 uppercase">Low Stock</p>
+                    <p className="text-base font-black text-amber-600 dark:text-amber-400 mt-0.5">{lowStockCount}</p>
+                  </div>
+                  <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-3 text-center">
+                    <p className="text-[10px] font-extrabold text-red-600 dark:text-red-400 uppercase">Out of Stock</p>
+                    <p className="text-base font-black text-red-600 dark:text-red-400 mt-0.5">{outOfStockCount}</p>
+                  </div>
+                </div>
+
+                {/* Search & Stock Filter Bar */}
+                <div className="space-y-2.5 pt-1">
+                  <div className="relative">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      type="text"
+                      value={catalogSearch}
+                      onChange={(e) => setCatalogSearch(e.target.value)}
+                      placeholder="Filter catalog by product name, category, or HSN..."
+                      className="w-full rounded-xl bg-background border border-border/80 pl-9 pr-8 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    />
+                    {catalogSearch && (
+                      <button
+                        onClick={() => setCatalogSearch('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Stock Availability Filter Buttons */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+                    <button
+                      onClick={() => setCatalogStockFilter('all')}
+                      className={`rounded-xl px-3 py-1.5 font-bold transition-colors whitespace-nowrap ${
+                        catalogStockFilter === 'all'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
+                    >
+                      All Items ({products.length})
+                    </button>
+                    <button
+                      onClick={() => setCatalogStockFilter('instock')}
+                      className={`rounded-xl px-3 py-1.5 font-bold transition-colors whitespace-nowrap ${
+                        catalogStockFilter === 'instock'
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20'
+                      }`}
+                    >
+                      In Stock ({inStockCount})
+                    </button>
+                    <button
+                      onClick={() => setCatalogStockFilter('lowstock')}
+                      className={`rounded-xl px-3 py-1.5 font-bold transition-colors whitespace-nowrap ${
+                        catalogStockFilter === 'lowstock'
+                          ? 'bg-amber-600 text-white'
+                          : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20'
+                      }`}
+                    >
+                      Low Stock ({lowStockCount})
+                    </button>
+                    <button
+                      onClick={() => setCatalogStockFilter('outstock')}
+                      className={`rounded-xl px-3 py-1.5 font-bold transition-colors whitespace-nowrap ${
+                        catalogStockFilter === 'outstock'
+                          ? 'bg-red-600 text-white'
+                          : 'bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20'
+                      }`}
+                    >
+                      Out of Stock ({outOfStockCount})
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filtered Product Items Inventory Table/List */}
+                <div className="rounded-2xl border border-border/80 bg-card overflow-hidden shadow-2xs">
+                  {filteredCatalog.length === 0 ? (
+                    <div className="p-8 text-center space-y-2">
+                      <Store size={32} className="mx-auto text-muted-foreground/50" />
+                      <p className="text-xs font-bold text-muted-foreground">No matching products found in catalog.</p>
+                      <button
+                        onClick={() => { setCatalogSearch(''); setCatalogStockFilter('all'); }}
+                        className="text-xs font-extrabold text-primary hover:underline"
+                      >
+                        Reset Search Filters
+                      </button>
                     </div>
-                  ))}
+                  ) : (
+                    <div className="divide-y divide-border/60 max-h-72 overflow-y-auto">
+                      {filteredCatalog.map((p) => {
+                        const qty = Number(p.stock_quantity ?? p.stock ?? 0);
+                        const unit = p.unit || 'pcs';
+                        const price = Number(p.selling_price || p.price || 0);
+
+                        let badgeColor = 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
+                        let statusText = `In Stock (${qty} ${unit})`;
+                        if (qty <= 0) {
+                          badgeColor = 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20';
+                          statusText = `Out of Stock (0 ${unit})`;
+                        } else if (qty <= 4) {
+                          badgeColor = 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20';
+                          statusText = `Low Stock (${qty} ${unit})`;
+                        }
+
+                        const imgUrl = p.image_url || p.image || p.photo_url || (p.notes && typeof p.notes === 'string' && (p.notes.startsWith('{') || p.notes.startsWith('[')) ? (() => { try { const parsed = JSON.parse(p.notes); return parsed.image_url || parsed.image || ''; } catch (e) { return ''; } })() : '');
+
+                        return (
+                          <div key={p.id} className="p-3.5 sm:px-4 flex items-center justify-between gap-3 hover:bg-muted/30 transition-colors">
+                            {imgUrl && (
+                              <img
+                                src={imgUrl}
+                                alt={p.name}
+                                className="h-11 w-11 shrink-0 rounded-xl object-cover border border-border/80 bg-muted/20"
+                                onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                              />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <p className="text-xs sm:text-sm font-extrabold text-foreground truncate">{p.name}</p>
+                                {p.hsn_code && (
+                                  <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[9px] font-mono font-bold text-muted-foreground">
+                                    HSN {p.hsn_code}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-muted-foreground mt-0.5">
+                                Category: {p.category || p.category_name || 'General'}
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-3 shrink-0">
+                              <div className="text-right">
+                                <span className={`inline-block rounded-full px-2.5 py-0.5 text-[10px] font-black border ${badgeColor}`}>
+                                  {statusText}
+                                </span>
+                                <p className="text-xs font-black text-foreground mt-1">
+                                  ₹{price.toLocaleString('en-IN')}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
 
-            <div className="mt-6 flex items-center justify-between">
-              <button
-                onClick={() => setActiveModal(null)}
-                className="rounded-xl px-4 py-2.5 text-xs font-bold text-muted-foreground hover:bg-muted"
-              >
-                Close
-              </button>
-              <button
-                onClick={() => handleShareWhatsApp(`Hello! Check out our active product catalog and prices online: ${window.location.origin}/catalog/${businessName.toLowerCase().replace(/\s+/g, '-') || 'shop'}\n\nFrom: ${businessName}`)}
-                className="btn-primary flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-xs font-bold shadow-xs"
-              >
-                <Share2 size={14} />
-                <span>Share Catalog on WhatsApp</span>
-              </button>
+              {/* Modal Footer */}
+              <div className="pt-4 border-t border-border flex items-center justify-between">
+                <button
+                  onClick={() => setActiveModal(null)}
+                  className="rounded-xl px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted transition-colors"
+                >
+                  Close Inspector
+                </button>
+                <button
+                  onClick={() => handleShareWhatsApp(`Hello! Check our live product availability and stock inventory online:\n${storeUrl}\n\nFrom: ${businessName}`)}
+                  className="btn-primary flex items-center gap-2 rounded-xl px-5 py-2 text-xs font-bold shadow-xs"
+                >
+                  <Share2 size={14} />
+                  <span>Share Catalog Link on WhatsApp</span>
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* MODAL 11: Reward Points */}
       {activeModal === 'reward-points' && (
