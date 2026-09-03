@@ -103,45 +103,6 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
   );
   const [targetCustomer, setTargetCustomer] = useState<string>('all');
 
-  // Appointments / Notes State
-  const [notesList, setNotesList] = useState<any[]>(() => {
-    try {
-      const saved = localStorage.getItem('lms_growth_notes');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return [
-      { id: '1', title: 'GST Return Q3 Review', date: '2026-09-05', customer: 'CA Rajesh Agarwal', status: 'pending' },
-      { id: '2', title: 'Bulk Order Delivery Followup', date: '2026-09-02', customer: 'Metro Retailers', status: 'completed' },
-      { id: '3', title: 'Vendor Payment Due', date: '2026-09-10', customer: 'Global Supply Co.', status: 'pending' },
-    ];
-  });
-  const [newNoteTitle, setNewNoteTitle] = useState('');
-  const [newNoteCustomer, setNewNoteCustomer] = useState('');
-  const [newNoteDate, setNewNoteDate] = useState(new Date().toISOString().split('T')[0]);
-
-  const addNote = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newNoteTitle.trim()) return;
-    const note = {
-      id: Date.now().toString(),
-      title: newNoteTitle.trim(),
-      customer: newNoteCustomer.trim() || 'General Reminder',
-      date: newNoteDate,
-      status: 'pending'
-    };
-    const updated = [note, ...notesList];
-    setNotesList(updated);
-    localStorage.setItem('lms_growth_notes', JSON.stringify(updated));
-    setNewNoteTitle('');
-    setNewNoteCustomer('');
-  };
-
-  const toggleNoteStatus = (id: string) => {
-    const updated = notesList.map(n => n.id === id ? { ...n, status: n.status === 'completed' ? 'pending' : 'completed' } : n);
-    setNotesList(updated);
-    localStorage.setItem('lms_growth_notes', JSON.stringify(updated));
-  };
-
   // Reward Points State
   const [pointsPer100, setPointsPer100] = useState<number>(5);
   const [pointValueInRs, setPointValueInRs] = useState<number>(1);
@@ -361,7 +322,7 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
           <span className="text-[11px] font-bold text-muted-foreground">Boost Revenue</span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
           {/* Tile 1: WhatsApp Marketing */}
           <div
             onClick={() => setActiveModal('whatsapp-marketing')}
@@ -386,19 +347,7 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
             <p className="text-[10px] text-muted-foreground mt-1">Loyalty points & cashback</p>
           </div>
 
-          {/* Tile 3: Notes & Appointments */}
-          <div
-            onClick={() => setActiveModal('notes-appointments')}
-            className="group flex flex-col items-center text-center p-4 sm:p-5 rounded-2xl border border-border/80 bg-card hover:bg-muted/40 transition-all cursor-pointer shadow-xs hover:border-primary/40"
-          >
-            <div className="grid h-13 w-13 place-items-center rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform mb-3">
-              <Calendar size={24} />
-            </div>
-            <h4 className="text-xs sm:text-sm font-extrabold text-foreground">Notes & Schedule</h4>
-            <p className="text-[10px] text-muted-foreground mt-1">Client calls & reminders</p>
-          </div>
-
-          {/* Tile 4: Online Store */}
+          {/* Tile 3: Online Store */}
           <div
             onClick={() => setActiveModal('online-store')}
             className="group flex flex-col items-center text-center p-4 sm:p-5 rounded-2xl border border-border/80 bg-card hover:bg-muted/40 transition-all cursor-pointer shadow-xs hover:border-primary/40"
@@ -1337,104 +1286,7 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
         </div>
       )}
 
-      {/* MODAL 9: Notes & Appointments */}
-      {activeModal === 'notes-appointments' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-xs animate-fade-in">
-          <div className="card-shell w-full max-w-lg p-6 animate-rise shadow-2xl border border-border max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-4 border-b border-border">
-              <div className="flex items-center gap-2.5">
-                <div className="grid h-9 w-9 place-items-center rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-400">
-                  <Calendar size={20} />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-foreground">Notes & Appointments</h3>
-                  <p className="text-[11px] text-muted-foreground">Client follow-up diary & schedule</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setActiveModal(null)}
-                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <X size={18} />
-              </button>
-            </div>
 
-            {/* Add note form */}
-            <form onSubmit={addNote} className="mt-4 space-y-3 p-3.5 rounded-xl bg-muted/40 border border-border/60">
-              <p className="text-xs font-black text-foreground">Add New Reminder / Follow-up</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <input
-                  type="text"
-                  placeholder="Task or reminder title *"
-                  value={newNoteTitle}
-                  onChange={(e) => setNewNoteTitle(e.target.value)}
-                  required
-                  className="input-shell text-xs"
-                />
-                <input
-                  type="text"
-                  placeholder="Client / Contact name"
-                  value={newNoteCustomer}
-                  onChange={(e) => setNewNoteCustomer(e.target.value)}
-                  className="input-shell text-xs"
-                />
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <input
-                  type="date"
-                  value={newNoteDate}
-                  onChange={(e) => setNewNoteDate(e.target.value)}
-                  className="input-shell text-xs py-1.5"
-                />
-                <button type="submit" className="btn-primary rounded-xl px-4 py-2 text-xs font-bold shrink-0">
-                  <Plus size={13} className="inline mr-1" /> Add Task
-                </button>
-              </div>
-            </form>
-
-            {/* Notes List */}
-            <div className="mt-4 space-y-2 max-h-52 overflow-y-auto">
-              {notesList.map(note => (
-                <div
-                  key={note.id}
-                  onClick={() => toggleNoteStatus(note.id)}
-                  className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
-                    note.status === 'completed'
-                      ? 'border-border/40 bg-muted/30 opacity-60'
-                      : 'border-border bg-card hover:bg-muted/40'
-                  }`}
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border ${
-                      note.status === 'completed' ? 'bg-primary border-primary text-white' : 'border-muted-foreground'
-                    }`}>
-                      {note.status === 'completed' && <Check size={13} />}
-                    </span>
-                    <div className="min-w-0">
-                      <p className={`text-xs font-bold truncate ${note.status === 'completed' ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
-                        {note.title}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground">{note.customer} &bull; {note.date}</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-bold text-muted-foreground">
-                    {note.status === 'completed' ? 'Done' : 'Pending'}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-6 flex justify-end">
-              <button
-                onClick={() => setActiveModal(null)}
-                className="btn-primary rounded-xl px-5 py-2.5 text-xs font-bold"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* MODAL 10: Online Store / Digital Catalog */}
       {activeModal === 'online-store' && (
