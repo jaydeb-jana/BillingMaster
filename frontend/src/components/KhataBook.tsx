@@ -156,7 +156,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
     amount: '',
     date: new Date().toISOString().split('T')[0],
     time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
-    payment_mode: 'Cash',
+    payment_mode: '',
     bill_reference: '',
     note: '',
   });
@@ -515,7 +515,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
       amount: '',
       date: todayDate,
       time: currentTime24,
-      payment_mode: 'Cash',
+      payment_mode: '',
       bill_reference: '',
       note: '',
     });
@@ -534,7 +534,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
       amount: String(entry.amount || ''),
       date: entry.date,
       time: convertTimeTo24Hour(entry.time) || '',
-      payment_mode: entry.payment_mode || 'Cash',
+      payment_mode: entry.payment_mode || '',
       bill_reference: entry.bill_reference || '',
       note: entry.note || '',
     });
@@ -647,7 +647,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
           amount: openAmt,
           date: now.toISOString().split('T')[0],
           time: now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
-          payment_mode: 'Cash',
+          payment_mode: '',
           bill_reference: 'OPENING-BAL',
           note: newCustomerForm.openingNote || 'Opening balance record',
         });
@@ -899,7 +899,8 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
           doc.text(desc.length > 25 ? desc.substring(0, 23) + '..' : desc, 55, rowY + 5.5);
 
           // Mode
-          doc.text(entry.payment_mode || 'Cash', 105, rowY + 5.5);
+          const modeText = entry.payment_mode && entry.payment_mode.toLowerCase() !== 'cash' ? entry.payment_mode : '—';
+          doc.text(modeText, 105, rowY + 5.5);
 
           // Gave (Debit)
           if (entry.type === 'gave') {
@@ -1065,7 +1066,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
             <button
               type="button"
               onClick={() => setSelectedCustomerId(null)}
-              className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-border bg-card text-foreground hover:bg-muted hover:border-primary/50 transition-all shadow-xs active:scale-95 group"
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-border bg-card text-foreground hover:bg-muted hover:border-primary/50 transition-all shadow-xs active:scale-95 group cursor-pointer"
               title="Back to Customer Accounts List"
             >
               <ArrowLeft size={18} className="group-hover:-translate-x-0.5 transition-transform" />
@@ -1118,7 +1119,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                 setReminderEmailInput(selectedCustomer.email || '');
                 setReminderChannel('whatsapp');
               }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs sm:text-sm font-bold hover:bg-amber-500/20 active:scale-95 transition-all shadow-2xs"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs sm:text-sm font-bold hover:bg-amber-500/20 active:scale-95 transition-all shadow-2xs cursor-pointer"
               title="Send Balance Reminder via WhatsApp, Email or Phone"
             >
               <Bell size={15} className="text-amber-600 dark:text-amber-400" />
@@ -1129,7 +1130,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
             <button
               type="button"
               onClick={() => setShowContactModal(selectedCustomer)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-primary/30 bg-primary/10 text-primary text-xs sm:text-sm font-bold hover:bg-primary/20 active:scale-95 transition-all shadow-2xs"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-primary/30 bg-primary/10 text-primary text-xs sm:text-sm font-bold hover:bg-primary/20 active:scale-95 transition-all shadow-2xs cursor-pointer"
               title="Contact Customer via WhatsApp, Phone or Email"
             >
               <PhoneCall size={15} />
@@ -1140,7 +1141,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
             <button
               type="button"
               onClick={() => generateCustomerPdf(selectedCustomer)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-border bg-card text-xs sm:text-sm font-bold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shadow-2xs active:scale-95"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-border bg-card text-xs sm:text-sm font-bold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shadow-2xs active:scale-95 cursor-pointer"
               title="Download Passbook PDF Statement"
             >
               <Download size={14} />
@@ -1304,7 +1305,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                 <button
                   type="button"
                   onClick={() => openNewEntryModal('gave', selectedCustomer)}
-                  className="group relative flex items-center gap-3.5 p-3.5 rounded-2xl bg-gradient-to-r from-red-600 via-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white shadow-md hover:shadow-red-500/20 active:scale-[0.98] transition-all text-left"
+                  className="group relative flex items-center gap-3.5 p-3.5 rounded-2xl bg-gradient-to-r from-red-600 via-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white shadow-md hover:shadow-red-500/20 active:scale-[0.98] transition-all text-left cursor-pointer"
                 >
                   <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/20 text-white shadow-2xs group-hover:scale-105 transition-transform">
                     <ArrowDownLeft size={20} className="stroke-[2.5]" />
@@ -1322,7 +1323,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                 <button
                   type="button"
                   onClick={() => openNewEntryModal('got', selectedCustomer)}
-                  className="group relative flex items-center gap-3.5 p-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md hover:shadow-emerald-500/20 active:scale-[0.98] transition-all text-left"
+                  className="group relative flex items-center gap-3.5 p-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md hover:shadow-emerald-500/20 active:scale-[0.98] transition-all text-left cursor-pointer"
                 >
                   <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/20 text-white shadow-2xs group-hover:scale-105 transition-transform">
                     <ArrowUpRight size={20} className="stroke-[2.5]" />
@@ -1349,7 +1350,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                 <button
                   type="button"
                   onClick={() => setPassbookFilter('all')}
-                  className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 cursor-pointer ${
                     passbookFilter === 'all'
                       ? 'bg-primary text-primary-foreground shadow-xs'
                       : 'bg-muted text-muted-foreground hover:text-foreground'
@@ -1360,7 +1361,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                 <button
                   type="button"
                   onClick={() => setPassbookFilter('gave')}
-                  className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 cursor-pointer ${
                     passbookFilter === 'gave'
                       ? 'bg-red-600 text-white shadow-xs'
                       : 'bg-muted text-muted-foreground hover:text-foreground'
@@ -1371,7 +1372,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                 <button
                   type="button"
                   onClick={() => setPassbookFilter('got')}
-                  className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 cursor-pointer ${
                     passbookFilter === 'got'
                       ? 'bg-emerald-600 text-white shadow-xs'
                       : 'bg-muted text-muted-foreground hover:text-foreground'
@@ -1505,7 +1506,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                                       </span>
                                     )}
 
-                                    {entry.payment_mode && (
+                                    {entry.payment_mode && entry.payment_mode.toLowerCase() !== 'cash' && (
                                       <span className="text-[11px] font-semibold text-muted-foreground px-2 py-0.5 rounded-md bg-muted border border-border/50">
                                         {entry.payment_mode}
                                       </span>
@@ -1561,7 +1562,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                                   <button
                                     type="button"
                                     onClick={() => openEditEntryModal(entry)}
-                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted border border-border/50 transition-colors shadow-2xs active:scale-95"
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted border border-border/50 transition-colors shadow-2xs active:scale-95 cursor-pointer"
                                     title="Edit transaction"
                                   >
                                     <Pencil size={12} />
@@ -1570,7 +1571,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                                   <button
                                     type="button"
                                     onClick={() => setShowDeleteModal(entry)}
-                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-destructive hover:bg-destructive/10 border border-destructive/20 transition-colors shadow-2xs active:scale-95"
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-destructive hover:bg-destructive/10 border border-destructive/20 transition-colors shadow-2xs active:scale-95 cursor-pointer"
                                     title="Delete transaction"
                                   >
                                     <Trash2 size={12} />
