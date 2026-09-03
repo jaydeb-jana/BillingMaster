@@ -252,10 +252,19 @@ function CustomDropdown({
 }
 
 function Logo() {
-  return <Link href="/dashboard" className="flex items-center gap-2.5 text-inherit no-underline" data-testid="link-logo">
-    <span className="grid h-9 w-9 place-items-center rounded-xl bg-secondary text-lg font-extrabold text-secondary-foreground">C</span>
-    <span className="text-[15px] font-extrabold tracking-[-.04em]">BillingMaster<span className="text-secondary">.</span></span>
-  </Link>;
+  return (
+    <Link href="/dashboard" className="flex items-center gap-2.5 text-inherit no-underline" data-testid="link-logo">
+      <img 
+        src="/logo.webp" 
+        alt="BillingMaster Logo" 
+        className="h-9 w-9 rounded-xl object-contain shadow-xs bg-white/10 p-0.5" 
+        onError={(e) => {
+          (e.target as HTMLImageElement).src = "https://cdn-1.webcatalog.io/catalog/mybillbook/mybillbook-icon-filled-256.webp?v=1716618710030";
+        }}
+      />
+      <span className="text-[15px] font-extrabold tracking-[-.04em]">BillingMaster<span className="text-secondary">.</span></span>
+    </Link>
+  );
 }
 
 function Shell({ children }: { children: ReactNode }) {
