@@ -5,7 +5,7 @@ import {
   ExternalLink, Copy, Check, Clock, ShieldCheck, DollarSign,
   TrendingUp, RefreshCw, X, MessageSquare, Phone, Percent,
   Building2, Briefcase, Plus, FileSpreadsheet, AlertCircle,
-  QrCode, Printer, Smartphone, ChevronRight, ChevronDown, CheckCheck, Mail
+  QrCode, Printer, Smartphone, ChevronRight, ChevronDown, CheckCheck, Mail, Search
 } from 'lucide-react';
 import { db, auth } from '@/lib/api';
 import { toast } from 'sonner';
@@ -28,8 +28,9 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
   const [business, setBusiness] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Copied feedback
+  // Copied feedback & search states
   const [copied, setCopied] = useState(false);
+  const [hsnSearchQuery, setHsnSearchQuery] = useState('');
 
   // Load active business & workspace data
   useEffect(() => {
@@ -333,9 +334,12 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           {/* Tile 1: WhatsApp Marketing */}
           <div
-            onClick={() => setActiveModal('whatsapp-marketing')}
-            className="group flex flex-col items-center text-center p-4 sm:p-5 rounded-2xl border border-border/80 bg-card hover:bg-muted/40 transition-all cursor-pointer shadow-xs hover:border-primary/40"
+            onClick={() => toast.info('Coming Soon!', { description: 'WhatsApp Marketing will be available in an upcoming update.' })}
+            className="group relative flex flex-col items-center text-center p-4 sm:p-5 rounded-2xl border border-border/80 bg-card hover:bg-muted/40 transition-all cursor-pointer shadow-xs hover:border-primary/40 overflow-hidden"
           >
+            <span className="absolute top-2 right-2 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
+              Coming Soon
+            </span>
             <div className="grid h-13 w-13 place-items-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform mb-3">
               <MessageSquare size={24} />
             </div>
@@ -345,9 +349,12 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
 
           {/* Tile 2: Email Marketing */}
           <div
-            onClick={() => setActiveModal('email-marketing')}
-            className="group flex flex-col items-center text-center p-4 sm:p-5 rounded-2xl border border-border/80 bg-card hover:bg-muted/40 transition-all cursor-pointer shadow-xs hover:border-primary/40"
+            onClick={() => toast.info('Coming Soon!', { description: 'Email Marketing will be available in an upcoming update.' })}
+            className="group relative flex flex-col items-center text-center p-4 sm:p-5 rounded-2xl border border-border/80 bg-card hover:bg-muted/40 transition-all cursor-pointer shadow-xs hover:border-primary/40 overflow-hidden"
           >
+            <span className="absolute top-2 right-2 rounded-full bg-blue-500/10 px-2 py-0.5 text-[9px] font-bold text-blue-600 dark:text-blue-400">
+              Coming Soon
+            </span>
             <div className="grid h-13 w-13 place-items-center rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform mb-3">
               <Mail size={24} />
             </div>
@@ -388,7 +395,7 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
           <span className="text-[11px] font-bold text-muted-foreground">Compliance & Books</span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
           {/* Tile 1: GST Filing */}
           <div
             onClick={() => setActiveModal('gst-filing')}
@@ -401,31 +408,7 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
             <p className="text-[10px] text-muted-foreground mt-0.5">GSTR-1 & 3B</p>
           </div>
 
-          {/* Tile 2: Balance Sheet */}
-          <div
-            onClick={() => setActiveModal('balance-sheet')}
-            className="group flex flex-col items-center text-center p-4 rounded-2xl border border-border/80 bg-card hover:bg-muted/40 transition-all cursor-pointer shadow-xs hover:border-primary/40"
-          >
-            <div className="grid h-12 w-12 place-items-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform mb-2.5">
-              <BarChart3 size={22} />
-            </div>
-            <h4 className="text-xs font-extrabold text-foreground">Balance Sheet</h4>
-            <p className="text-[10px] text-muted-foreground mt-0.5">P&L and Assets</p>
-          </div>
-
-          {/* Tile 3: Automated Recurring Bills */}
-          <div
-            onClick={() => setActiveModal('recurring-bills')}
-            className="group flex flex-col items-center text-center p-4 rounded-2xl border border-border/80 bg-card hover:bg-muted/40 transition-all cursor-pointer shadow-xs hover:border-primary/40"
-          >
-            <div className="grid h-12 w-12 place-items-center rounded-full bg-purple-500/15 text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform mb-2.5">
-              <Clock size={22} />
-            </div>
-            <h4 className="text-xs font-extrabold text-foreground">Automated Bills</h4>
-            <p className="text-[10px] text-muted-foreground mt-0.5">Recurring cycles</p>
-          </div>
-
-          {/* Tile 4: CA Reports Sharing */}
+          {/* Tile 2: CA Reports Sharing */}
           <div
             onClick={() => setActiveModal('ca-reports')}
             className="group flex flex-col items-center text-center p-4 rounded-2xl border border-border/80 bg-card hover:bg-muted/40 transition-all cursor-pointer shadow-xs hover:border-primary/40"
@@ -437,22 +420,7 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
             <p className="text-[10px] text-muted-foreground mt-0.5">1-click package</p>
           </div>
 
-          {/* Tile 5: Full Reports */}
-          <div
-            onClick={() => {
-              if (onNavigate) onNavigate('/reports');
-              else setLocation('/reports');
-            }}
-            className="group flex flex-col items-center text-center p-4 rounded-2xl border border-border/80 bg-card hover:bg-muted/40 transition-all cursor-pointer shadow-xs hover:border-primary/40"
-          >
-            <div className="grid h-12 w-12 place-items-center rounded-full bg-orange-500/15 text-orange-600 dark:text-orange-400 group-hover:scale-110 transition-transform mb-2.5">
-              <FileSpreadsheet size={22} />
-            </div>
-            <h4 className="text-xs font-extrabold text-foreground">All Reports</h4>
-            <p className="text-[10px] text-muted-foreground mt-0.5">Sales & Tax logs</p>
-          </div>
-
-          {/* Tile 6: Data Export to Tally */}
+          {/* Tile 3: Data Export to Tally */}
           <div
             onClick={() => setActiveModal('tally-export')}
             className="group flex flex-col items-center text-center p-4 rounded-2xl border border-border/80 bg-card hover:bg-muted/40 transition-all cursor-pointer shadow-xs hover:border-primary/40"
@@ -540,45 +508,58 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
 
       {/* MODAL 1: Smart Calculator */}
       {activeModal === 'smart-calculator' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-xs animate-fade-in">
-          <div className="card-shell w-full max-w-lg p-6 animate-rise shadow-2xl border border-border max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-4 border-b border-border">
-              <div className="flex items-center gap-2.5">
-                <div className="grid h-9 w-9 place-items-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                  <Calculator size={20} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-fade-in">
+          <div className="card-shell w-full max-w-lg p-6 sm:p-7 animate-rise shadow-2xl border border-border max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-border/70">
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 place-items-center rounded-2xl bg-primary/10 text-primary">
+                  <Calculator size={22} />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-foreground">Smart Commercial Calculator</h3>
-                  <p className="text-[11px] text-muted-foreground">GST, Margin & Markup Real-time Engine</p>
+                  <h3 className="text-base sm:text-lg font-black text-foreground tracking-tight">Smart Commercial Calculator</h3>
+                  <p className="text-xs text-muted-foreground font-medium">GST, Margin & Markup Real-time Engine</p>
                 </div>
               </div>
               <button
                 onClick={() => setActiveModal(null)}
-                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="rounded-xl p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                title="Close"
               >
                 <X size={18} />
               </button>
             </div>
 
-            {/* Calculator Mode Switcher */}
-            <div className="mt-4 flex rounded-xl bg-muted/60 p-1 text-xs font-bold">
+            {/* Calculator Mode Switcher Tabs */}
+            <div className="mt-5 grid grid-cols-3 gap-1 rounded-2xl bg-muted/70 p-1.5 text-xs font-extrabold">
               <button
                 onClick={() => setCalcMode('gst')}
-                className={`flex-1 py-2 rounded-lg transition-all ${calcMode === 'gst' ? 'bg-card text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`py-2.5 rounded-xl transition-all ${
+                  calcMode === 'gst' 
+                    ? 'bg-primary text-primary-foreground shadow-sm font-black' 
+                    : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
+                }`}
               >
                 GST Calculator
               </button>
               <button
                 onClick={() => setCalcMode('margin')}
-                className={`flex-1 py-2 rounded-lg transition-all ${calcMode === 'margin' ? 'bg-card text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`py-2.5 rounded-xl transition-all ${
+                  calcMode === 'margin' 
+                    ? 'bg-primary text-primary-foreground shadow-sm font-black' 
+                    : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
+                }`}
               >
                 Profit Margin %
               </button>
               <button
                 onClick={() => setCalcMode('reverse')}
-                className={`flex-1 py-2 rounded-lg transition-all ${calcMode === 'reverse' ? 'bg-card text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`py-2.5 rounded-xl transition-all ${
+                  calcMode === 'reverse' 
+                    ? 'bg-primary text-primary-foreground shadow-sm font-black' 
+                    : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
+                }`}
               >
-                Reverse GST from MRP
+                Reverse GST (MRP)
               </button>
             </div>
 
@@ -586,27 +567,31 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
             {calcMode === 'gst' && (
               <div className="mt-5 space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-foreground">Net Base Amount (₹)</label>
-                  <input
-                    type="number"
-                    value={calcAmount}
-                    onChange={(e) => setCalcAmount(Number(e.target.value))}
-                    className="input-shell mt-1.5 w-full text-base font-extrabold"
-                  />
+                  <label className="block text-xs font-bold text-foreground mb-1.5">Net Base Amount (₹)</label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-sm">₹</span>
+                    <input
+                      type="number"
+                      value={calcAmount || ''}
+                      onChange={(e) => setCalcAmount(Number(e.target.value))}
+                      placeholder="0.00"
+                      className="input-shell pl-8 w-full text-lg font-black text-foreground tracking-tight"
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-foreground mb-1.5">Select GST Slab Rate</label>
+                  <label className="block text-xs font-bold text-foreground mb-2">Select GST Slab Rate</label>
                   <div className="grid grid-cols-5 gap-2">
                     {[0, 5, 12, 18, 28].map(rate => (
                       <button
                         key={rate}
                         type="button"
                         onClick={() => setCalcGstRate(rate)}
-                        className={`rounded-xl py-2 text-xs font-black border transition-all ${
+                        className={`rounded-xl py-2.5 text-xs font-black border transition-all ${
                           calcGstRate === rate 
-                            ? 'bg-primary text-primary-foreground border-primary' 
-                            : 'bg-card border-border hover:bg-muted text-foreground'
+                            ? 'bg-primary text-primary-foreground border-primary shadow-xs ring-2 ring-primary/20 scale-[1.02]' 
+                            : 'bg-card border-border/80 hover:bg-muted text-foreground'
                         }`}
                       >
                         {rate}%
@@ -622,26 +607,26 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
                   const cgst = taxAmount / 2;
                   const sgst = taxAmount / 2;
                   return (
-                    <div className="rounded-2xl bg-muted/40 p-4 border border-border/60 space-y-2.5">
+                    <div className="rounded-2xl bg-gradient-to-br from-card via-muted/30 to-primary/5 p-4 sm:p-5 border border-border/80 shadow-xs space-y-3">
                       <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>Net Base Price:</span>
+                        <span className="font-medium">Net Base Price:</span>
                         <span className="font-bold text-foreground">₹{calcAmount.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>CGST ({calcGstRate / 2}%):</span>
+                        <span className="font-medium">CGST ({calcGstRate / 2}%):</span>
                         <span className="font-bold text-foreground">₹{cgst.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>SGST ({calcGstRate / 2}%):</span>
+                        <span className="font-medium">SGST ({calcGstRate / 2}%):</span>
                         <span className="font-bold text-foreground">₹{sgst.toFixed(2)}</span>
                       </div>
-                      <div className="flex justify-between text-xs text-muted-foreground border-t border-border/40 pt-2">
-                        <span>Total Tax ({calcGstRate}%):</span>
-                        <span className="font-bold text-primary">₹{taxAmount.toFixed(2)}</span>
+                      <div className="flex justify-between text-xs border-t border-border/60 pt-2.5">
+                        <span className="font-bold text-muted-foreground">Total Tax ({calcGstRate}%):</span>
+                        <span className="font-black text-primary">₹{taxAmount.toFixed(2)}</span>
                       </div>
-                      <div className="flex justify-between text-sm font-black text-foreground border-t border-border pt-2">
-                        <span>Final Invoice Total:</span>
-                        <span className="text-primary text-base">₹{total.toFixed(2)}</span>
+                      <div className="flex justify-between items-center text-sm font-black text-foreground border-t border-border/80 pt-3">
+                        <span className="text-xs uppercase tracking-wider font-extrabold text-foreground/80">Final Invoice Total</span>
+                        <span className="text-lg font-black text-primary bg-primary/10 px-3 py-1 rounded-xl">₹{total.toFixed(2)}</span>
                       </div>
                     </div>
                   );
@@ -654,22 +639,30 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
               <div className="mt-5 space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-foreground">Cost Price / Buy (₹)</label>
-                    <input
-                      type="number"
-                      value={calcCostPrice}
-                      onChange={(e) => setCalcCostPrice(Number(e.target.value))}
-                      className="input-shell mt-1.5 w-full text-sm font-bold"
-                    />
+                    <label className="block text-xs font-bold text-foreground mb-1.5">Cost Price / Buy (₹)</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-xs">₹</span>
+                      <input
+                        type="number"
+                        value={calcCostPrice || ''}
+                        onChange={(e) => setCalcCostPrice(Number(e.target.value))}
+                        placeholder="0.00"
+                        className="input-shell pl-7 w-full text-sm font-black"
+                      />
+                    </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-foreground">Selling Price / MRP (₹)</label>
-                    <input
-                      type="number"
-                      value={calcSellingPrice}
-                      onChange={(e) => setCalcSellingPrice(Number(e.target.value))}
-                      className="input-shell mt-1.5 w-full text-sm font-bold"
-                    />
+                    <label className="block text-xs font-bold text-foreground mb-1.5">Selling Price / MRP (₹)</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-xs">₹</span>
+                      <input
+                        type="number"
+                        value={calcSellingPrice || ''}
+                        onChange={(e) => setCalcSellingPrice(Number(e.target.value))}
+                        placeholder="0.00"
+                        className="input-shell pl-7 w-full text-sm font-black"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -678,20 +671,20 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
                   const marginPct = calcSellingPrice > 0 ? (profit / calcSellingPrice) * 100 : 0;
                   const markupPct = calcCostPrice > 0 ? (profit / calcCostPrice) * 100 : 0;
                   return (
-                    <div className="rounded-2xl bg-muted/40 p-4 border border-border/60 space-y-2.5">
+                    <div className="rounded-2xl bg-gradient-to-br from-card via-muted/30 to-primary/5 p-4 sm:p-5 border border-border/80 shadow-xs space-y-3">
                       <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>Net Profit Per Unit:</span>
-                        <span className={`font-bold ${profit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'}`}>
+                        <span className="font-medium">Net Profit Per Unit:</span>
+                        <span className={`font-black text-sm ${profit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'}`}>
                           ₹{profit.toFixed(2)}
                         </span>
                       </div>
                       <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>Gross Profit Margin:</span>
-                        <span className="font-extrabold text-foreground">{marginPct.toFixed(2)}%</span>
+                        <span className="font-medium">Gross Profit Margin:</span>
+                        <span className="font-black text-foreground">{marginPct.toFixed(2)}%</span>
                       </div>
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>Cost Markup Percentage:</span>
-                        <span className="font-extrabold text-foreground">{markupPct.toFixed(2)}%</span>
+                      <div className="flex justify-between text-xs border-t border-border/60 pt-2.5">
+                        <span className="font-bold text-muted-foreground">Cost Markup Percentage:</span>
+                        <span className="font-black text-primary">{markupPct.toFixed(2)}%</span>
                       </div>
                     </div>
                   );
@@ -703,27 +696,31 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
             {calcMode === 'reverse' && (
               <div className="mt-5 space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-foreground">MRP / Gross Amount with GST (₹)</label>
-                  <input
-                    type="number"
-                    value={calcAmount}
-                    onChange={(e) => setCalcAmount(Number(e.target.value))}
-                    className="input-shell mt-1.5 w-full text-base font-extrabold"
-                  />
+                  <label className="block text-xs font-bold text-foreground mb-1.5">MRP / Gross Amount with GST (₹)</label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-sm">₹</span>
+                    <input
+                      type="number"
+                      value={calcAmount || ''}
+                      onChange={(e) => setCalcAmount(Number(e.target.value))}
+                      placeholder="0.00"
+                      className="input-shell pl-8 w-full text-lg font-black text-foreground tracking-tight"
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-foreground mb-1.5">Included GST Slab Rate</label>
+                  <label className="block text-xs font-bold text-foreground mb-2">Included GST Slab Rate</label>
                   <div className="grid grid-cols-5 gap-2">
                     {[0, 5, 12, 18, 28].map(rate => (
                       <button
                         key={rate}
                         type="button"
                         onClick={() => setCalcGstRate(rate)}
-                        className={`rounded-xl py-2 text-xs font-black border transition-all ${
+                        className={`rounded-xl py-2.5 text-xs font-black border transition-all ${
                           calcGstRate === rate 
-                            ? 'bg-primary text-primary-foreground border-primary' 
-                            : 'bg-card border-border hover:bg-muted text-foreground'
+                            ? 'bg-primary text-primary-foreground border-primary shadow-xs ring-2 ring-primary/20 scale-[1.02]' 
+                            : 'bg-card border-border/80 hover:bg-muted text-foreground'
                         }`}
                       >
                         {rate}%
@@ -736,18 +733,18 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
                   const basePrice = (calcAmount * 100) / (100 + calcGstRate);
                   const taxAmount = calcAmount - basePrice;
                   return (
-                    <div className="rounded-2xl bg-muted/40 p-4 border border-border/60 space-y-2.5">
+                    <div className="rounded-2xl bg-gradient-to-br from-card via-muted/30 to-primary/5 p-4 sm:p-5 border border-border/80 shadow-xs space-y-3">
                       <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>Actual Base Price (Pre-Tax):</span>
-                        <span className="font-bold text-foreground">₹{basePrice.toFixed(2)}</span>
+                        <span className="font-medium">Actual Base Price (Pre-Tax):</span>
+                        <span className="font-black text-foreground">₹{basePrice.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>Extracted GST ({calcGstRate}%):</span>
-                        <span className="font-bold text-primary">₹{taxAmount.toFixed(2)}</span>
+                        <span className="font-medium">Extracted GST ({calcGstRate}%):</span>
+                        <span className="font-black text-primary">₹{taxAmount.toFixed(2)}</span>
                       </div>
-                      <div className="flex justify-between text-xs text-muted-foreground border-t border-border/40 pt-2">
-                        <span>CGST + SGST Split:</span>
-                        <span className="font-bold text-foreground">₹{(taxAmount / 2).toFixed(2)} + ₹{(taxAmount / 2).toFixed(2)}</span>
+                      <div className="flex justify-between items-center text-xs border-t border-border/60 pt-2.5">
+                        <span className="font-bold text-muted-foreground">CGST + SGST Split:</span>
+                        <span className="font-black text-foreground bg-muted px-2.5 py-1 rounded-lg">₹{(taxAmount / 2).toFixed(2)} + ₹{(taxAmount / 2).toFixed(2)}</span>
                       </div>
                     </div>
                   );
@@ -758,7 +755,7 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
             <div className="mt-6 flex justify-end">
               <button
                 onClick={() => setActiveModal(null)}
-                className="btn-primary rounded-xl px-5 py-2.5 text-xs font-bold"
+                className="btn-primary rounded-xl px-5 py-2.5 text-xs font-extrabold shadow-sm"
               >
                 Close Calculator
               </button>
@@ -1181,53 +1178,97 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
 
       {/* MODAL 4: GST Rate Finder */}
       {activeModal === 'gst-finder' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-xs animate-fade-in">
-          <div className="card-shell w-full max-w-xl p-6 animate-rise shadow-2xl border border-border max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-4 border-b border-border">
-              <div className="flex items-center gap-2.5">
-                <div className="grid h-9 w-9 place-items-center rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-400">
-                  <Percent size={20} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-fade-in">
+          <div className="card-shell w-full max-w-xl p-6 sm:p-7 animate-rise shadow-2xl border border-border max-h-[92vh] flex flex-col">
+            <div className="flex items-center justify-between pb-4 border-b border-border/70 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 place-items-center rounded-2xl bg-primary/10 text-primary">
+                  <Percent size={22} />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-foreground">GST Rate & HSN Directory</h3>
-                  <p className="text-[11px] text-muted-foreground">Standard Indian GST Tax Slabs & Codes</p>
+                  <h3 className="text-base sm:text-lg font-black text-foreground tracking-tight">GST Rate & HSN Directory</h3>
+                  <p className="text-xs text-muted-foreground font-medium">Standard Indian GST Tax Slabs & Official Codes</p>
                 </div>
               </div>
               <button
                 onClick={() => setActiveModal(null)}
-                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="rounded-xl p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                title="Close"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <div className="mt-4 space-y-3">
-              {[
-                { hsn: '0000', item: 'Fresh Fruits, Milk, Salt, Curd', rate: '0% (Nil Rated)', type: 'Exempt Goods' },
-                { hsn: '1006', item: 'Packaged Food Items, Edible Oil, Tea, Coffee', rate: '5% (2.5% CGST + 2.5% SGST)', type: 'Essential Goods' },
-                { hsn: '6101', item: 'Apparel & Readymade Clothing (> ₹1,000)', rate: '12% (6% CGST + 6% SGST)', type: 'Standard Rate 1' },
-                { hsn: '8517', item: 'Smartphones, Electronic Hardware, IT Services', rate: '18% (9% CGST + 9% SGST)', type: 'Standard Rate 2' },
-                { hsn: '8703', item: 'Automobiles, Air Conditioners, Luxury Goods', rate: '28% (14% CGST + 14% SGST)', type: 'Luxury Rate' },
-              ].map((item, idx) => (
-                <div key={idx} className="p-3 rounded-xl border border-border/70 bg-card hover:bg-muted/30 transition-colors flex items-center justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-bold text-foreground">HSN {item.hsn}</span>
-                      <span className="text-xs font-extrabold text-foreground">{item.item}</span>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">{item.type}</p>
-                  </div>
-                  <span className="text-xs font-black text-primary bg-primary/10 px-2.5 py-1 rounded-lg">
-                    {item.rate}
-                  </span>
-                </div>
-              ))}
+            {/* Directory Search & Filter */}
+            <div className="mt-4 shrink-0 relative">
+              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                value={hsnSearchQuery}
+                onChange={(e) => setHsnSearchQuery(e.target.value)}
+                placeholder="Search HSN code (e.g. 8517), product name, or slab rate..."
+                className="input-shell pl-9 pr-8 w-full text-xs font-bold"
+              />
+              {hsnSearchQuery && (
+                <button
+                  onClick={() => setHsnSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X size={14} />
+                </button>
+              )}
             </div>
 
-            <div className="mt-6 flex justify-end">
+            {/* HSN & Slab Rate Items List */}
+            <div className="mt-4 space-y-3 overflow-y-auto pr-1 flex-1">
+              {[
+                { hsn: '0000', item: 'Fresh Fruits, Vegetables, Milk, Salt, Curd & Grain', rate: '0%', taxDetails: 'Nil Rated (Exempted)', type: 'Exempt Goods' },
+                { hsn: '1006', item: 'Packaged Food Items, Edible Oil, Tea, Coffee, Sugar', rate: '5%', taxDetails: '2.5% CGST + 2.5% SGST', type: 'Essential Goods' },
+                { hsn: '6101', item: 'Apparel & Readymade Clothing (> ₹1,000 value)', rate: '12%', taxDetails: '6.0% CGST + 6.0% SGST', type: 'Standard Rate 1' },
+                { hsn: '8517', item: 'Smartphones, Electronic Hardware, IT Services, Telecom', rate: '18%', taxDetails: '9.0% CGST + 9.0% SGST', type: 'Standard Rate 2' },
+                { hsn: '8703', item: 'Automobiles, Air Conditioners, Luxury Goods, Cigarettes', rate: '28%', taxDetails: '14.0% CGST + 14.0% SGST', type: 'Luxury Rate' },
+              ]
+                .filter((item) => {
+                  const q = hsnSearchQuery.toLowerCase();
+                  return item.hsn.includes(q) || item.item.toLowerCase().includes(q) || item.rate.includes(q) || item.type.toLowerCase().includes(q);
+                })
+                .map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="p-3.5 rounded-2xl border border-border/80 bg-card hover:bg-muted/30 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
+                  >
+                    <div className="flex items-start gap-3 min-w-0">
+                      <span className="shrink-0 rounded-xl bg-muted px-2.5 py-1.5 text-xs font-black font-mono text-foreground border border-border/60">
+                        HSN {item.hsn}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs sm:text-sm font-extrabold text-foreground leading-snug">
+                          {item.item}
+                        </h4>
+                        <span className="inline-block text-[10px] font-bold text-muted-foreground mt-0.5">
+                          {item.type}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 flex items-center gap-2 self-start sm:self-center">
+                      <div className="text-left sm:text-right">
+                        <span className="inline-block text-xs sm:text-sm font-black text-primary bg-primary/10 px-3 py-1 rounded-xl">
+                          {item.rate}
+                        </span>
+                        <p className="text-[10px] font-semibold text-muted-foreground mt-0.5">
+                          {item.taxDetails}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+
+            <div className="mt-5 shrink-0 flex justify-end pt-3 border-t border-border/60">
               <button
                 onClick={() => setActiveModal(null)}
-                className="btn-primary rounded-xl px-5 py-2.5 text-xs font-bold"
+                className="btn-primary rounded-xl px-5 py-2.5 text-xs font-extrabold shadow-sm"
               >
                 Got It
               </button>
