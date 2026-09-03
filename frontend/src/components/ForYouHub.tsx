@@ -5,7 +5,7 @@ import {
   ExternalLink, Copy, Check, Clock, ShieldCheck, DollarSign,
   TrendingUp, RefreshCw, X, MessageSquare, Phone, Percent,
   Building2, Briefcase, Plus, FileSpreadsheet, AlertCircle,
-  QrCode, Printer, Smartphone, ChevronRight, ChevronDown, CheckCheck
+  QrCode, Printer, Smartphone, ChevronRight, ChevronDown, CheckCheck, Mail
 } from 'lucide-react';
 import { db, auth } from '@/lib/api';
 import { toast } from 'sonner';
@@ -102,6 +102,14 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
     `🎉 Exclusive Special Offer from ${businessName}!\nGet up to 20% discount on top products this week. Visit us or place your order directly on WhatsApp!\n\n📞 Call/WhatsApp: ${businessPhone}`
   );
   const [targetCustomer, setTargetCustomer] = useState<string>('all');
+
+  // Email Marketing State
+  const [selectedEmailCampaign, setSelectedEmailCampaign] = useState<string>('offers');
+  const [emailSubject, setEmailSubject] = useState<string>(`✨ Special Offer & New Arrivals from ${businessName}`);
+  const [emailBody, setEmailBody] = useState<string>(
+    `Dear Valued Customer,\n\nWe are delighted to share our latest product arrivals and exclusive promotions at ${businessName}.\n\nVisit our store or contact us directly to explore our curated catalog with exclusive seasonal savings!\n\nBest regards,\n${businessName}\nPhone: ${businessPhone}`
+  );
+  const [emailCopied, setEmailCopied] = useState<boolean>(false);
 
   // Reward Points State
   const [pointsPer100, setPointsPer100] = useState<number>(5);
@@ -322,7 +330,7 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
           <span className="text-[11px] font-bold text-muted-foreground">Boost Revenue</span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           {/* Tile 1: WhatsApp Marketing */}
           <div
             onClick={() => setActiveModal('whatsapp-marketing')}
@@ -335,7 +343,19 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
             <p className="text-[10px] text-muted-foreground mt-1">Offers, greetings & flyers</p>
           </div>
 
-          {/* Tile 2: Reward Points */}
+          {/* Tile 2: Email Marketing */}
+          <div
+            onClick={() => setActiveModal('email-marketing')}
+            className="group flex flex-col items-center text-center p-4 sm:p-5 rounded-2xl border border-border/80 bg-card hover:bg-muted/40 transition-all cursor-pointer shadow-xs hover:border-primary/40"
+          >
+            <div className="grid h-13 w-13 place-items-center rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform mb-3">
+              <Mail size={24} />
+            </div>
+            <h4 className="text-xs sm:text-sm font-extrabold text-foreground">Email Marketing</h4>
+            <p className="text-[10px] text-muted-foreground mt-1">Campaigns, offers & newsletters</p>
+          </div>
+
+          {/* Tile 3: Reward Points */}
           <div
             onClick={() => setActiveModal('reward-points')}
             className="group flex flex-col items-center text-center p-4 sm:p-5 rounded-2xl border border-border/80 bg-card hover:bg-muted/40 transition-all cursor-pointer shadow-xs hover:border-primary/40"
@@ -347,7 +367,7 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
             <p className="text-[10px] text-muted-foreground mt-1">Loyalty points & cashback</p>
           </div>
 
-          {/* Tile 3: Online Store */}
+          {/* Tile 4: Online Store */}
           <div
             onClick={() => setActiveModal('online-store')}
             className="group flex flex-col items-center text-center p-4 sm:p-5 rounded-2xl border border-border/80 bg-card hover:bg-muted/40 transition-all cursor-pointer shadow-xs hover:border-primary/40"
@@ -870,6 +890,170 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
                 <Share2 size={14} />
                 <span>Share via WhatsApp</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2.5: Email Marketing Studio */}
+      {activeModal === 'email-marketing' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-xs animate-fade-in">
+          <div className="card-shell w-full max-w-xl p-6 animate-rise shadow-2xl border border-border max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-border">
+              <div className="flex items-center gap-2.5">
+                <div className="grid h-9 w-9 place-items-center rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-400">
+                  <Mail size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-foreground">Email Marketing Studio</h3>
+                  <p className="text-[11px] text-muted-foreground">Reach clients with newsletters, promotions & announcements</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveModal(null)}
+                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Campaign Preset Tabs */}
+            <div className="mt-4 space-y-3">
+              <label className="block text-xs font-bold text-foreground">Select Campaign Template</label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  {
+                    id: 'offers',
+                    label: 'Special Offer',
+                    desc: 'Exclusive discount code',
+                    subject: `🔥 Special Customer Discount: Up to 20% OFF at ${businessName}`,
+                    body: `Dear Valued Customer,\n\nAs a token of our appreciation for your continued trust in ${businessName}, we are excited to offer you an exclusive discount on your next purchase.\n\nUse offer code "EXCLUSIVE20" or show this email during checkout to receive your discount!\n\n📍 Visit us or reply to this email for instant inquiries.\n\nBest regards,\n${businessName}\nPhone: ${businessPhone}`
+                  },
+                  {
+                    id: 'new_arrivals',
+                    label: 'New Collection',
+                    desc: 'Fresh catalog & stock',
+                    subject: `✨ Fresh Stock & New Arrivals Now in Store — ${businessName}`,
+                    body: `Dear Customer,\n\nWe are excited to inform you that new arrivals have just landed at ${businessName}! Explore our latest collection designed to provide top quality and unbeatable value.\n\nCheck out the fresh products today before stocks run out.\n\nContact us directly for bookings or questions.\n\nWarm regards,\n${businessName}\nPhone: ${businessPhone}`
+                  },
+                  {
+                    id: 'announcement',
+                    label: 'Announcement',
+                    desc: 'Store updates & news',
+                    subject: `📢 Important Business Update from ${businessName}`,
+                    body: `Dear Customer,\n\nWe have exciting updates to share with you from ${businessName}! We have expanded our product inventory and enhanced our customer service to serve you even better.\n\nThank you for being a valued part of our journey.\n\nSincerely,\n${businessName}\nPhone: ${businessPhone}`
+                  },
+                ].map((camp) => (
+                  <button
+                    key={camp.id}
+                    onClick={() => {
+                      setSelectedEmailCampaign(camp.id);
+                      setEmailSubject(camp.subject);
+                      setEmailBody(camp.body);
+                    }}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      selectedEmailCampaign === camp.id
+                        ? 'border-primary bg-primary/10 text-primary font-bold'
+                        : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                    }`}
+                  >
+                    <p className="text-xs font-extrabold text-foreground">{camp.label}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{camp.desc}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Subject line */}
+            <div className="mt-4 space-y-1.5">
+              <label className="block text-xs font-bold text-foreground">Email Subject</label>
+              <input
+                type="text"
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+                placeholder="Enter email subject line..."
+                className="input-shell w-full text-xs font-bold p-3"
+              />
+            </div>
+
+            {/* Email Body Editor */}
+            <div className="mt-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold text-foreground">Email Body</label>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(`Subject: ${emailSubject}\n\n${emailBody}`);
+                    setEmailCopied(true);
+                    toast.success('Email subject and body copied to clipboard!');
+                    setTimeout(() => setEmailCopied(false), 2000);
+                  }}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-primary hover:underline cursor-pointer"
+                >
+                  {emailCopied ? <Check size={12} /> : <Copy size={12} />}
+                  <span>{emailCopied ? 'Copied' : 'Copy Full Email'}</span>
+                </button>
+              </div>
+              <textarea
+                rows={6}
+                value={emailBody}
+                onChange={(e) => setEmailBody(e.target.value)}
+                className="input-shell w-full text-xs font-medium leading-relaxed p-3"
+              />
+            </div>
+
+            {/* Send to Customer with Email */}
+            <div className="mt-4 space-y-2">
+              <label className="block text-xs font-bold text-foreground">
+                Customer Email Recipients ({customers.filter((c) => c.email).length} of {customers.length} Contacts Have Email)
+              </label>
+              <div className="max-h-40 overflow-y-auto rounded-xl border border-border/60 divide-y divide-border/40">
+                {customers.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-muted-foreground">
+                    No customer contacts found. Add customers in the Customers tab.
+                  </div>
+                ) : (
+                  customers.map((c) => (
+                    <div key={c.id} className="p-2.5 flex items-center justify-between hover:bg-muted/40 transition-colors">
+                      <div className="min-w-0 flex-1 mr-2">
+                        <p className="text-xs font-bold text-foreground truncate">{c.name || c.full_name}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{c.email || 'No email registered'}</p>
+                      </div>
+                      {c.email ? (
+                        <a
+                          href={`mailto:${encodeURIComponent(c.email)}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 text-[10px] font-bold shadow-2xs cursor-pointer shrink-0"
+                        >
+                          <Send size={11} />
+                          <span>Send Email</span>
+                        </a>
+                      ) : (
+                        <span className="text-[10px] font-semibold text-muted-foreground/60 shrink-0">
+                          Email missing
+                        </span>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* General Actions */}
+            <div className="mt-6 pt-4 border-t border-border flex items-center justify-between">
+              <button
+                onClick={() => setActiveModal(null)}
+                className="rounded-xl px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted cursor-pointer"
+              >
+                Close
+              </button>
+              <a
+                href={`mailto:?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`}
+                className="btn-primary flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold cursor-pointer"
+              >
+                <Mail size={14} />
+                <span>Open in Email App</span>
+              </a>
             </div>
           </div>
         </div>
