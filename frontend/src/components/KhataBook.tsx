@@ -22,7 +22,7 @@ function getCustomerGstin(row: any): string {
       const parsed = JSON.parse(row.notes);
       if (parsed.gstin) return String(parsed.gstin).toUpperCase().trim();
       if (parsed.gst_number) return String(parsed.gst_number).toUpperCase().trim();
-    } catch (e) {}
+    } catch (e) { }
   }
   return '';
 }
@@ -98,7 +98,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
       if (f === 'receive' || f === 'give' || f === 'settled' || f === 'all') {
         return f;
       }
-    } catch (e) {}
+    } catch (e) { }
     return 'all';
   });
 
@@ -111,7 +111,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
         if (f === 'receive' || f === 'give' || f === 'settled' || f === 'all') {
           setFilterType(f);
         }
-      } catch (e) {}
+      } catch (e) { }
     };
     handleUrlFilter();
     window.addEventListener('popstate', handleUrlFilter);
@@ -186,7 +186,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
             setBusinessName(bList[0].name);
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     } catch (err) {
       console.error('Error loading khata data:', err);
       setError(getSupabaseErrorMessage(err, 'Failed to load ledger data.'));
@@ -255,7 +255,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
       if (!knownCustomerIds.has(cId) && cEntries.length > 0) {
         let totalGave = 0;
         let totalGot = 0;
-        const first = cEntries[0];
+        cuonst first = cEntries[0];
 
         cEntries.forEach((entry) => {
           const amt = Number(entry.amount) || 0;
@@ -365,7 +365,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
   const selectedCustomerEntries = useMemo(() => {
     if (!selectedCustomerId) return [];
     const list = entries.filter((e) => e.customer_id === selectedCustomerId);
-    
+
     // Sort chronological: oldest first for running balance calculation
     const chronological = [...list].sort((a, b) => {
       const dateA = new Date(`${a.date} ${a.time || '12:00 PM'}`).getTime();
@@ -445,7 +445,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
         }
         return dateFormatted;
       }
-    } catch (_) {}
+    } catch (_) { }
     return dateStr;
   };
 
@@ -456,7 +456,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
       if (!isNaN(d.getTime())) {
         return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
       }
-    } catch (_) {}
+    } catch (_) { }
     return dateStr;
   };
 
@@ -698,8 +698,8 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
     const subject = isDue
       ? `Payment Reminder: Outstanding Balance ${formattedAmount} - ${businessName}`
       : isAdvance
-      ? `Account Statement: Advance Balance ${formattedAmount} - ${businessName}`
-      : `Account Statement: Fully Settled - ${businessName}`;
+        ? `Account Statement: Advance Balance ${formattedAmount} - ${businessName}`
+        : `Account Statement: Fully Settled - ${businessName}`;
 
     let body = `Dear ${cust.name},\n\n`;
     if (isDue) {
@@ -1173,9 +1173,8 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
             type="button"
             onClick={() => setFilterType(filterType === 'receive' ? 'all' : 'receive')}
             title={filterType === 'receive' ? 'Click to show all accounts' : 'Click to view only accounts with pending Due'}
-            className={`card-shell text-left p-3.5 sm:p-5 border-l-4 border-l-amber-500 bg-card hover:bg-muted/10 transition-all flex flex-col justify-between cursor-pointer ${
-              filterType === 'receive' ? 'ring-2 ring-amber-500 shadow-md bg-amber-500/5' : ''
-            }`}
+            className={`card-shell text-left p-3.5 sm:p-5 border-l-4 border-l-amber-500 bg-card hover:bg-muted/10 transition-all flex flex-col justify-between cursor-pointer ${filterType === 'receive' ? 'ring-2 ring-amber-500 shadow-md bg-amber-500/5' : ''
+              }`}
           >
             <div>
               <div className="flex items-center justify-between gap-2">
@@ -1212,9 +1211,8 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
             type="button"
             onClick={() => setFilterType(filterType === 'give' ? 'all' : 'give')}
             title={filterType === 'give' ? 'Click to show all accounts' : 'Click to view only accounts with Advance balance'}
-            className={`card-shell text-left p-3.5 sm:p-5 border-l-4 border-l-blue-500 bg-card hover:bg-muted/10 transition-all flex flex-col justify-between cursor-pointer ${
-              filterType === 'give' ? 'ring-2 ring-blue-500 shadow-md bg-blue-500/5' : ''
-            }`}
+            className={`card-shell text-left p-3.5 sm:p-5 border-l-4 border-l-blue-500 bg-card hover:bg-muted/10 transition-all flex flex-col justify-between cursor-pointer ${filterType === 'give' ? 'ring-2 ring-blue-500 shadow-md bg-blue-500/5' : ''
+              }`}
           >
             <div>
               <div className="flex items-center justify-between gap-2">
@@ -1264,28 +1262,25 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                     <span className="text-[11px] font-extrabold uppercase tracking-wider text-muted-foreground">
                       Net Account Balance
                     </span>
-                    <span className={`inline-flex items-center gap-1.5 text-[11px] font-black uppercase px-2.5 py-0.5 rounded-full shadow-2xs ${
-                      selectedCustomer.netBalance > 0
+                    <span className={`inline-flex items-center gap-1.5 text-[11px] font-black uppercase px-2.5 py-0.5 rounded-full shadow-2xs ${selectedCustomer.netBalance > 0
                         ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
                         : selectedCustomer.netBalance < 0
-                        ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30'
-                        : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                    }`}>
-                      <span className={`h-1.5 w-1.5 rounded-full ${
-                        selectedCustomer.netBalance > 0 ? 'bg-amber-500 animate-pulse' : selectedCustomer.netBalance < 0 ? 'bg-blue-500' : 'bg-emerald-500'
-                      }`} />
+                          ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30'
+                          : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                      }`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${selectedCustomer.netBalance > 0 ? 'bg-amber-500 animate-pulse' : selectedCustomer.netBalance < 0 ? 'bg-blue-500' : 'bg-emerald-500'
+                        }`} />
                       {selectedCustomer.netBalance > 0 ? "You'll Receive (Pending Due)" : selectedCustomer.netBalance < 0 ? "You'll Give (Customer Advance)" : "Settled Clean (₹0)"}
                     </span>
                   </div>
 
                   <div className="mt-2 flex items-baseline gap-3">
-                    <span className={`mono text-4xl sm:text-5xl font-black tracking-tight ${
-                      selectedCustomer.netBalance > 0
+                    <span className={`mono text-4xl sm:text-5xl font-black tracking-tight ${selectedCustomer.netBalance > 0
                         ? 'text-amber-600 dark:text-amber-400'
                         : selectedCustomer.netBalance < 0
-                        ? 'text-blue-600 dark:text-blue-400'
-                        : 'text-foreground'
-                    }`}>
+                          ? 'text-blue-600 dark:text-blue-400'
+                          : 'text-foreground'
+                      }`}>
                       ₹{Math.abs(selectedCustomer.netBalance).toLocaleString('en-IN')}
                     </span>
                   </div>
@@ -1294,8 +1289,8 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                     {selectedCustomer.netBalance > 0
                       ? `${selectedCustomer.name} currently owes you ₹${Math.abs(selectedCustomer.netBalance).toLocaleString('en-IN')}.`
                       : selectedCustomer.netBalance < 0
-                      ? `${selectedCustomer.name} has ₹${Math.abs(selectedCustomer.netBalance).toLocaleString('en-IN')} advance balance deposited.`
-                      : 'All account dues and incoming payments are fully settled.'}
+                        ? `${selectedCustomer.name} has ₹${Math.abs(selectedCustomer.netBalance).toLocaleString('en-IN')} advance balance deposited.`
+                        : 'All account dues and incoming payments are fully settled.'}
                   </p>
                 </div>
               </div>
@@ -1350,33 +1345,30 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                 <button
                   type="button"
                   onClick={() => setPassbookFilter('all')}
-                  className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 cursor-pointer ${
-                    passbookFilter === 'all'
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 cursor-pointer ${passbookFilter === 'all'
                       ? 'bg-primary text-primary-foreground shadow-xs'
                       : 'bg-muted text-muted-foreground hover:text-foreground'
-                  }`}
+                    }`}
                 >
                   All ({selectedCustomerEntries.length})
                 </button>
                 <button
                   type="button"
                   onClick={() => setPassbookFilter('gave')}
-                  className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 cursor-pointer ${
-                    passbookFilter === 'gave'
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 cursor-pointer ${passbookFilter === 'gave'
                       ? 'bg-red-600 text-white shadow-xs'
                       : 'bg-muted text-muted-foreground hover:text-foreground'
-                  }`}
+                    }`}
                 >
                   You Gave ({selectedCustomerEntries.filter((e) => e.type === 'gave').length})
                 </button>
                 <button
                   type="button"
                   onClick={() => setPassbookFilter('got')}
-                  className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 cursor-pointer ${
-                    passbookFilter === 'got'
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 cursor-pointer ${passbookFilter === 'got'
                       ? 'bg-emerald-600 text-white shadow-xs'
                       : 'bg-muted text-muted-foreground hover:text-foreground'
-                  }`}
+                    }`}
                 >
                   You Got ({selectedCustomerEntries.filter((e) => e.type === 'got').length})
                 </button>
@@ -1480,11 +1472,10 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                               {/* Left: Icon & Description */}
                               <div className="flex items-start gap-3.5 min-w-0 flex-1">
                                 {/* Transaction Type Avatar Icon */}
-                                <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl transition-transform group-hover:scale-105 shadow-2xs ${
-                                  isGave
+                                <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl transition-transform group-hover:scale-105 shadow-2xs ${isGave
                                     ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/25'
                                     : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25'
-                                }`}>
+                                  }`}>
                                   {isGave ? (
                                     <ArrowDownLeft size={20} className="stroke-[2.5]" />
                                   ) : (
@@ -1543,11 +1534,10 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                               <div className="flex items-center justify-between sm:justify-end sm:flex-col sm:items-end gap-2 pt-3 sm:pt-0 border-t sm:border-t-0 border-border/50 shrink-0">
                                 {/* Amount Display */}
                                 <div className="text-left sm:text-right">
-                                  <div className={`mono text-lg sm:text-xl font-black tracking-tight ${
-                                    isGave
+                                  <div className={`mono text-lg sm:text-xl font-black tracking-tight ${isGave
                                       ? 'text-rose-600 dark:text-rose-400'
                                       : 'text-emerald-600 dark:text-emerald-400'
-                                  }`}>
+                                    }`}>
                                     {isGave ? '+ ' : '- '}₹{amt.toLocaleString('en-IN')}
                                   </div>
                                   <div className="text-[11px] font-bold font-mono text-muted-foreground mt-0.5">
@@ -1619,11 +1609,10 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
               <button
                 type="button"
                 onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                className={`inline-flex items-center gap-1.5 rounded-xl border px-3 sm:px-3.5 py-2.5 text-xs sm:text-sm font-bold transition-all shadow-sm ${
-                  filterType !== 'all'
+                className={`inline-flex items-center gap-1.5 rounded-xl border px-3 sm:px-3.5 py-2.5 text-xs sm:text-sm font-bold transition-all shadow-sm ${filterType !== 'all'
                     ? 'border-primary bg-primary text-primary-foreground'
                     : 'border-border bg-card text-foreground hover:bg-muted'
-                }`}
+                  }`}
                 title="Filter accounts by balance type"
               >
                 <Filter size={15} />
@@ -1631,8 +1620,8 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                   {filterType === 'all'
                     ? 'Filter'
                     : filterType === 'receive'
-                    ? "You'll Receive"
-                    : "You'll Give"}
+                      ? "You'll Receive"
+                      : "You'll Give"}
                 </span>
                 {filterType !== 'all' && (
                   <span className="inline-flex h-2 w-2 rounded-full bg-white sm:hidden" />
@@ -1662,11 +1651,10 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                           setFilterType('all');
                           setShowFilterDropdown(false);
                         }}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
-                          filterType === 'all'
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-colors ${filterType === 'all'
                             ? 'bg-primary/10 text-primary'
                             : 'text-foreground hover:bg-muted'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center gap-2">
                           <BookOpen size={15} />
@@ -1684,11 +1672,10 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                           setFilterType('receive');
                           setShowFilterDropdown(false);
                         }}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
-                          filterType === 'receive'
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-colors ${filterType === 'receive'
                             ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
                             : 'text-foreground hover:bg-muted'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center gap-2">
                           <ArrowDownLeft size={15} className="text-amber-600 dark:text-amber-400" />
@@ -1706,11 +1693,10 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                           setFilterType('give');
                           setShowFilterDropdown(false);
                         }}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
-                          filterType === 'give'
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-colors ${filterType === 'give'
                             ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
                             : 'text-foreground hover:bg-muted'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center gap-2">
                           <ArrowUpRight size={15} className="text-blue-600 dark:text-blue-400" />
@@ -1747,33 +1733,30 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
             <button
               type="button"
               onClick={() => setFilterType('all')}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
-                filterType === 'all'
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${filterType === 'all'
                   ? 'bg-primary text-primary-foreground shadow-xs'
                   : 'bg-card border border-border text-muted-foreground hover:text-foreground'
-              }`}
+                }`}
             >
               All Accounts ({customerSummaries.length})
             </button>
             <button
               type="button"
               onClick={() => setFilterType('receive')}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
-                filterType === 'receive'
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${filterType === 'receive'
                   ? 'bg-amber-500 text-white shadow-xs'
                   : 'bg-card border border-border text-amber-600 dark:text-amber-400 hover:bg-amber-500/10'
-              }`}
+                }`}
             >
               Due ({overallMetrics.countReceive})
             </button>
             <button
               type="button"
               onClick={() => setFilterType('give')}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
-                filterType === 'give'
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${filterType === 'give'
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'bg-card border border-border text-blue-600 dark:text-blue-400 hover:bg-blue-500/10'
-              }`}
+                }`}
             >
               Advance ({overallMetrics.countGive})
             </button>
@@ -1781,11 +1764,10 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
               <button
                 type="button"
                 onClick={() => setFilterType('settled')}
-                className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
-                  filterType === 'settled'
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${filterType === 'settled'
                     ? 'bg-emerald-600 text-white shadow-xs'
                     : 'bg-card border border-border text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10'
-                }`}
+                  }`}
               >
                 Settled ({overallMetrics.countSettled})
               </button>
@@ -1841,13 +1823,12 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       {/* Left: Avatar & Info */}
                       <div className="flex items-start gap-3.5 min-w-0 flex-1">
-                        <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl text-xs font-extrabold shadow-xs transition-transform group-hover:scale-105 ${
-                          isReceive
+                        <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl text-xs font-extrabold shadow-xs transition-transform group-hover:scale-105 ${isReceive
                             ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
                             : isGive
-                            ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30'
-                            : 'bg-muted text-foreground border border-border'
-                        }`}>
+                              ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30'
+                              : 'bg-muted text-foreground border border-border'
+                          }`}>
                           {initials}
                         </div>
 
@@ -1910,13 +1891,12 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                       <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 pt-3 sm:pt-0 border-t sm:border-t-0 border-border/60 shrink-0">
                         {/* Balance display */}
                         <div className="text-left sm:text-right">
-                          <div className={`mono text-lg sm:text-xl font-black ${
-                            isReceive
+                          <div className={`mono text-lg sm:text-xl font-black ${isReceive
                               ? 'text-amber-600 dark:text-amber-400'
                               : isGive
-                              ? 'text-blue-600 dark:text-blue-400'
-                              : 'text-emerald-600 dark:text-emerald-400'
-                          }`}>
+                                ? 'text-blue-600 dark:text-blue-400'
+                                : 'text-emerald-600 dark:text-emerald-400'
+                            }`}>
                             ₹{Math.abs(cust.netBalance).toLocaleString('en-IN')}
                           </div>
                           <button
@@ -1927,13 +1907,12 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                               else if (isGive) setFilterType('give');
                             }}
                             title={isReceive ? "Click to view Due accounts" : isGive ? "Click to view Advance accounts" : "Settled"}
-                            className={`text-xs sm:text-[13px] font-black uppercase tracking-wider hover:underline transition-colors block text-left sm:text-right ${
-                              isReceive
+                            className={`text-xs sm:text-[13px] font-black uppercase tracking-wider hover:underline transition-colors block text-left sm:text-right ${isReceive
                                 ? 'text-amber-600 dark:text-amber-400'
                                 : isGive
-                                ? 'text-blue-600 dark:text-blue-400'
-                                : 'text-emerald-600 dark:text-emerald-400'
-                            }`}
+                                  ? 'text-blue-600 dark:text-blue-400'
+                                  : 'text-emerald-600 dark:text-emerald-400'
+                              }`}
                           >
                             {isReceive ? 'Due' : isGive ? 'Advance' : 'Settled'}
                           </button>
@@ -1989,8 +1968,8 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                     {editingEntry
                       ? `Edit ${entryForm.type === 'gave' ? 'Credit (You Gave)' : 'Payment (You Got)'} Entry`
                       : entryForm.type === 'gave'
-                      ? 'Give Payment Form (You Gave)'
-                      : 'Got Payment Form (You Got)'}
+                        ? 'Give Payment Form (You Gave)'
+                        : 'Got Payment Form (You Got)'}
                   </span>
                 </h3>
                 {(entryForm.customer_name || selectedCustomer?.name) && (
@@ -2022,11 +2001,10 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                         setEntryModalType('gave');
                         setEntryForm({ ...entryForm, type: 'gave' });
                       }}
-                      className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-extrabold transition-all ${
-                        entryForm.type === 'gave'
+                      className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-extrabold transition-all ${entryForm.type === 'gave'
                           ? 'border-red-600 bg-red-600 text-white shadow-sm'
                           : 'border-border bg-background hover:bg-muted text-muted-foreground'
-                      }`}
+                        }`}
                     >
                       <ArrowDownLeft size={16} />
                       <span>You Gave (Credit / Due)</span>
@@ -2038,11 +2016,10 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                         setEntryModalType('got');
                         setEntryForm({ ...entryForm, type: 'got' });
                       }}
-                      className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-extrabold transition-all ${
-                        entryForm.type === 'got'
+                      className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-extrabold transition-all ${entryForm.type === 'got'
                           ? 'border-emerald-600 bg-emerald-600 text-white shadow-sm'
                           : 'border-border bg-background hover:bg-muted text-muted-foreground'
-                      }`}
+                        }`}
                     >
                       <ArrowUpRight size={16} />
                       <span>You Got (Payment / Adv)</span>
@@ -2114,9 +2091,8 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                     disabled={!!editingEntry}
                     readOnly={!!editingEntry}
                     required
-                    className={`input-shell w-full p-2.5 text-xs font-normal ${
-                      editingEntry ? 'bg-muted/50 text-muted-foreground cursor-not-allowed opacity-80 border-dashed select-none' : ''
-                    }`}
+                    className={`input-shell w-full p-2.5 text-xs font-normal ${editingEntry ? 'bg-muted/50 text-muted-foreground cursor-not-allowed opacity-80 border-dashed select-none' : ''
+                      }`}
                   />
                 </div>
 
@@ -2155,9 +2131,8 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                     disabled={!!editingEntry}
                     readOnly={!!editingEntry}
                     required
-                    className={`input-shell w-full p-2.5 text-xs font-normal ${
-                      editingEntry ? 'bg-muted/50 text-muted-foreground cursor-not-allowed opacity-80 border-dashed select-none' : ''
-                    }`}
+                    className={`input-shell w-full p-2.5 text-xs font-normal ${editingEntry ? 'bg-muted/50 text-muted-foreground cursor-not-allowed opacity-80 border-dashed select-none' : ''
+                      }`}
                   />
                 </div>
               </div>
@@ -2194,19 +2169,18 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                 <button
                   type="submit"
                   disabled={submitting || !entryForm.amount}
-                  className={`rounded-xl px-5 py-2.5 text-xs font-extrabold text-white transition-all shadow-sm ${
-                    entryForm.type === 'gave'
+                  className={`rounded-xl px-5 py-2.5 text-xs font-extrabold text-white transition-all shadow-sm ${entryForm.type === 'gave'
                       ? 'bg-red-600 hover:bg-red-700'
                       : 'bg-emerald-600 hover:bg-emerald-700'
-                  }`}
+                    }`}
                 >
                   {submitting
                     ? 'Saving...'
                     : editingEntry
-                    ? 'Update Entry'
-                    : entryForm.type === 'gave'
-                    ? 'Save Give Entry (Debit)'
-                    : 'Save Got Entry (Payment In)'}
+                      ? 'Update Entry'
+                      : entryForm.type === 'gave'
+                        ? 'Save Give Entry (Debit)'
+                        : 'Save Got Entry (Payment In)'}
                 </button>
               </div>
             </form>
@@ -2315,11 +2289,10 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                       key={opt.id}
                       type="button"
                       onClick={() => setNewCustomerForm({ ...newCustomerForm, openingBalanceType: opt.id as any })}
-                      className={`p-2 rounded-lg border text-[11px] font-bold transition-all text-center ${
-                        newCustomerForm.openingBalanceType === opt.id
+                      className={`p-2 rounded-lg border text-[11px] font-bold transition-all text-center ${newCustomerForm.openingBalanceType === opt.id
                           ? 'border-primary bg-primary/10 text-primary'
                           : 'border-border bg-background text-muted-foreground'
-                      }`}
+                        }`}
                     >
                       {opt.label}
                     </button>

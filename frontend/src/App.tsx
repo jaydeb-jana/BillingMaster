@@ -116,7 +116,7 @@ const navItems: { href: string; label: string; icon: Icon }[] = [
   { href: '/customers', label: 'Customers', icon: Users },
   { href: '/products', label: 'Products', icon: Package },
   { href: '/khatabook', label: 'Khata Book', icon: BookOpen },
-  { href: '/for-you', label: 'For You', icon: Sparkles },
+  { href: '/for-you', label: 'Toolkit', icon: Sparkles },
   { href: '/expenses', label: 'Expenses', icon: Wallet },
   { href: '/reports', label: 'Reports', icon: BarChart3 },
   { href: '/more', label: 'More', icon: MoreHorizontal },
@@ -8074,6 +8074,7 @@ function Router() {
     <Route path="/purchases"><Protected><KhataBook key="purchases" /></Protected></Route>
     <Route path="/expenses"><Protected><SimpleList key="expenses" kind="expenses" /></Protected></Route>
     <Route path="/for-you"><Protected><ForYouHub key="for-you" /></Protected></Route>
+    <Route path="/toolkit"><Protected><ForYouHub key="toolkit" /></Protected></Route>
     <Route path="/foryou"><Protected><ForYouHub key="foryou" /></Protected></Route>
     <Route path="/growth"><Protected><ForYouHub key="growth" /></Protected></Route>
     <Route path="/more"><Protected><MoreHub key="more" /></Protected></Route>

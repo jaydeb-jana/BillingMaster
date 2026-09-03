@@ -226,10 +226,10 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
         <div className="relative z-10 max-w-2xl">
           <div className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs font-bold backdrop-blur-md">
             <Sparkles size={14} className="text-yellow-300 animate-pulse" />
-            <span>Growth & Utilities Hub</span>
+            <span>Growth & Utilities Suite</span>
           </div>
           <h1 className="mt-3 text-2xl sm:text-3xl font-black tracking-tight text-white">
-            For You <span className="text-yellow-300">✨</span>
+            Toolkit <span className="text-yellow-300">✨</span>
           </h1>
           <p className="mt-1.5 text-xs sm:text-sm text-white/90 font-medium leading-relaxed">
             Specialized business tools designed to supercharge your sales, automated accounting, staff payroll, and marketing campaigns.
@@ -242,10 +242,10 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
       </div>
 
 
-      {/* SECTION 1: Recommended for you */}
+      {/* SECTION 1: Recommended Tools */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-black text-foreground tracking-tight">Recommended for you</h2>
+          <h2 className="text-base font-black text-foreground tracking-tight">Recommended Tools</h2>
           <span className="text-[11px] font-bold text-muted-foreground">3 Tools Ready</span>
         </div>
 
