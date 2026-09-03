@@ -606,7 +606,7 @@ function Shell({ children }: { children: ReactNode }) {
     </aside>
     {mobileOpen && <button className="fixed inset-0 z-30 bg-sidebar/30 lg:hidden print:hidden" onClick={() => setMobileOpen(false)} aria-label="Close navigation" data-testid="button-overlay" />}
     <main className="min-w-0 flex-1 print:w-full print:p-0">
-      <header className="sticky top-0 z-20 flex h-[70px] items-center justify-between border-b border-border/70 bg-background/90 px-4 backdrop-blur-md sm:px-7 lg:px-10 print:hidden">
+      <header className="sticky top-0 z-30 flex h-[70px] items-center justify-between border-b border-border/70 bg-background/95 px-4 backdrop-blur-md sm:px-7 lg:px-10 print:hidden">
         <div className="flex items-center gap-3">
           <button onClick={() => setMobileOpen(true)} className="rounded-lg p-2 hover:bg-muted lg:hidden" data-testid="button-open-menu">
             <Menu size={20} />
@@ -914,7 +914,7 @@ function Shell({ children }: { children: ReactNode }) {
 function PageHeader({ eyebrow, title, description, action, actionLabel, actionHref, hideSettings, onSettingsClick, extraAction }: { eyebrow?: string; title: string; description?: string; action?: () => void; actionLabel?: string; actionHref?: string; hideSettings?: boolean; onSettingsClick?: () => void; extraAction?: ReactNode }) {
   const isSettingsPage = title.toLowerCase().includes('setting') || hideSettings;
   return (
-    <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end animate-rise relative z-40">
+    <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end animate-rise relative z-10">
       <div>
         {eyebrow && <div className="mb-2 text-[10px] font-bold uppercase tracking-[.18em] text-primary">{eyebrow}</div>}
         <h2 className="text-2xl font-extrabold tracking-[-.05em] sm:text-[30px]">{title}</h2>

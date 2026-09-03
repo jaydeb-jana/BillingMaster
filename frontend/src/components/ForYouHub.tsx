@@ -271,31 +271,6 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
         <div className="absolute right-1/3 -top-10 h-32 w-32 rounded-full bg-yellow-400/20 blur-xl pointer-events-none" />
       </div>
 
-      {/* Promotional Banner Card (Interactive Business Cards & Greetings) */}
-      <div className="group relative overflow-hidden rounded-2xl border border-border/80 bg-gradient-to-r from-card via-card to-primary/5 p-5 sm:p-6 shadow-sm transition-all hover:shadow-md">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="grid h-8 w-8 place-items-center rounded-xl bg-primary/10 text-primary">
-                <Share2 size={16} />
-              </span>
-              <h3 className="text-sm sm:text-base font-extrabold text-foreground">
-                Create Digital Business Cards & Custom Greetings!
-              </h3>
-            </div>
-            <p className="text-xs text-muted-foreground max-w-xl">
-              Generate personalized WhatsApp greeting flyers, promo brochures, and digital visiting cards branded with {businessName}.
-            </p>
-          </div>
-          <button
-            onClick={() => setActiveModal('whatsapp-marketing')}
-            className="btn-primary shrink-0 self-start sm:self-center flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold shadow-xs"
-          >
-            <span>Launch Marketing Center</span>
-            <ArrowRight size={14} />
-          </button>
-        </div>
-      </div>
 
       {/* SECTION 1: Recommended for you */}
       <div className="space-y-4">
