@@ -5,7 +5,7 @@ import {
   CheckCircle2, AlertCircle, RefreshCw, X, ChevronRight, ChevronDown, User, UserCheck,
   FileText, Share2, Copy, Check, ArrowLeft, Printer, MoreVertical,
   HelpCircle, CreditCard, Landmark, Wallet, Layers, ShieldCheck,
-  Mail, Bell, PhoneCall, ExternalLink, Send
+  Mail, Bell, PhoneCall, ExternalLink, Send, Lock
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { db, getBusinessId, auth, getSupabaseErrorMessage } from '@/lib/api';
@@ -568,8 +568,8 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
         customer_phone: custPhone,
         type: entryForm.type,
         amount: amt,
-        date: entryForm.date,
-        time: entryForm.time,
+        date: editingEntry ? editingEntry.date : entryForm.date,
+        time: editingEntry ? editingEntry.time : entryForm.time,
         payment_mode: entryForm.payment_mode,
         bill_reference: entryForm.bill_reference || '',
         note: entryForm.note || '',
@@ -2092,19 +2092,30 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                 </div>
               </div>
 
-              {/* Date & Time (Current date and time auto-selected) */}
+              {/* Date & Time (Locked when editing existing entry) */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold mb-1 text-foreground flex items-center gap-1.5">
-                    <Calendar size={13} className="text-primary" />
-                    <span>Date *</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <Calendar size={13} className="text-primary" />
+                      <span>Date *</span>
+                    </label>
+                    {editingEntry && (
+                      <span className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
+                        <Lock size={10} className="text-amber-500" /> Locked
+                      </span>
+                    )}
+                  </div>
                   <input
                     type="date"
                     value={entryForm.date}
                     onChange={(e) => setEntryForm({ ...entryForm, date: e.target.value })}
+                    disabled={!!editingEntry}
+                    readOnly={!!editingEntry}
                     required
-                    className="input-shell w-full p-2.5 text-xs font-normal"
+                    className={`input-shell w-full p-2.5 text-xs font-normal ${
+                      editingEntry ? 'bg-muted/50 text-muted-foreground cursor-not-allowed opacity-80 border-dashed select-none' : ''
+                    }`}
                   />
                 </div>
 
@@ -2114,31 +2125,48 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                       <Clock size={13} className="text-primary" />
                       <span>Time *</span>
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const now = new Date();
-                        const pad = (n: number) => n.toString().padStart(2, '0');
-                        setEntryForm((prev) => ({
-                          ...prev,
-                          date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
-                          time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
-                        }));
-                      }}
-                      className="text-[10px] font-bold text-primary hover:underline"
-                    >
-                      Current
-                    </button>
+                    {editingEntry ? (
+                      <span className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
+                        <Lock size={10} className="text-amber-500" /> Locked
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const now = new Date();
+                          const pad = (n: number) => n.toString().padStart(2, '0');
+                          setEntryForm((prev) => ({
+                            ...prev,
+                            date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+                            time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
+                          }));
+                        }}
+                        className="text-[10px] font-bold text-primary hover:underline"
+                      >
+                        Current
+                      </button>
+                    )}
                   </div>
                   <input
                     type="time"
                     value={entryForm.time}
                     onChange={(e) => setEntryForm({ ...entryForm, time: e.target.value })}
+                    disabled={!!editingEntry}
+                    readOnly={!!editingEntry}
                     required
-                    className="input-shell w-full p-2.5 text-xs font-normal"
+                    className={`input-shell w-full p-2.5 text-xs font-normal ${
+                      editingEntry ? 'bg-muted/50 text-muted-foreground cursor-not-allowed opacity-80 border-dashed select-none' : ''
+                    }`}
                   />
                 </div>
               </div>
+
+              {editingEntry && (
+                <div className="text-[11px] text-muted-foreground bg-muted/30 border border-border/70 rounded-xl p-2.5 flex items-center gap-2">
+                  <Lock size={13} className="text-amber-500 shrink-0" />
+                  <span>Entry date & time cannot be modified after recording to maintain ledger integrity.</span>
+                </div>
+              )}
 
               {/* Note / Description */}
               <div>

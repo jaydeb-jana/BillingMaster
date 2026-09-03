@@ -186,6 +186,12 @@ export async function updateRecord(req: AuthRequest, res: Response) {
   const payload = { ...req.body };
   delete payload.id;
 
+  // Protect recorded date and time on khata_entries from being altered
+  if (table === 'khata_entries') {
+    delete payload.date;
+    delete payload.time;
+  }
+
   // Duplicate phone check for customers on update
   if (table === 'customers' && payload.phone) {
     const cleanPhone = String(payload.phone).replace(/\D/g, '').slice(-10);
