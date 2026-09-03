@@ -85,10 +85,39 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
 
   // Selected customer for full passbook statement
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(initialCustomerId || null);
+  const [passbookFilter, setPassbookFilter] = useState<'all' | 'gave' | 'got'>('all');
+  const [passbookSearch, setPassbookSearch] = useState('');
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'receive' | 'give' | 'settled'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'receive' | 'give' | 'settled'>(() => {
+    try {
+      const searchStr = window.location.search || (window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '');
+      const params = new URLSearchParams(searchStr);
+      const f = params.get('filter');
+      if (f === 'receive' || f === 'give' || f === 'settled' || f === 'all') {
+        return f;
+      }
+    } catch (e) {}
+    return 'all';
+  });
+
+  useEffect(() => {
+    const handleUrlFilter = () => {
+      try {
+        const searchStr = window.location.search || (window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '');
+        const params = new URLSearchParams(searchStr);
+        const f = params.get('filter');
+        if (f === 'receive' || f === 'give' || f === 'settled' || f === 'all') {
+          setFilterType(f);
+        }
+      } catch (e) {}
+    };
+    handleUrlFilter();
+    window.addEventListener('popstate', handleUrlFilter);
+    return () => window.removeEventListener('popstate', handleUrlFilter);
+  }, []);
+
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [sortBy, setSortBy] = useState<'activity' | 'balance_high' | 'name'>('activity');
 
@@ -438,10 +467,25 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
     return `${formattedDate} • ${formatTimeTo12Hour(timeStr)}`;
   };
 
-  // Grouped Entries by Date for Khatabook style Feed
+  // Filtered and grouped entries by Date for Passbook Feed
+  const filteredCustomerEntries = useMemo(() => {
+    return selectedCustomerEntries.filter((entry) => {
+      if (passbookFilter !== 'all' && entry.type !== passbookFilter) return false;
+      if (passbookSearch.trim()) {
+        const q = passbookSearch.toLowerCase().trim();
+        const matchesNote = entry.note?.toLowerCase().includes(q);
+        const matchesBill = entry.bill_reference?.toLowerCase().includes(q);
+        const matchesAmount = String(entry.amount).includes(q);
+        const matchesMode = entry.payment_mode?.toLowerCase().includes(q);
+        if (!matchesNote && !matchesBill && !matchesAmount && !matchesMode) return false;
+      }
+      return true;
+    });
+  }, [selectedCustomerEntries, passbookFilter, passbookSearch]);
+
   const groupedCustomerEntries = useMemo(() => {
     const groups: { dateKey: string; dateLabel: string; items: typeof selectedCustomerEntries }[] = [];
-    selectedCustomerEntries.forEach((entry) => {
+    filteredCustomerEntries.forEach((entry) => {
       const rawDate = entry.date;
       const label = formatDateHeader(rawDate);
       let existing = groups.find((g) => g.dateKey === rawDate);
@@ -452,7 +496,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
       existing.items.push(entry);
     });
     return groups;
-  }, [selectedCustomerEntries]);
+  }, [filteredCustomerEntries]);
 
   // Action: Open Modal for New Entry
   const openNewEntryModal = (type: 'gave' | 'got', customer?: CustomerSummary) => {
@@ -1017,41 +1061,50 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
       {/* Top Header / Breadcrumb */}
       {selectedCustomer ? (
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/70 pb-5">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3.5 min-w-0">
             <button
+              type="button"
               onClick={() => setSelectedCustomerId(null)}
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-border bg-card text-foreground hover:bg-muted transition-colors shadow-xs active:scale-95"
-              title="Back to Customer List"
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-border bg-card text-foreground hover:bg-muted hover:border-primary/50 transition-all shadow-xs active:scale-95 group"
+              title="Back to Customer Accounts List"
             >
-              <ArrowLeft size={18} />
+              <ArrowLeft size={18} className="group-hover:-translate-x-0.5 transition-transform" />
             </button>
-            <div className="min-w-0">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-black uppercase tracking-[0.16em] text-primary flex items-center gap-1.5">
                 <span>Khata Book</span>
-                <span>/</span>
+                <span className="text-muted-foreground/60">/</span>
                 <span className="text-muted-foreground">Passbook Statement</span>
               </div>
-              <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight mt-0.5 flex items-center gap-2 flex-wrap">
-                <span className="truncate">{selectedCustomer.name}</span>
+              <h2 className="text-xl sm:text-2xl font-black tracking-tight mt-0.5 flex items-center gap-2.5 flex-wrap">
+                <span className="truncate text-foreground">{selectedCustomer.name}</span>
                 {selectedCustomer.netBalance > 0 ? (
-                  <span className="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25">
-                    Due Pending
+                  <span className="inline-flex items-center gap-1.5 text-xs font-black px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shadow-2xs">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    Due: ₹{Math.abs(selectedCustomer.netBalance).toLocaleString('en-IN')}
                   </span>
                 ) : selectedCustomer.netBalance < 0 ? (
-                  <span className="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/25">
-                    Advance Deposit
+                  <span className="inline-flex items-center gap-1.5 text-xs font-black px-2.5 py-0.5 rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 shadow-2xs">
+                    <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                    Advance: ₹{Math.abs(selectedCustomer.netBalance).toLocaleString('en-IN')}
                   </span>
                 ) : (
-                  <span className="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
-                    Settled (₹0)
+                  <span className="inline-flex items-center gap-1.5 text-xs font-black px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shadow-2xs">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    Settled Clean
                   </span>
                 )}
               </h2>
               {selectedCustomer.phone && (
-                <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                  <span>Phone:</span>
-                  <span className="font-semibold text-foreground">{selectedCustomer.phone}</span>
-                </p>
+                <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
+                  <span className="flex items-center gap-1">
+                    <Phone size={11} className="text-primary" />
+                    <span className="font-semibold text-foreground">{selectedCustomer.phone}</span>
+                  </span>
+                  <span>•</span>
+                  <span>{selectedCustomerEntries.length} total {selectedCustomerEntries.length === 1 ? 'record' : 'records'}</span>
+                </div>
               )}
             </div>
           </div>
@@ -1059,6 +1112,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
           <div className="flex items-center gap-2 flex-wrap">
             {/* 1. Reminder Button */}
             <button
+              type="button"
               onClick={() => {
                 setShowReminderModal(selectedCustomer);
                 setReminderEmailInput(selectedCustomer.email || '');
@@ -1073,6 +1127,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
 
             {/* 2. Contact Button */}
             <button
+              type="button"
               onClick={() => setShowContactModal(selectedCustomer)}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-primary/30 bg-primary/10 text-primary text-xs sm:text-sm font-bold hover:bg-primary/20 active:scale-95 transition-all shadow-2xs"
               title="Contact Customer via WhatsApp, Phone or Email"
@@ -1083,6 +1138,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
 
             {/* 3. PDF Statement */}
             <button
+              type="button"
               onClick={() => generateCustomerPdf(selectedCustomer)}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-border bg-card text-xs sm:text-sm font-bold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shadow-2xs active:scale-95"
               title="Download Passbook PDF Statement"
@@ -1112,17 +1168,31 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
       {!selectedCustomer && (
         <div className="grid grid-cols-2 gap-3 sm:gap-4 items-stretch animate-rise">
           {/* Box 1: Total Due / You'll Receive (Pending Due) */}
-          <div className="card-shell p-3.5 sm:p-5 border-l-4 border-l-amber-500 bg-card hover:bg-muted/10 transition-colors flex flex-col justify-between">
+          <button
+            type="button"
+            onClick={() => setFilterType(filterType === 'receive' ? 'all' : 'receive')}
+            title={filterType === 'receive' ? 'Click to show all accounts' : 'Click to view only accounts with pending Due'}
+            className={`card-shell text-left p-3.5 sm:p-5 border-l-4 border-l-amber-500 bg-card hover:bg-muted/10 transition-all flex flex-col justify-between cursor-pointer ${
+              filterType === 'receive' ? 'ring-2 ring-amber-500 shadow-md bg-amber-500/5' : ''
+            }`}
+          >
             <div>
-              <div className="flex items-center gap-2 sm:gap-2.5">
-                <div className="grid h-8 w-8 sm:h-9 sm:w-9 shrink-0 place-items-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                  <ArrowDownLeft size={18} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[11px] sm:text-xs font-extrabold uppercase tracking-wider text-amber-600 dark:text-amber-400 truncate">
-                    You'll Receive
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+                  <div className="grid h-8 w-8 sm:h-9 sm:w-9 shrink-0 place-items-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                    <ArrowDownLeft size={18} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11px] sm:text-xs font-extrabold uppercase tracking-wider text-amber-600 dark:text-amber-400 truncate">
+                      You'll Receive (Due)
+                    </div>
                   </div>
                 </div>
+                {filterType === 'receive' && (
+                  <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-500 text-white shrink-0 shadow-2xs">
+                    Active
+                  </span>
+                )}
               </div>
 
               <div className="mono mt-3 text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight text-foreground truncate">
@@ -1134,20 +1204,34 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
               <span className="truncate">Pending Due:</span>
               <span className="font-bold text-foreground shrink-0">{overallMetrics.countReceive} cust</span>
             </div>
-          </div>
+          </button>
 
           {/* Box 2: Total Advance / You'll Give (Customer Advance Deposit) */}
-          <div className="card-shell p-3.5 sm:p-5 border-l-4 border-l-blue-500 bg-card hover:bg-muted/10 transition-colors flex flex-col justify-between">
+          <button
+            type="button"
+            onClick={() => setFilterType(filterType === 'give' ? 'all' : 'give')}
+            title={filterType === 'give' ? 'Click to show all accounts' : 'Click to view only accounts with Advance balance'}
+            className={`card-shell text-left p-3.5 sm:p-5 border-l-4 border-l-blue-500 bg-card hover:bg-muted/10 transition-all flex flex-col justify-between cursor-pointer ${
+              filterType === 'give' ? 'ring-2 ring-blue-500 shadow-md bg-blue-500/5' : ''
+            }`}
+          >
             <div>
-              <div className="flex items-center gap-2 sm:gap-2.5">
-                <div className="grid h-8 w-8 sm:h-9 sm:w-9 shrink-0 place-items-center rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-400">
-                  <ArrowUpRight size={18} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[11px] sm:text-xs font-extrabold uppercase tracking-wider text-blue-600 dark:text-blue-400 truncate">
-                    You'll Give
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+                  <div className="grid h-8 w-8 sm:h-9 sm:w-9 shrink-0 place-items-center rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-400">
+                    <ArrowUpRight size={18} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11px] sm:text-xs font-extrabold uppercase tracking-wider text-blue-600 dark:text-blue-400 truncate">
+                      You'll Give (Advance)
+                    </div>
                   </div>
                 </div>
+                {filterType === 'give' && (
+                  <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-blue-600 text-white shrink-0 shadow-2xs">
+                    Active
+                  </span>
+                )}
               </div>
 
               <div className="mono mt-3 text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight text-foreground truncate">
@@ -1159,120 +1243,226 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
               <span className="truncate">Advance Hold:</span>
               <span className="font-bold text-foreground shrink-0">{overallMetrics.countGive} cust</span>
             </div>
-          </div>
+          </button>
         </div>
       )}
 
       {/* VIEW 1: CUSTOMER DETAIL PASSBOOK STATEMENT */}
       {selectedCustomer ? (
         <div className="space-y-6">
-          {/* Customer Balance Hero Banner */}
-          <div className="card-shell p-5 sm:p-6 bg-gradient-to-br from-card via-card to-muted/20 border border-border shadow-xs">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-center">
-              {/* Main Net State */}
-              <div>
-                <div className="text-[11px] font-extrabold uppercase tracking-wider text-muted-foreground">
-                  Current Account Balance
-                </div>
-                <div className="mt-1.5 flex items-baseline gap-3 flex-wrap">
-                  <span className="mono text-3xl sm:text-4xl font-black tracking-tight text-foreground">
-                    ₹{Math.abs(selectedCustomer.netBalance).toLocaleString('en-IN')}
-                  </span>
-                  <span className={`text-xs font-extrabold uppercase px-3 py-1 rounded-xl shadow-2xs ${
-                    selectedCustomer.netBalance > 0
-                      ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+          {/* Executive Customer Balance Hero Card */}
+          <div className="relative overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-card via-card to-primary/5 p-5 sm:p-7 shadow-xs">
+            {/* Subtle background ambient glow */}
+            <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-primary/5 blur-3xl" />
+
+            <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+              {/* Left: Net Balance & Status breakdown */}
+              <div className="space-y-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-muted-foreground">
+                      Net Account Balance
+                    </span>
+                    <span className={`inline-flex items-center gap-1.5 text-[11px] font-black uppercase px-2.5 py-0.5 rounded-full shadow-2xs ${
+                      selectedCustomer.netBalance > 0
+                        ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                        : selectedCustomer.netBalance < 0
+                        ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30'
+                        : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                    }`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${
+                        selectedCustomer.netBalance > 0 ? 'bg-amber-500 animate-pulse' : selectedCustomer.netBalance < 0 ? 'bg-blue-500' : 'bg-emerald-500'
+                      }`} />
+                      {selectedCustomer.netBalance > 0 ? "You'll Receive (Pending Due)" : selectedCustomer.netBalance < 0 ? "You'll Give (Customer Advance)" : "Settled Clean (₹0)"}
+                    </span>
+                  </div>
+
+                  <div className="mt-2 flex items-baseline gap-3">
+                    <span className={`mono text-4xl sm:text-5xl font-black tracking-tight ${
+                      selectedCustomer.netBalance > 0
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : selectedCustomer.netBalance < 0
+                        ? 'text-blue-600 dark:text-blue-400'
+                        : 'text-foreground'
+                    }`}>
+                      ₹{Math.abs(selectedCustomer.netBalance).toLocaleString('en-IN')}
+                    </span>
+                  </div>
+
+                  <p className="mt-1.5 text-xs sm:text-sm text-muted-foreground font-medium">
+                    {selectedCustomer.netBalance > 0
+                      ? `${selectedCustomer.name} currently owes you ₹${Math.abs(selectedCustomer.netBalance).toLocaleString('en-IN')}.`
                       : selectedCustomer.netBalance < 0
-                      ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30'
-                      : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                  }`}>
-                    {selectedCustomer.netBalance > 0 ? "You'll Receive (Due)" : selectedCustomer.netBalance < 0 ? "You'll Give (Advance)" : "Settled (₹0)"}
-                  </span>
+                      ? `${selectedCustomer.name} has ₹${Math.abs(selectedCustomer.netBalance).toLocaleString('en-IN')} advance balance deposited.`
+                      : 'All account dues and incoming payments are fully settled.'}
+                  </p>
                 </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {selectedCustomer.netBalance > 0
-                    ? `${selectedCustomer.name} owes you ₹${Math.abs(selectedCustomer.netBalance).toLocaleString('en-IN')}.`
-                    : selectedCustomer.netBalance < 0
-                    ? `${selectedCustomer.name} has deposited ₹${Math.abs(selectedCustomer.netBalance).toLocaleString('en-IN')} as advance.`
-                    : 'All credit dues and payments are fully cleared.'}
-                </p>
               </div>
 
-              {/* Action Buttons for this customer */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {/* Right: Modern Executive Action Buttons */}
+              <div className="flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0 lg:w-72">
                 <button
+                  type="button"
                   onClick={() => openNewEntryModal('gave', selectedCustomer)}
-                  className="py-3 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95"
+                  className="group relative flex items-center gap-3.5 p-3.5 rounded-2xl bg-gradient-to-r from-red-600 via-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white shadow-md hover:shadow-red-500/20 active:scale-[0.98] transition-all text-left"
                 >
-                  <ArrowDownLeft size={16} />
-                  <span>You Gave ₹ (Credit / Due)</span>
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/20 text-white shadow-2xs group-hover:scale-105 transition-transform">
+                    <ArrowDownLeft size={20} className="stroke-[2.5]" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-black tracking-tight leading-none">
+                      + You Gave (Credit)
+                    </div>
+                    <div className="text-[11px] text-white/80 font-medium mt-1">
+                      Goods given • Increases customer due
+                    </div>
+                  </div>
                 </button>
+
                 <button
+                  type="button"
                   onClick={() => openNewEntryModal('got', selectedCustomer)}
-                  className="py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95"
+                  className="group relative flex items-center gap-3.5 p-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md hover:shadow-emerald-500/20 active:scale-[0.98] transition-all text-left"
                 >
-                  <ArrowUpRight size={16} />
-                  <span>You Got ₹ (Payment / Adv)</span>
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/20 text-white shadow-2xs group-hover:scale-105 transition-transform">
+                    <ArrowUpRight size={20} className="stroke-[2.5]" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-black tracking-tight leading-none">
+                      - You Got (Payment)
+                    </div>
+                    <div className="text-[11px] text-white/80 font-medium mt-1">
+                      Payment received • Clears balance
+                    </div>
+                  </div>
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Passbook Transactions Feed */}
-          <div className="space-y-4">
-            {/* Header with Title and Counter */}
-            <div className="flex items-center justify-between px-1">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
-                  <BookOpen size={16} />
-                </div>
-                <h3 className="text-sm font-extrabold text-foreground">Passbook Transaction History</h3>
+          {/* Passbook Transactions Feed Section */}
+          <div className="space-y-3.5">
+            {/* Toolbar: Filter Pills & Search */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card p-3 rounded-2xl border border-border/80 shadow-2xs">
+              {/* Type Filter Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none text-xs">
+                <button
+                  type="button"
+                  onClick={() => setPassbookFilter('all')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
+                    passbookFilter === 'all'
+                      ? 'bg-primary text-primary-foreground shadow-xs'
+                      : 'bg-muted text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  All ({selectedCustomerEntries.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPassbookFilter('gave')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
+                    passbookFilter === 'gave'
+                      ? 'bg-red-600 text-white shadow-xs'
+                      : 'bg-muted text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  You Gave ({selectedCustomerEntries.filter((e) => e.type === 'gave').length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPassbookFilter('got')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
+                    passbookFilter === 'got'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-muted text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  You Got ({selectedCustomerEntries.filter((e) => e.type === 'got').length})
+                </button>
               </div>
-              <span className="text-xs font-bold px-3 py-1 rounded-full bg-muted text-muted-foreground border border-border/60 shadow-2xs">
-                {selectedCustomerEntries.length} {selectedCustomerEntries.length === 1 ? 'Transaction' : 'Transactions'}
-              </span>
+
+              {/* Passbook Search Input */}
+              <div className="relative min-w-48 sm:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
+                <input
+                  type="text"
+                  value={passbookSearch}
+                  onChange={(e) => setPassbookSearch(e.target.value)}
+                  placeholder="Search entries..."
+                  className="input-shell w-full pl-8 pr-8 py-1.5 text-xs rounded-xl"
+                />
+                {passbookSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setPassbookSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
             </div>
 
+            {/* List of Grouped Entries */}
             {selectedCustomerEntries.length === 0 ? (
               <div className="card-shell p-12 text-center border border-border">
-                <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-muted text-primary mb-3">
-                  <BookOpen size={22} />
+                <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-muted text-primary mb-3">
+                  <BookOpen size={24} />
                 </div>
-                <h4 className="font-extrabold text-sm">No transactions yet</h4>
+                <h4 className="font-extrabold text-base">No transactions recorded yet</h4>
                 <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
-                  Start recording credit sales or payments for {selectedCustomer.name}.
+                  Start recording credit sales or incoming payments for {selectedCustomer.name}.
                 </p>
                 <div className="mt-5 flex justify-center gap-3">
                   <button
+                    type="button"
                     onClick={() => openNewEntryModal('gave', selectedCustomer)}
                     className="px-4 py-2 rounded-xl bg-red-600 text-white text-xs font-bold hover:bg-red-700 active:scale-95 transition-all shadow-sm flex items-center gap-1.5"
                   >
-                    <ArrowDownLeft size={14} />
+                    <ArrowDownLeft size={14} className="stroke-[2.5]" />
                     <span>+ You Gave ₹</span>
                   </button>
                   <button
+                    type="button"
                     onClick={() => openNewEntryModal('got', selectedCustomer)}
                     className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 active:scale-95 transition-all shadow-sm flex items-center gap-1.5"
                   >
-                    <ArrowUpRight size={14} />
-                    <span>+ You Got ₹</span>
+                    <ArrowUpRight size={14} className="stroke-[2.5]" />
+                    <span>- You Got ₹</span>
                   </button>
                 </div>
               </div>
+            ) : filteredCustomerEntries.length === 0 ? (
+              <div className="card-shell p-8 text-center border border-border">
+                <h4 className="font-extrabold text-sm">No matching transactions</h4>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Try clearing your search query or switching filters.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPassbookFilter('all');
+                    setPassbookSearch('');
+                  }}
+                  className="mt-3 px-3 py-1.5 rounded-lg bg-muted text-xs font-bold hover:bg-muted/80"
+                >
+                  Reset Filters
+                </button>
+              </div>
             ) : (
               <div className="space-y-5">
-                {/* Grouped by Date */}
                 {groupedCustomerEntries.map((group) => (
-                  <div key={group.dateKey} className="space-y-3">
+                  <div key={group.dateKey} className="space-y-2.5">
                     {/* Centered Date Pill Header */}
-                    <div className="flex items-center justify-center my-1">
-                      <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-muted-foreground px-3.5 py-1 rounded-full bg-muted/70 border border-border shadow-2xs">
+                    <div className="flex items-center justify-center my-2">
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-muted-foreground px-3.5 py-1 rounded-full bg-muted/80 border border-border/80 shadow-2xs">
                         <Calendar size={12} className="text-primary" />
                         <span>{group.dateLabel}</span>
                       </span>
                     </div>
 
-                    {/* Transaction Cards List */}
-                    <div className="space-y-3">
+                    {/* Transaction Cards */}
+                    <div className="space-y-2.5">
                       {group.items.map((entry) => {
                         const isGave = entry.type === 'gave';
                         const amt = Number(entry.amount) || 0;
@@ -1283,133 +1473,110 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                         return (
                           <div
                             key={entry.id}
-                            className={`rounded-2xl border bg-card p-4 sm:p-5 shadow-xs hover:shadow-md transition-all relative overflow-hidden group ${
-                              isGave
-                                ? 'border-red-500/30 hover:border-red-500/50'
-                                : 'border-emerald-500/30 hover:border-emerald-500/50'
-                            }`}
+                            className="rounded-2xl border border-border/80 bg-card hover:border-primary/40 hover:bg-muted/10 p-4 sm:p-5 shadow-2xs hover:shadow-xs transition-all group"
                           >
-                            {/* Left colored border accent strip */}
-                            <div
-                              className={`absolute left-0 top-0 bottom-0 w-1.5 ${
-                                isGave ? 'bg-red-500' : 'bg-emerald-500'
-                              }`}
-                            />
-
-                            {/* Row 1: Type Header & Large Amount */}
-                            <div className="flex items-start justify-between gap-3">
-                              {/* Type Badge */}
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-extrabold uppercase tracking-wide ${
-                                    isGave
-                                      ? 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/20'
-                                      : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                                  }`}
-                                >
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
+                              {/* Left: Icon & Description */}
+                              <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                                {/* Transaction Type Avatar Icon */}
+                                <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl transition-transform group-hover:scale-105 shadow-2xs ${
+                                  isGave
+                                    ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/25'
+                                    : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25'
+                                }`}>
                                   {isGave ? (
-                                    <>
-                                      <ArrowDownLeft size={14} className="stroke-[2.5]" />
-                                      <span>You Gave (Credit / Due)</span>
-                                    </>
+                                    <ArrowDownLeft size={20} className="stroke-[2.5]" />
                                   ) : (
-                                    <>
-                                      <ArrowUpRight size={14} className="stroke-[2.5]" />
-                                      <span>You Got (Payment Received)</span>
-                                    </>
+                                    <ArrowUpRight size={20} className="stroke-[2.5]" />
                                   )}
-                                </span>
+                                </div>
+
+                                <div className="min-w-0 flex-1">
+                                  {/* Title & Badges */}
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <h4 className="font-extrabold text-sm sm:text-base text-foreground">
+                                      {isGave ? 'You Gave (Credit / Due)' : 'You Got (Payment Received)'}
+                                    </h4>
+
+                                    {entry.bill_reference && (
+                                      <span className="inline-flex items-center gap-1 text-[11px] font-bold font-mono px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20">
+                                        <FileText size={11} />
+                                        <span>{entry.bill_reference}</span>
+                                      </span>
+                                    )}
+
+                                    {entry.payment_mode && (
+                                      <span className="text-[11px] font-semibold text-muted-foreground px-2 py-0.5 rounded-md bg-muted border border-border/50">
+                                        {entry.payment_mode}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Note / Item details if present */}
+                                  {entry.note && (
+                                    <p className="text-xs text-foreground/80 mt-1 font-medium leading-relaxed break-words">
+                                      {entry.note}
+                                    </p>
+                                  )}
+
+                                  {/* Timestamp */}
+                                  <div className="text-[11px] text-muted-foreground mt-1.5 flex items-center gap-2">
+                                    <span className="flex items-center gap-1">
+                                      <Calendar size={12} className="text-muted-foreground" />
+                                      <span>{formattedDate}</span>
+                                    </span>
+                                    {formattedTime && (
+                                      <>
+                                        <span>•</span>
+                                        <span className="flex items-center gap-1 font-mono font-medium">
+                                          <Clock size={11} className="text-muted-foreground" />
+                                          <span>{formattedTime}</span>
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
 
-                              {/* Amount Display */}
-                              <div className="text-right">
-                                <span
-                                  className={`mono text-lg sm:text-xl font-black tracking-tight ${
+                              {/* Right: Amount, Running Balance, Actions */}
+                              <div className="flex items-center justify-between sm:justify-end sm:flex-col sm:items-end gap-2 pt-3 sm:pt-0 border-t sm:border-t-0 border-border/50 shrink-0">
+                                {/* Amount Display */}
+                                <div className="text-left sm:text-right">
+                                  <div className={`mono text-lg sm:text-xl font-black tracking-tight ${
                                     isGave
-                                      ? 'text-red-600 dark:text-red-400'
+                                      ? 'text-rose-600 dark:text-rose-400'
                                       : 'text-emerald-600 dark:text-emerald-400'
-                                  }`}
-                                >
-                                  {isGave ? '- ' : '+ '}₹{amt.toLocaleString('en-IN')}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Row 2: Note / Item Description & Reference (If Available) */}
-                            {(entry.note || entry.bill_reference) && (
-                              <div className="mt-3 p-2.5 rounded-xl bg-muted/40 border border-border/60 text-xs text-foreground/90 space-y-1">
-                                {entry.note && (
-                                  <div className="flex items-start gap-1.5">
-                                    <span className="text-muted-foreground font-semibold shrink-0">Note:</span>
-                                    <span className="font-medium break-words">{entry.note}</span>
+                                  }`}>
+                                    {isGave ? '+ ' : '- '}₹{amt.toLocaleString('en-IN')}
                                   </div>
-                                )}
-                                {entry.bill_reference && (
-                                  <div className="flex items-center gap-1.5 text-[11px] text-primary font-mono font-semibold">
-                                    <span>Bill Ref:</span>
-                                    <span>{entry.bill_reference}</span>
+                                  <div className="text-[11px] font-bold font-mono text-muted-foreground mt-0.5">
+                                    Bal: <span className={runBal > 0 ? 'text-amber-600 dark:text-amber-400 font-extrabold' : runBal < 0 ? 'text-blue-600 dark:text-blue-400 font-extrabold' : 'text-emerald-600 dark:text-emerald-400 font-extrabold'}>
+                                      ₹{Math.abs(runBal).toLocaleString('en-IN')} {runBal > 0 ? 'Due' : runBal < 0 ? 'Adv' : 'Settled'}
+                                    </span>
                                   </div>
-                                )}
-                              </div>
-                            )}
+                                </div>
 
-                            {/* Row 3: Metadata Footer (Date, Time, Running Balance, Actions) */}
-                            <div className="mt-3.5 pt-3 border-t border-border/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-muted-foreground">
-                              {/* Date & Time and Running Bal Info */}
-                              <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-                                {/* Date badge */}
-                                <span className="inline-flex items-center gap-1 font-semibold text-foreground/80">
-                                  <Calendar size={13} className="text-muted-foreground" />
-                                  <span>{formattedDate}</span>
-                                </span>
-
-                                {/* Time badge */}
-                                {formattedTime && (
-                                  <span className="inline-flex items-center gap-1 font-bold text-foreground bg-muted/60 px-2 py-0.5 rounded-md border border-border/40 font-mono">
-                                    <Clock size={12} className="text-primary" />
-                                    <span>{formattedTime}</span>
-                                  </span>
-                                )}
-
-                                {/* Running Balance Badge */}
-                                <span
-                                  className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold font-mono border ${
-                                    runBal > 0
-                                      ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30'
-                                      : runBal < 0
-                                      ? 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30'
-                                      : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30'
-                                  }`}
-                                  title="Net balance after this transaction"
-                                >
-                                  Bal: ₹{Math.abs(runBal).toLocaleString('en-IN')} {runBal > 0 ? 'Due' : runBal < 0 ? 'Adv' : 'Settled'}
-                                </span>
-
-                                {entry.payment_mode && (
-                                  <span className="text-[11px] font-medium text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
-                                    {entry.payment_mode}
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* Edit & Delete Action Buttons */}
-                              <div className="flex items-center gap-1.5 self-end sm:self-auto">
-                                <button
-                                  onClick={() => openEditEntryModal(entry)}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted border border-border/50 transition-colors shadow-2xs active:scale-95"
-                                  title="Edit transaction"
-                                >
-                                  <Pencil size={12} />
-                                  <span>Edit</span>
-                                </button>
-                                <button
-                                  onClick={() => setShowDeleteModal(entry)}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-destructive hover:bg-destructive/10 border border-destructive/20 transition-colors shadow-2xs active:scale-95"
-                                  title="Delete transaction"
-                                >
-                                  <Trash2 size={12} />
-                                  <span>Delete</span>
-                                </button>
+                                {/* Edit / Delete actions */}
+                                <div className="flex items-center gap-1.5 opacity-90 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditEntryModal(entry)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted border border-border/50 transition-colors shadow-2xs active:scale-95"
+                                    title="Edit transaction"
+                                  >
+                                    <Pencil size={12} />
+                                    <span>Edit</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowDeleteModal(entry)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-destructive hover:bg-destructive/10 border border-destructive/20 transition-colors shadow-2xs active:scale-95"
+                                    title="Delete transaction"
+                                  >
+                                    <Trash2 size={12} />
+                                    <span>Delete</span>
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -1574,6 +1741,56 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
             </div>
           </div>
 
+          {/* Quick Filter Tabs for direct one-tap switching */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-xs">
+            <button
+              type="button"
+              onClick={() => setFilterType('all')}
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
+                filterType === 'all'
+                  ? 'bg-primary text-primary-foreground shadow-xs'
+                  : 'bg-card border border-border text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              All Accounts ({customerSummaries.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterType('receive')}
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
+                filterType === 'receive'
+                  ? 'bg-amber-500 text-white shadow-xs'
+                  : 'bg-card border border-border text-amber-600 dark:text-amber-400 hover:bg-amber-500/10'
+              }`}
+            >
+              Due ({overallMetrics.countReceive})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterType('give')}
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
+                filterType === 'give'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-card border border-border text-blue-600 dark:text-blue-400 hover:bg-blue-500/10'
+              }`}
+            >
+              Advance ({overallMetrics.countGive})
+            </button>
+            {overallMetrics.countSettled > 0 && (
+              <button
+                type="button"
+                onClick={() => setFilterType('settled')}
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
+                  filterType === 'settled'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-card border border-border text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10'
+                }`}
+              >
+                Settled ({overallMetrics.countSettled})
+              </button>
+            )}
+          </div>
+
           {/* Customer Cards List */}
           {loading ? (
             <div className="space-y-3">
@@ -1617,14 +1834,12 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                 return (
                   <div
                     key={cust.id}
-                    className="card-shell p-4 sm:p-5 hover:border-primary/50 transition-all group"
+                    onClick={() => setSelectedCustomerId(cust.id)}
+                    className="card-shell p-4 sm:p-5 hover:border-primary/50 transition-all group cursor-pointer"
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       {/* Left: Avatar & Info */}
-                      <div
-                        onClick={() => setSelectedCustomerId(cust.id)}
-                        className="flex items-start gap-3.5 cursor-pointer min-w-0 flex-1"
-                      >
+                      <div className="flex items-start gap-3.5 min-w-0 flex-1">
                         <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl text-xs font-extrabold shadow-xs transition-transform group-hover:scale-105 ${
                           isReceive
                             ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
@@ -1636,19 +1851,35 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                         </div>
 
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <h4 className="font-extrabold text-sm sm:text-base text-foreground truncate group-hover:text-primary transition-colors">
                               {cust.name}
                             </h4>
                             {isReceive && (
-                              <span className="shrink-0 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setFilterType('receive');
+                                }}
+                                title="Click to view all Due accounts"
+                                className="shrink-0 text-xs font-black uppercase px-2.5 py-0.5 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500/25 transition-all shadow-2xs"
+                              >
                                 Due
-                              </span>
+                              </button>
                             )}
                             {isGive && (
-                              <span className="shrink-0 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-blue-500/15 text-blue-600 dark:text-blue-400">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setFilterType('give');
+                                }}
+                                title="Click to view all Advance accounts"
+                                className="shrink-0 text-xs font-black uppercase px-2.5 py-0.5 rounded-lg bg-blue-500/15 text-blue-600 dark:text-blue-400 hover:bg-blue-500/25 transition-all shadow-2xs"
+                              >
                                 Advance
-                              </span>
+                              </button>
                             )}
                           </div>
 
@@ -1675,13 +1906,10 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                       </div>
 
                       {/* Right: Net Balance & Quick Action Buttons */}
-                      <div className="flex items-center justify-between sm:justify-end gap-4 pt-3 sm:pt-0 border-t sm:border-t-0 border-border/60 shrink-0">
+                      <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 pt-3 sm:pt-0 border-t sm:border-t-0 border-border/60 shrink-0">
                         {/* Balance display */}
-                        <div
-                          onClick={() => setSelectedCustomerId(cust.id)}
-                          className="text-left sm:text-right cursor-pointer"
-                        >
-                          <div className={`mono text-base sm:text-lg font-extrabold ${
+                        <div className="text-left sm:text-right">
+                          <div className={`mono text-lg sm:text-xl font-black ${
                             isReceive
                               ? 'text-amber-600 dark:text-amber-400'
                               : isGive
@@ -1690,26 +1918,36 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                           }`}>
                             ₹{Math.abs(cust.netBalance).toLocaleString('en-IN')}
                           </div>
-                          <div className={`text-[11px] font-extrabold uppercase tracking-wider ${
-                            isReceive
-                              ? 'text-amber-600 dark:text-amber-400'
-                              : isGive
-                              ? 'text-blue-600 dark:text-blue-400'
-                              : 'text-emerald-600 dark:text-emerald-400'
-                          }`}>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (isReceive) setFilterType('receive');
+                              else if (isGive) setFilterType('give');
+                            }}
+                            title={isReceive ? "Click to view Due accounts" : isGive ? "Click to view Advance accounts" : "Settled"}
+                            className={`text-xs sm:text-[13px] font-black uppercase tracking-wider hover:underline transition-colors block text-left sm:text-right ${
+                              isReceive
+                                ? 'text-amber-600 dark:text-amber-400'
+                                : isGive
+                                ? 'text-blue-600 dark:text-blue-400'
+                                : 'text-emerald-600 dark:text-emerald-400'
+                            }`}
+                          >
                             {isReceive ? 'Due' : isGive ? 'Advance' : 'Settled'}
-                          </div>
+                          </button>
                         </div>
 
                         {/* Quick Entry Action Buttons */}
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 sm:gap-2">
                           {/* Quick Give (Udhar / Credit Given) */}
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               openNewEntryModal('gave', cust);
                             }}
-                            className="px-3.5 py-1.5 rounded-xl border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400 text-xs font-extrabold hover:bg-red-500/20 active:scale-95 transition-all shadow-2xs"
+                            className="h-7 px-2.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400 text-[11px] font-bold hover:bg-red-500/20 active:scale-95 transition-all shadow-2xs shrink-0 flex items-center justify-center"
                             title="Add Credit / Goods Given (You Gave)"
                           >
                             Give
@@ -1717,11 +1955,12 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
 
                           {/* Quick Got (Payment Received) */}
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               openNewEntryModal('got', cust);
                             }}
-                            className="px-3.5 py-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-extrabold hover:bg-emerald-500/20 active:scale-95 transition-all shadow-2xs"
+                            className="h-7 px-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold hover:bg-emerald-500/20 active:scale-95 transition-all shadow-2xs shrink-0 flex items-center justify-center"
                             title="Add Payment Received (You Got)"
                           >
                             Got
@@ -1745,7 +1984,13 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
               <div>
                 <h3 className="text-base font-extrabold flex items-center gap-2">
                   <BookOpen size={18} className="text-primary" />
-                  <span>{editingEntry ? 'Edit Transaction' : 'Record Transaction'}</span>
+                  <span>
+                    {editingEntry
+                      ? `Edit ${entryForm.type === 'gave' ? 'Credit (You Gave)' : 'Payment (You Got)'} Entry`
+                      : entryForm.type === 'gave'
+                      ? 'Give Payment Form (You Gave)'
+                      : 'Got Payment Form (You Got)'}
+                  </span>
                 </h3>
                 {(entryForm.customer_name || selectedCustomer?.name) && (
                   <p className="text-xs font-semibold text-primary mt-0.5">
@@ -1763,50 +2008,52 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
             </div>
 
             <form onSubmit={handleSaveEntry} className="mt-4 space-y-4">
-              {/* Type Switcher: You Gave vs You Got */}
-              <div>
-                <label className="block text-xs font-bold mb-1.5 text-foreground">
-                  Transaction Type *
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEntryModalType('gave');
-                      setEntryForm({ ...entryForm, type: 'gave' });
-                    }}
-                    className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-extrabold transition-all ${
-                      entryForm.type === 'gave'
-                        ? 'border-red-600 bg-red-600 text-white shadow-sm'
-                        : 'border-border bg-background hover:bg-muted text-muted-foreground'
-                    }`}
-                  >
-                    <ArrowDownLeft size={16} />
-                    <span>You Gave (Udhar / Due)</span>
-                  </button>
+              {/* Type Switcher: Only shown when creating a new transaction, hidden when editing */}
+              {!editingEntry && (
+                <div>
+                  <label className="block text-xs font-bold mb-1.5 text-foreground">
+                    Transaction Type *
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEntryModalType('gave');
+                        setEntryForm({ ...entryForm, type: 'gave' });
+                      }}
+                      className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-extrabold transition-all ${
+                        entryForm.type === 'gave'
+                          ? 'border-red-600 bg-red-600 text-white shadow-sm'
+                          : 'border-border bg-background hover:bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      <ArrowDownLeft size={16} />
+                      <span>You Gave (Credit / Due)</span>
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEntryModalType('got');
-                      setEntryForm({ ...entryForm, type: 'got' });
-                    }}
-                    className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-extrabold transition-all ${
-                      entryForm.type === 'got'
-                        ? 'border-emerald-600 bg-emerald-600 text-white shadow-sm'
-                        : 'border-border bg-background hover:bg-muted text-muted-foreground'
-                    }`}
-                  >
-                    <ArrowUpRight size={16} />
-                    <span>You Got (Payment / Adv)</span>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEntryModalType('got');
+                        setEntryForm({ ...entryForm, type: 'got' });
+                      }}
+                      className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-extrabold transition-all ${
+                        entryForm.type === 'got'
+                          ? 'border-emerald-600 bg-emerald-600 text-white shadow-sm'
+                          : 'border-border bg-background hover:bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      <ArrowUpRight size={16} />
+                      <span>You Got (Payment / Adv)</span>
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    {entryForm.type === 'gave'
+                      ? 'Increases what the customer owes you (credit/due).'
+                      : 'Reduces customer due or adds advance balance.'}
+                  </p>
                 </div>
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  {entryForm.type === 'gave'
-                    ? 'Increases what the customer owes you (credit/due).'
-                    : 'Reduces customer due or adds advance balance.'}
-                </p>
-              </div>
+              )}
 
               {/* Amount Field */}
               <div>
@@ -1924,7 +2171,13 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                       : 'bg-emerald-600 hover:bg-emerald-700'
                   }`}
                 >
-                  {submitting ? 'Saving...' : editingEntry ? 'Update Entry' : 'Save Transaction'}
+                  {submitting
+                    ? 'Saving...'
+                    : editingEntry
+                    ? 'Update Entry'
+                    : entryForm.type === 'gave'
+                    ? 'Save Give Entry (Debit)'
+                    : 'Save Got Entry (Payment In)'}
                 </button>
               </div>
             </form>

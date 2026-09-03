@@ -193,6 +193,16 @@ cd frontend && npm run build
 
 # Package Windows Desktop Application (.exe)
 cd frontend && npm run package:win
+
+# Build & Sync Native Android Mobile App
+cd frontend && npm run cap:build:android
+
+# Open in Android Studio (to run or generate signed APK/AAB)
+cd frontend && npm run cap:open:android
+
+# Build Android Debug APK directly via CLI
+cd frontend && npm run apk:debug
+# Generated APK will be in: frontend/android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 ---

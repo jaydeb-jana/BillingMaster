@@ -185,17 +185,6 @@ export async function createInvoiceTransaction(req: AuthRequest, res: Response) 
     const [invRows]: any = await pool.query('SELECT * FROM invoices WHERE id = ? LIMIT 1', [invoiceId]);
     const createdInvoice = Array.isArray(invRows) && invRows.length > 0 ? invRows[0] : { id: invoiceId, invoice_number: invoiceNumber };
 
-    // Auto-send email if enabled
-    try {
-      const { getEmailConfig, sendInvoiceEmail } = await import('../services/emailService.js');
-      const emailConfig = await getEmailConfig(businessId);
-      if (emailConfig.auto_send_invoice) {
-        sendInvoiceEmail(businessId, invoiceId).catch((emailErr) => {
-          console.warn('[InvoiceController] Auto-send email warning:', emailErr?.message || emailErr);
-        });
-      }
-    } catch (e) {}
-
     res.json(createdInvoice);
   } catch (err: any) {
     await connection.rollback();

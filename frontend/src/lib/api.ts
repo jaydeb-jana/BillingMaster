@@ -468,28 +468,3 @@ export function getSupabaseErrorMessage(error: unknown, fallback = 'Something we
   }
   return fallback;
 }
-
-export const emailApi = {
-  async getConfig() {
-    return request<any>('/api/email/config');
-  },
-  async saveConfig(data: any) {
-    return request<any>('/api/email/config', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  },
-  async sendTest(toEmail: string, displayName?: string) {
-    return request<{ success: boolean; message: string }>('/api/email/test', {
-      method: 'POST',
-      body: JSON.stringify({ to_email: toEmail, display_name: displayName }),
-    });
-  },
-  async sendInvoice(invoiceId: string, toEmail?: string) {
-    return request<{ success: boolean; message: string }>('/api/email/send-invoice', {
-      method: 'POST',
-      body: JSON.stringify({ invoice_id: invoiceId, to_email: toEmail }),
-    });
-  },
-};
-

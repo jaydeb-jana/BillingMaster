@@ -13,12 +13,6 @@ import {
   updateRecord,
   removeRecord,
 } from './controllers/dbController.js';
-import {
-  getEmailConfigHandler,
-  saveEmailConfigHandler,
-  sendTestEmailHandler,
-  sendInvoiceEmailHandler,
-} from './controllers/emailController.js';
 
 dotenv.config();
 
@@ -44,12 +38,6 @@ app.put('/api/auth/user', updateUser);
 // RPC Routes
 app.post('/api/rpc/create_business', createBusiness);
 app.post('/api/rpc/create_invoice_transaction', createInvoiceTransaction);
-
-// Email Routes
-app.get('/api/email/config', getEmailConfigHandler);
-app.post('/api/email/config', saveEmailConfigHandler);
-app.post('/api/email/test', sendTestEmailHandler);
-app.post('/api/email/send-invoice', sendInvoiceEmailHandler);
 
 // Generic DB REST Routes
 app.get('/api/db/:table', listRecords);

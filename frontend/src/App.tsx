@@ -7,7 +7,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { auth, db, emailApi, getBusinessId, setCurrentBusinessId, supabase, supabaseConfigured, getSupabaseErrorMessage, getProductBarcode, generateInternalSku } from '@/lib/api';
+import { auth, db, getBusinessId, setCurrentBusinessId, supabase, supabaseConfigured, getSupabaseErrorMessage, getProductBarcode, generateInternalSku } from '@/lib/api';
 import { Link, Route, Switch, Router as WouterRouter, useLocation, useParams } from 'wouter';
 import { useHashLocation } from 'wouter/use-hash-location';
 import { useBrowserLocation } from 'wouter/use-browser-location';
@@ -18,7 +18,7 @@ import {
   Landmark, LayoutDashboard, Lock, Unlock, LogOut, ImagePlus, Camera, Mail, MapPin, Menu, MessageCircle, Minus, MoreHorizontal, Package, Pencil, Phone, PhoneCall, Plus, Printer, QrCode, Receipt,
   RefreshCw, Search, Send, Settings as SettingsIcon, ShoppingCart, SlidersHorizontal, Sparkles, Store, Trash2, Eye,
   Truck, UserRound, Users, Wallet, X, XCircle, AlertCircle, Share2, Copy, ScanLine, Barcode, ShieldCheck, ShieldAlert,
-  AlertTriangle, CheckCheck, ExternalLink, Inbox, Info, BellRing, Filter, RotateCcw, History, Smartphone,
+  AlertTriangle, CheckCheck, ExternalLink, Inbox, Info, BellRing, Filter, RotateCcw, History,
 } from 'lucide-react';
 import { KhataBook } from '@/components/KhataBook';
 import { BarcodeVerifierModal } from '@/components/BarcodeVerifierModal';
@@ -28,16 +28,12 @@ import { GSTVerificationInput } from '@/components/GSTVerificationInput';
 import { ForYouHub } from '@/components/ForYouHub';
 import { MoreHub } from '@/components/MoreHub';
 import { HelpCenterModal } from '@/components/HelpCenterModal';
-import { EmailSettingsSection } from '@/components/EmailSettingsSection';
-import { ServerPlatformSection } from '@/components/ServerPlatformSection';
 import {
   InvoiceTemplateModal,
   INVOICE_TEMPLATES,
   PRINT_SIZES,
   type InvoiceTemplateSettings
 } from '@/components/InvoiceTemplateModal';
-import { isCapacitor, isDesktopOrFile } from '@/lib/platform';
-import { mobileService } from '@/services/mobileService';
 
 const queryClient = new QueryClient();
 type Row = Record<string, any>;
@@ -349,43 +345,6 @@ function Shell({ children }: { children: ReactNode }) {
     setHelpOpen(false);
   }, [location]);
 
-  // Register Android back button handlers for mobile overlay dismissal
-  useEffect(() => {
-    if (mobileOpen) {
-      return mobileService.registerBackHandler(() => {
-        setMobileOpen(false);
-        return true;
-      });
-    }
-  }, [mobileOpen]);
-
-  useEffect(() => {
-    if (notificationsOpen) {
-      return mobileService.registerBackHandler(() => {
-        setNotificationsOpen(false);
-        return true;
-      });
-    }
-  }, [notificationsOpen]);
-
-  useEffect(() => {
-    if (profileOpen) {
-      return mobileService.registerBackHandler(() => {
-        setProfileOpen(false);
-        return true;
-      });
-    }
-  }, [profileOpen]);
-
-  useEffect(() => {
-    if (helpOpen) {
-      return mobileService.registerBackHandler(() => {
-        setHelpOpen(false);
-        return true;
-      });
-    }
-  }, [helpOpen]);
-
   useEffect(() => {
     let active = true;
     async function loadData() {
@@ -615,7 +574,8 @@ function Shell({ children }: { children: ReactNode }) {
   const userName = profile?.full_name || userMeta.full_name || userMeta.name || session?.user?.email?.split('@')[0] || 'User';
   const userEmail = session?.user?.email || 'user@example.com';
   const initials = (userName.trim().split(' ').map((n: string) => n[0]).join('').substring(0, 2) || 'AV').toUpperCase();
-  const workspaceName = business?.name || userMeta.business_name || 'Your workspace';
+  const rawBizName = business?.name || userMeta.business_name || '';
+  const workspaceName = rawBizName && rawBizName.trim().length > 2 && rawBizName.trim().toLowerCase() !== 'av' ? rawBizName : 'BillingMaster Enterprise';
   const businessGstin = business?.gstin || userMeta.gstin || '';
   const userRole = profile?.role || 'Owner';
 
@@ -626,7 +586,7 @@ function Shell({ children }: { children: ReactNode }) {
   };
 
   return <div className="noise flex min-h-[100dvh] bg-background print:bg-white print:p-0">
-    <aside className={`fixed inset-y-0 left-0 z-40 flex w-[252px] flex-col bg-sidebar px-4 py-5 pt-safe text-sidebar-foreground transition-transform duration-300 lg:static lg:translate-x-0 print:hidden ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+    <aside className={`fixed inset-y-0 left-0 z-40 flex w-[252px] flex-col bg-sidebar px-4 py-5 text-sidebar-foreground transition-transform duration-300 lg:static lg:translate-x-0 print:hidden ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
       <div className="mb-9 flex items-center justify-between px-2"><Logo /><button onClick={() => setMobileOpen(false)} className="rounded-md p-1 text-sidebar-foreground/60 lg:hidden" data-testid="button-close-menu"><X size={18} /></button></div>
       <div className="mb-3 px-3 text-[10px] font-bold uppercase tracking-[.16em] text-sidebar-foreground/40">Workspace</div>
       <nav className="space-y-1">
@@ -646,7 +606,7 @@ function Shell({ children }: { children: ReactNode }) {
     </aside>
     {mobileOpen && <button className="fixed inset-0 z-30 bg-sidebar/30 lg:hidden print:hidden" onClick={() => setMobileOpen(false)} aria-label="Close navigation" data-testid="button-overlay" />}
     <main className="min-w-0 flex-1 print:w-full print:p-0">
-      <header className="sticky top-0 z-20 flex min-h-[70px] pt-safe items-center justify-between border-b border-border/70 bg-background/90 px-4 backdrop-blur-md sm:px-7 lg:px-10 print:hidden">
+      <header className="sticky top-0 z-20 flex h-[70px] items-center justify-between border-b border-border/70 bg-background/90 px-4 backdrop-blur-md sm:px-7 lg:px-10 print:hidden">
         <div className="flex items-center gap-3">
           <button onClick={() => setMobileOpen(true)} className="rounded-lg p-2 hover:bg-muted lg:hidden" data-testid="button-open-menu">
             <Menu size={20} />
@@ -943,43 +903,46 @@ function Shell({ children }: { children: ReactNode }) {
       {/* Help & Support Center Modal */}
       <HelpCenterModal isOpen={helpOpen} onClose={() => setHelpOpen(false)} />
 
-      <div className="mx-auto max-w-[1440px] px-4 py-7 pb-28 sm:px-7 lg:px-10 lg:py-9 print:m-0 print:max-w-none print:p-0">{children}</div>
+      <div className="mx-auto max-w-[1440px] px-4 py-7 pb-24 sm:px-7 lg:px-10 lg:py-9 print:m-0 print:max-w-none print:p-0">{children}</div>
     </main>
-    <nav className="fixed inset-x-3 bottom-3 z-20 flex items-center justify-around rounded-2xl border border-border bg-card/95 p-2 shadow-float backdrop-blur safe-area-bottom-nav lg:hidden print:hidden">
+    <nav className="fixed inset-x-3 bottom-3 z-20 flex items-center justify-around rounded-2xl border border-border bg-card/95 p-2 shadow-float backdrop-blur lg:hidden print:hidden">
       {mobileNavItems.map(({ href, label, icon: NavIcon }) => <Link href={href} className={`flex min-w-[52px] flex-col items-center gap-1 rounded-xl px-2 py-1.5 text-[9px] font-bold no-underline ${location.startsWith(href) ? 'bg-muted text-primary' : 'text-muted-foreground'}`} data-testid={`link-mobile-${label.toLowerCase()}`} key={href}><NavIcon size={17} /><span>{label}</span></Link>)}
     </nav>
   </div>;
 }
 
-function PageHeader({ eyebrow, title, description, action, actionLabel, actionHref, hideSettings, onSettingsClick }: { eyebrow?: string; title: string; description?: string; action?: () => void; actionLabel?: string; actionHref?: string; hideSettings?: boolean; onSettingsClick?: () => void }) {
+function PageHeader({ eyebrow, title, description, action, actionLabel, actionHref, hideSettings, onSettingsClick, extraAction }: { eyebrow?: string; title: string; description?: string; action?: () => void; actionLabel?: string; actionHref?: string; hideSettings?: boolean; onSettingsClick?: () => void; extraAction?: ReactNode }) {
   const isSettingsPage = title.toLowerCase().includes('setting') || hideSettings;
   return (
-    <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end animate-rise">
+    <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end animate-rise relative z-40">
       <div>
         {eyebrow && <div className="mb-2 text-[10px] font-bold uppercase tracking-[.18em] text-primary">{eyebrow}</div>}
         <h2 className="text-2xl font-extrabold tracking-[-.05em] sm:text-[30px]">{title}</h2>
         {description && <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">{description}</p>}
       </div>
-      {actionLabel && (
+      {(actionLabel || extraAction) && (
         <div className="flex w-full items-center gap-2.5 sm:w-auto">
-          {actionHref ? (
-            <Link
-              href={actionHref}
-              className="btn-primary flex-1 sm:flex-initial inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl px-3.5 text-xs sm:text-sm font-bold no-underline shadow-sm"
-              data-testid={`link-${actionLabel.toLowerCase().replaceAll(' ', '-')}`}
-            >
-              <Plus size={16} />
-              <span>{actionLabel}</span>
-            </Link>
-          ) : (
-            <button
-              onClick={action}
-              className="btn-primary flex-1 sm:flex-initial inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl px-3.5 text-xs sm:text-sm font-bold shadow-sm"
-              data-testid={`button-${actionLabel.toLowerCase().replaceAll(' ', '-')}`}
-            >
-              <Plus size={16} />
-              <span>{actionLabel}</span>
-            </button>
+          {extraAction}
+          {actionLabel && (
+            actionHref ? (
+              <Link
+                href={actionHref}
+                className="btn-primary flex-1 sm:flex-initial inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl px-3.5 text-xs sm:text-sm font-bold no-underline shadow-sm"
+                data-testid={`link-${actionLabel.toLowerCase().replaceAll(' ', '-')}`}
+              >
+                <Plus size={16} />
+                <span>{actionLabel}</span>
+              </Link>
+            ) : (
+              <button
+                onClick={action}
+                className="btn-primary flex-1 sm:flex-initial inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl px-3.5 text-xs sm:text-sm font-bold shadow-sm"
+                data-testid={`button-${actionLabel.toLowerCase().replaceAll(' ', '-')}`}
+              >
+                <Plus size={16} />
+                <span>{actionLabel}</span>
+              </button>
+            )
           )}
           {onSettingsClick && (
             <button
@@ -1007,15 +970,231 @@ function Empty({ icon: EmptyIcon, title, description, action, actionLabel }: { i
   return <div className="flex flex-col items-center justify-center px-5 py-16 text-center"><div className="mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-muted text-primary"><EmptyIcon size={24} strokeWidth={1.7} /></div><h3 className="font-extrabold tracking-[-.02em]">{title}</h3><p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">{description}</p>{actionLabel && <button onClick={action} className="btn-secondary mt-5 inline-flex items-center gap-2 rounded-lg px-3.5 py-2.5 text-xs font-bold" data-testid="button-empty-action"><Plus size={15} />{actionLabel}</button>}</div>;
 }
 
-function Metric({ icon: MetricIcon, label, value, hint }: { icon: Icon; label: string; value: string; hint: string }) {
-  return <div className="card-shell p-5 animate-rise"><div className="mb-6 flex items-center justify-between"><div className="grid h-9 w-9 place-items-center rounded-xl bg-muted text-primary"><MetricIcon size={18} /></div><span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</span></div><div className="mono text-[27px] font-medium tracking-[-.08em] text-foreground">{value}</div><div className="mt-1 text-[11px] text-muted-foreground">{hint}</div></div>;
+function Metric({ icon: MetricIcon, label, value, hint, href }: { icon: Icon; label: string; value: string; hint: string; href?: string }) {
+  const content = (
+    <div className="card-shell p-5 animate-rise transition-all duration-200 hover:border-primary/50 hover:shadow-md group cursor-pointer">
+      <div className="mb-6 flex items-center justify-between">
+        <div className="grid h-9 w-9 place-items-center rounded-xl bg-muted text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+          <MetricIcon size={18} />
+        </div>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground group-hover:text-primary transition-colors flex items-center gap-1">
+          {label} <ArrowRight size={12} className="opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
+        </span>
+      </div>
+      <div className="mono text-[27px] font-medium tracking-[-.08em] text-foreground">{value}</div>
+      <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div>
+    </div>
+  );
+
+  if (href) {
+    return (
+      <Link href={href} className="no-underline text-inherit block">
+        {content}
+      </Link>
+    );
+  }
+  return content;
+}
+
+type DashDatePreset = 'this_month' | 'today' | '7days' | '30days' | 'last_month' | 'this_year' | 'all' | 'custom';
+
+function DashboardDateFilter({
+  datePreset,
+  setDatePreset,
+  startDate,
+  setStartDate,
+  endDate,
+  setEndDate,
+}: {
+  datePreset: DashDatePreset;
+  setDatePreset: (p: DashDatePreset) => void;
+  startDate: string;
+  setStartDate: (s: string) => void;
+  endDate: string;
+  setEndDate: (e: string) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const getPresetLabel = () => {
+    if (datePreset === 'today') return 'Today';
+    if (datePreset === '7days') return 'Last 7 Days';
+    if (datePreset === '30days') return 'Last 30 Days';
+    if (datePreset === 'this_month') return 'This Month';
+    if (datePreset === 'last_month') return 'Last Month';
+    if (datePreset === 'this_year') return 'This Year';
+    if (datePreset === 'all') return 'All Time';
+    if (startDate && endDate) return `${startDate} to ${endDate}`;
+    return 'Date Filter';
+  };
+
+  const applyPreset = (preset: DashDatePreset) => {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
+    setDatePreset(preset);
+    if (preset === 'today') {
+      setStartDate(todayStr);
+      setEndDate(todayStr);
+    } else if (preset === '7days') {
+      const past = new Date();
+      past.setDate(past.getDate() - 7);
+      setStartDate(past.toISOString().split('T')[0]);
+      setEndDate(todayStr);
+    } else if (preset === '30days') {
+      const past = new Date();
+      past.setDate(past.getDate() - 30);
+      setStartDate(past.toISOString().split('T')[0]);
+      setEndDate(todayStr);
+    } else if (preset === 'this_month') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+      setStartDate(firstDay);
+      setEndDate(todayStr);
+    } else if (preset === 'last_month') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
+      const lastDay = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0];
+      setStartDate(firstDay);
+      setEndDate(lastDay);
+    } else if (preset === 'this_year') {
+      const firstDay = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0];
+      setStartDate(firstDay);
+      setEndDate(todayStr);
+    } else if (preset === 'all') {
+      setStartDate('');
+      setEndDate('');
+    }
+  };
+
+  return (
+    <div className="relative z-50" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="input-shell inline-flex min-h-10 items-center justify-between gap-2 rounded-xl px-3.5 py-2 text-xs font-bold text-foreground transition-all hover:border-primary/60 focus:border-primary focus:ring-2 focus:ring-primary/20 shadow-sm bg-card border border-border/80 cursor-pointer"
+        title="Filter Dashboard by Date Range"
+      >
+        <div className="flex items-center gap-1.5">
+          <Calendar size={15} className="text-primary" />
+          <span className="truncate max-w-[130px] sm:max-w-none">{getPresetLabel()}</span>
+        </div>
+        <ChevronDown size={14} className={`text-muted-foreground transition-transform duration-200 ${isOpen ? 'rotate-180 text-primary' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 top-full z-[100] mt-2 w-72 sm:w-80 rounded-2xl border border-border/80 bg-card p-4 shadow-2xl backdrop-blur-md animate-rise space-y-3.5">
+          <div className="flex items-center justify-between border-b border-border/60 pb-2">
+            <span className="text-xs font-extrabold text-foreground flex items-center gap-1.5">
+              <Calendar size={14} className="text-primary" /> Select Date Range
+            </span>
+            {datePreset !== 'this_month' && (
+              <button
+                type="button"
+                onClick={() => applyPreset('this_month')}
+                className="text-[11px] font-bold text-primary hover:underline cursor-pointer"
+              >
+                Reset (This Month)
+              </button>
+            )}
+          </div>
+
+          {/* Custom Date Pickers */}
+          <div className="space-y-1.5">
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Custom Range</label>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] font-semibold text-muted-foreground mb-0.5">From</label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    setDatePreset('custom');
+                  }}
+                  className="input-shell w-full px-2 py-1.5 text-xs font-semibold rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-semibold text-muted-foreground mb-0.5">To</label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => {
+                    setEndDate(e.target.value);
+                    setDatePreset('custom');
+                  }}
+                  className="input-shell w-full px-2 py-1.5 text-xs font-semibold rounded-lg"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Presets List */}
+          <div className="space-y-1.5 pt-2.5 border-t border-border/60">
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Quick Presets</label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {[
+                { id: 'today', label: 'Today' },
+                { id: '7days', label: 'Last 7 Days' },
+                { id: '30days', label: 'Last 30 Days' },
+                { id: 'this_month', label: 'This Month' },
+                { id: 'last_month', label: 'Last Month' },
+                { id: 'this_year', label: 'This Year' },
+                { id: 'all', label: 'All Time' },
+              ].map((p) => {
+                const isSelected = datePreset === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      applyPreset(p.id as DashDatePreset);
+                      setIsOpen(false);
+                    }}
+                    className={`flex items-center justify-between rounded-xl px-2.5 py-1.5 text-left text-xs font-semibold transition-colors cursor-pointer ${
+                      isSelected
+                        ? 'bg-primary text-primary-foreground font-bold shadow-xs'
+                        : 'text-foreground hover:bg-muted'
+                    }`}
+                  >
+                    <span>{p.label}</span>
+                    {isSelected && <Check size={13} className="shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function Dashboard() {
   const [profile, setProfile] = useState<Row | null>(null);
-  const invoices = useTable<Row>('invoices', { order: 'issue_date.desc', limit: 5 });
-  const products = useTable<Row>('products', { is_active: 'eq.true', order: 'stock_quantity.asc', limit: 5 });
-  
+  const invoices = useTable<Row>('invoices', { order: 'issue_date.desc' });
+  const products = useTable<Row>('products');
+  const customers = useTable<Row>('customers');
+
+  // Dashboard Date Filter state (default: 'this_month')
+  const [datePreset, setDatePreset] = useState<DashDatePreset>('this_month');
+  const [startDate, setStartDate] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  });
+  const [endDate, setEndDate] = useState<string>(() => {
+    return new Date().toISOString().split('T')[0];
+  });
+
   useEffect(() => {
     async function loadProfile() {
       try {
@@ -1031,20 +1210,215 @@ function Dashboard() {
     loadProfile();
   }, []);
 
-  const hasData = invoices.data.length > 0 || products.data.length > 0;
-  const userName = profile?.full_name || auth.session()?.user?.email?.split('@')[0] || 'there';
+  const customerMap = useMemo(() => {
+    const map = new Map<string, string>();
+    customers.data.forEach((c) => {
+      if (c.id) map.set(c.id, c.name || c.full_name || 'Customer');
+    });
+    return map;
+  }, [customers.data]);
 
-  return <><PageHeader eyebrow="Today at a glance" title={`Good morning, ${userName}.`} description="A clear view of what needs your attention." actionLabel="New invoice" actionHref="/invoices/new" />
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4"><Metric icon={CircleDollarSign} label="Sales" value={hasData ? '—' : '—'} hint="No sales recorded yet" /><Metric icon={Receipt} label="Outstanding" value="—" hint="Awaiting payment" /><Metric icon={Users} label="Customers" value="—" hint="Your customer base" /><Metric icon={Boxes} label="Low stock" value="—" hint="Items to replenish" /></div>
-    <div className="mt-6 grid gap-6 xl:grid-cols-[1.35fr_1fr]"><section className="card-shell overflow-hidden animate-rise delay-1"><div className="flex items-center justify-between border-b border-border/70 px-5 py-4"><div><h3 className="text-sm font-extrabold">Recent invoices</h3><p className="mt-0.5 text-xs text-muted-foreground">The latest movement in your books.</p></div><Link href="/invoices" className="text-xs font-bold text-primary no-underline" data-testid="link-view-invoices">View all <ArrowRight className="ml-1 inline" size={13} /></Link></div><State {...invoices}><>{invoices.data.length ? <div className="divide-y divide-border/70">{invoices.data.map((row, index) => <InvoiceRow key={row.id || index} row={row} />)}</div> : <Empty icon={FileText} title="No invoices yet" description="Create your first invoice to see sales activity here." actionLabel="Create invoice" action={() => window.location.assign('/invoices/new')} />}</></State></section>
-      <section className="card-shell overflow-hidden animate-rise delay-2"><div className="flex items-center justify-between border-b border-border/70 px-5 py-4"><div><h3 className="text-sm font-extrabold">Stock watch</h3><p className="mt-0.5 text-xs text-muted-foreground">Products nearest to their threshold.</p></div><Link href="/products" className="text-xs font-bold text-primary no-underline" data-testid="link-view-products">Inventory <ArrowRight className="ml-1 inline" size={13} /></Link></div><State {...products}><>{products.data.length ? products.data.map((p, index) => <div className="flex items-center justify-between border-b border-border/70 px-5 py-4 last:border-0" key={p.id || index}><div><div className="text-sm font-bold">{p.name}</div></div><span className="rounded-full bg-accent/12 px-2.5 py-1 text-xs font-bold text-accent">{p.stock_quantity ?? '—'} {p.unit || 'units'}</span></div>) : <Empty icon={Package} title="Inventory is ready" description="Add products to keep a live view of your stock." actionLabel="Add product" action={() => window.location.assign('/products')} />}</></State></section>
-    </div>
-  </>;
+  // Filter Invoices by selected date range
+  const filteredInvoices = useMemo(() => {
+    return invoices.data.filter((inv) => {
+      const invDate = inv.issue_date || (inv.created_at ? inv.created_at.split('T')[0] : '');
+      if (!invDate) return true;
+      if (startDate && invDate < startDate) return false;
+      if (endDate && invDate > endDate) return false;
+      return true;
+    });
+  }, [invoices.data, startDate, endDate]);
+
+  const { totalSales, totalOutstanding, pendingCount } = useMemo(() => {
+    let sales = 0;
+    let outstanding = 0;
+    let pending = 0;
+
+    filteredInvoices.forEach((inv) => {
+      const amt = Number(inv.total || 0);
+      if (inv.status !== 'cancelled' && inv.status !== 'returned') {
+        sales += amt;
+      }
+      const st = String(inv.status || '').toLowerCase();
+      if (st === 'pending' || st === 'khata' || st === 'pay_later' || st === 'unpaid' || st === 'draft') {
+        outstanding += amt;
+        pending += 1;
+      }
+    });
+
+    return { totalSales: sales, totalOutstanding: outstanding, pendingCount: pending };
+  }, [filteredInvoices]);
+
+  const lowStockCount = useMemo(() => {
+    return products.data.filter((p) => (Number(p.stock_quantity) || 0) <= (Number(p.min_stock_level) || 5)).length;
+  }, [products.data]);
+
+  const recentInvoices = useMemo(() => filteredInvoices.slice(0, 5), [filteredInvoices]);
+
+  // Sort products by lowest stock quantity first
+  const stockWatchProducts = useMemo(() => {
+    if (!products.data || products.data.length === 0) return [];
+    const activeProducts = products.data.filter((p) => p.is_active !== false && p.is_active !== 'false');
+    const sorted = [...activeProducts].sort((a, b) => {
+      const qtyA = Number(a.stock_quantity ?? 0);
+      const qtyB = Number(b.stock_quantity ?? 0);
+      return qtyA - qtyB;
+    });
+    return sorted.slice(0, 5);
+  }, [products.data]);
+
+  const session = auth.session();
+  const userMeta = session?.user?.user_metadata || {};
+  const userName = profile?.full_name || userMeta.full_name || userMeta.name || (session?.user?.email ? session.user.email.split('@')[0] : 'there');
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Today at a glance"
+        title={`Good morning, ${userName}.`}
+        description="A clear view of what needs your attention."
+        actionLabel="New invoice"
+        actionHref="/invoices/new"
+        extraAction={
+          <DashboardDateFilter
+            datePreset={datePreset}
+            setDatePreset={setDatePreset}
+            startDate={startDate}
+            setStartDate={setStartDate}
+            endDate={endDate}
+            setEndDate={setEndDate}
+          />
+        }
+      />
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+        <Metric
+          icon={CircleDollarSign}
+          label="Sales"
+          value={`₹${totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          hint={filteredInvoices.length ? `${filteredInvoices.length} invoice${filteredInvoices.length === 1 ? '' : 's'} in period` : 'No sales in period'}
+          href="/invoices"
+        />
+        <Metric
+          icon={Receipt}
+          label="Outstanding"
+          value={`₹${totalOutstanding.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          hint={pendingCount ? `${pendingCount} invoice${pendingCount === 1 ? '' : 's'} awaiting payment` : 'All invoices paid'}
+          href="/khatabook?filter=receive"
+        />
+        <Metric
+          icon={Users}
+          label="Customers"
+          value={String(customers.data.length)}
+          hint={customers.data.length ? `${customers.data.length} registered customer${customers.data.length === 1 ? '' : 's'}` : 'Your customer base'}
+          href="/customers"
+        />
+        <Metric
+          icon={Boxes}
+          label="Low stock"
+          value={String(lowStockCount)}
+          hint={lowStockCount ? `${lowStockCount} item${lowStockCount === 1 ? '' : 's'} to replenish` : 'All items well stocked'}
+          href="/products"
+        />
+      </div>
+
+      <div className="mt-6 grid gap-6 xl:grid-cols-[1.35fr_1fr]">
+        <section className="card-shell overflow-hidden animate-rise delay-1">
+          <div className="flex items-center justify-between border-b border-border/70 px-5 py-4">
+            <div>
+              <h3 className="text-sm font-extrabold">Recent invoices</h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">The latest movement in your books.</p>
+            </div>
+            <Link href="/invoices" className="text-xs font-bold text-primary no-underline" data-testid="link-view-invoices">
+              View all <ArrowRight className="ml-1 inline" size={13} />
+            </Link>
+          </div>
+          <State {...invoices}>
+            {recentInvoices.length ? (
+              <div className="divide-y divide-border/70">
+                {recentInvoices.map((row, index) => (
+                  <InvoiceRow key={row.id || index} row={row} customerName={customerMap.get(row.customer_id)} />
+                ))}
+              </div>
+            ) : (
+              <Empty
+                icon={FileText}
+                title="No invoices yet"
+                description="Create your first invoice to see sales activity here."
+                actionLabel="Create invoice"
+                action={() => window.location.assign('/invoices/new')}
+              />
+            )}
+          </State>
+        </section>
+
+        <section className="card-shell overflow-hidden animate-rise delay-2">
+          <div className="flex items-center justify-between border-b border-border/70 px-5 py-4">
+            <div>
+              <h3 className="text-sm font-extrabold flex items-center gap-2">
+                <span>Stock watch</span>
+                {lowStockCount > 0 && (
+                  <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-extrabold text-destructive border border-destructive/25">
+                    {lowStockCount} Low
+                  </span>
+                )}
+              </h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">Items with lowest stock / needing replenishment.</p>
+            </div>
+            <Link href="/products" className="text-xs font-bold text-primary no-underline" data-testid="link-view-products">
+              Inventory <ArrowRight className="ml-1 inline" size={13} />
+            </Link>
+          </div>
+          <State {...products}>
+            {stockWatchProducts.length ? (
+              stockWatchProducts.map((p, index) => {
+                const qty = Number(p.stock_quantity ?? 0);
+                const minQty = Number(p.min_stock_level ?? 5);
+                const isOutOfStock = qty <= 0;
+                const isLow = qty <= minQty;
+
+                return (
+                  <div className="flex items-center justify-between border-b border-border/70 px-5 py-3.5 last:border-0 hover:bg-muted/30 transition-colors" key={p.id || index}>
+                    <div className="min-w-0 pr-3">
+                      <div className="text-xs font-extrabold text-foreground truncate">{p.name}</div>
+                      <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-2">
+                        {p.sku ? <span>SKU: {p.sku}</span> : null}
+                        <span>Price: ₹{Number(p.selling_price || p.price || 0).toFixed(2)}</span>
+                      </div>
+                    </div>
+                    <span className={`shrink-0 rounded-lg px-2.5 py-1 text-xs font-extrabold whitespace-nowrap ${
+                      isOutOfStock
+                        ? 'bg-destructive/15 text-destructive border border-destructive/30'
+                        : isLow
+                        ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30'
+                        : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20'
+                    }`}>
+                      {isOutOfStock ? '0 Out of stock' : `${qty} ${p.unit || 'units'}`}
+                    </span>
+                  </div>
+                );
+              })
+            ) : (
+              <Empty
+                icon={Package}
+                title="Inventory is ready"
+                description="Add products to keep a live view of your stock."
+                actionLabel="Add product"
+                action={() => window.location.assign('/products')}
+              />
+            )}
+          </State>
+        </section>
+      </div>
+    </>
+  );
 }
 
-function InvoiceRow({ row }: { row: Row }) {
+function InvoiceRow({ row, customerName }: { row: Row; customerName?: string }) {
   const timeMatch = row.notes?.match(/Time:\s*([0-9:]+\s*(?:AM|PM)?)/i);
   const timeStr = timeMatch ? ` at ${timeMatch[1]}` : '';
+  const displayName = customerName || row.customer_name || (row.customer_id ? 'Customer' : 'Walk-in customer');
+
   return (
     <Link href={`/invoices/${row.id}`} className="flex items-center justify-between gap-3 px-5 py-4 transition-colors hover:bg-muted/40 no-underline text-inherit block cursor-pointer" data-testid={`row-invoice-${row.id}`}>
       <div className="min-w-0">
@@ -1053,11 +1427,11 @@ function InvoiceRow({ row }: { row: Row }) {
           <span className="text-[10px] text-primary">→</span>
         </div>
         <div className="mt-1 truncate text-xs text-muted-foreground">
-          {row.customer_id ? 'Customer linked' : 'Walk-in customer'} · {row.issue_date ? `${row.issue_date}${timeStr}` : 'No issue date'}
+          <span className="font-semibold text-foreground">{displayName}</span> · {row.issue_date ? `${row.issue_date}${timeStr}` : 'No issue date'}
         </div>
       </div>
       <div className="text-right">
-        <div className="mono text-sm font-bold">{row.total != null ? Number(row.total).toFixed(2) : '—'} <span className="text-[10px] text-muted-foreground">{row.currency || 'INR'}</span></div>
+        <div className="mono text-sm font-bold">₹{row.total != null ? Number(row.total).toFixed(2) : '0.00'} <span className="text-[10px] text-muted-foreground">{row.currency || 'INR'}</span></div>
       </div>
     </Link>
   );
@@ -3948,21 +4322,6 @@ function InvoiceDetail() {
   const fromCustomer = searchParams.get('fromCustomer');
   const backLink = fromCustomer ? `/customers?view=${fromCustomer}` : '/invoices';
 
-  const [sendingEmail, setSendingEmail] = useState(false);
-
-  const handleSendEmail = async () => {
-    if (!invoice?.id) return;
-    setSendingEmail(true);
-    try {
-      const res = await emailApi.sendInvoice(invoice.id);
-      toast.success(res.message || 'Invoice email sent successfully via Nodemailer!');
-    } catch (err: any) {
-      toast.error(getSupabaseErrorMessage(err, 'Could not send invoice email. Please check your SMTP configuration in Settings.'));
-    } finally {
-      setSendingEmail(false);
-    }
-  };
-
   return (
     <div className={`mx-auto pb-16 print:max-w-full print:p-0 ${isThermal ? 'max-w-md' : 'max-w-2xl'}`}>
       {/* Top Action Toolbar */}
@@ -4002,8 +4361,8 @@ function InvoiceDetail() {
           </div>
         </div>
 
-        {/* Top Action Buttons */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        {/* Top 2 Vertically Stacked Action Buttons */}
+        <div className="flex flex-col gap-1.5 w-28 shrink-0">
           <button
             onClick={handlePrint}
             className="btn-primary flex items-center justify-center gap-1.5 rounded-lg py-1.5 px-3 text-xs font-bold shadow-xs cursor-pointer"
@@ -4020,16 +4379,6 @@ function InvoiceDetail() {
           >
             <ArrowDownToLine size={13} className="text-primary" />
             <span>Download</span>
-          </button>
-
-          <button
-            onClick={handleSendEmail}
-            disabled={sendingEmail}
-            className="flex items-center justify-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 py-1.5 px-3 text-xs font-bold text-primary shadow-xs transition-all cursor-pointer disabled:opacity-50"
-            data-testid="button-email-invoice"
-          >
-            <Mail size={13} />
-            <span>{sendingEmail ? 'Sending…' : 'Send Email'}</span>
           </button>
         </div>
       </div>
@@ -6398,7 +6747,6 @@ function SimpleList({ kind }: { kind: 'purchases' | 'expenses' }) {
 }
 
 function Settings() {
-  const [activeSection, setActiveSection] = useState<'general' | 'email' | 'platform'>('general');
   const [form, setForm] = useState({
     name: '',
     owner_name: '',
@@ -6793,50 +7141,8 @@ function Settings() {
       <PageHeader
         eyebrow="Workspace controls"
         title="Settings"
-        description="Shape invoices, email notifications, and business details around the way you work."
+        description="Shape invoices and business details around the way you work."
       />
-
-      {/* Settings Navigation Tabs */}
-      <div className="mb-6 flex items-center gap-2 border-b border-border/60 pb-3">
-        <button
-          type="button"
-          onClick={() => setActiveSection('general')}
-          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
-            activeSection === 'general'
-              ? 'bg-primary text-primary-foreground shadow-xs'
-              : 'border border-border/80 bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
-          }`}
-          data-testid="tab-settings-general"
-        >
-          <Building2 size={15} /> Business & Tax Profile
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveSection('email')}
-          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
-            activeSection === 'email'
-              ? 'bg-primary text-primary-foreground shadow-xs'
-              : 'border border-border/80 bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
-          }`}
-          data-testid="tab-settings-email"
-        >
-          <Mail size={15} /> Email Settings & Display Name
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveSection('platform')}
-          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
-            activeSection === 'platform'
-              ? 'bg-primary text-primary-foreground shadow-xs'
-              : 'border border-border/80 bg-card text-muted-foreground hover:bg-muted hover:text-foreground'
-          }`}
-          data-testid="tab-settings-platform"
-        >
-          <Smartphone size={15} /> Platform & Server URL
-        </button>
-      </div>
 
       {error && (
         <div className="mb-6 rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-xs font-semibold text-destructive">
@@ -6844,15 +7150,7 @@ function Settings() {
         </div>
       )}
 
-      {activeSection === 'platform' ? (
-        <div className="max-w-3xl">
-          <ServerPlatformSection />
-        </div>
-      ) : activeSection === 'email' ? (
-        <div className="max-w-3xl">
-          <EmailSettingsSection defaultBusinessName={form.name} />
-        </div>
-      ) : loading ? (
+      {loading ? (
         <div className="max-w-3xl">
           <div className="card-shell p-5 sm:p-7 space-y-4">
             <div className="skeleton h-6 w-36 rounded-md" />
@@ -7736,10 +8034,10 @@ function Home() {
 }
 
 function useAppLocation(options?: any): [string, (to: string, options?: { replace?: boolean }) => void] {
-  const shouldUseHash = isDesktopOrFile() || isCapacitor();
+  const isDesktopOrFile = typeof window !== 'undefined' && (window.location.protocol === 'file:' || !!window.electronAPI?.isElectron);
   const hashLoc = useHashLocation(options);
   const browserLoc = useBrowserLocation(options);
-  return shouldUseHash ? hashLoc : browserLoc;
+  return isDesktopOrFile ? hashLoc : browserLoc;
 }
 
 function RoutedErrorBoundary({ children }: { children: ReactNode }) { const [location] = useAppLocation(); return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>; }
@@ -7777,12 +8075,7 @@ function Router() {
 }
 
 function App() {
-  const shouldUseHash = isDesktopOrFile() || isCapacitor();
-
-  useEffect(() => {
-    // Initialize native mobile services (Capacitor status bar, back button, splash screen, network)
-    mobileService.init();
-  }, []);
+  const isDesktopOrFile = typeof window !== 'undefined' && (window.location.protocol === 'file:' || !!window.electronAPI?.isElectron);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -7790,7 +8083,7 @@ function App() {
         <DesktopTitlebar />
         <WouterRouter
           hook={useAppLocation}
-          base={shouldUseHash ? undefined : import.meta.env.BASE_URL?.replace(/\/$/, '') || ''}
+          base={isDesktopOrFile ? undefined : import.meta.env.BASE_URL?.replace(/\/$/, '') || ''}
         >
           <Router />
         </WouterRouter>

@@ -89,32 +89,6 @@ export async function initDb(): Promise<boolean> {
         `);
       } catch (e) {}
 
-      try {
-        await connection.query(`
-          CREATE TABLE IF NOT EXISTS email_settings (
-            id VARCHAR(36) PRIMARY KEY,
-            business_id VARCHAR(36) NOT NULL UNIQUE,
-            display_name VARCHAR(160) NOT NULL DEFAULT '',
-            smtp_host VARCHAR(255) DEFAULT '',
-            smtp_port INT DEFAULT 587,
-            smtp_secure TINYINT(1) DEFAULT 0,
-            smtp_user VARCHAR(255) DEFAULT '',
-            smtp_pass VARCHAR(255) DEFAULT '',
-            from_email VARCHAR(255) DEFAULT '',
-            invoice_email_subject VARCHAR(255) DEFAULT '',
-            invoice_email_template TEXT,
-            receipt_email_subject VARCHAR(255) DEFAULT '',
-            receipt_email_template TEXT,
-            reminder_email_subject VARCHAR(255) DEFAULT '',
-            reminder_email_template TEXT,
-            auto_send_invoice TINYINT(1) DEFAULT 0,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
-          );
-        `);
-      } catch (e) {}
-
       console.log('[MySQL] Database tables initialized/verified');
     }
     connection.release();

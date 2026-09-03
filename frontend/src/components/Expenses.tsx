@@ -404,41 +404,86 @@ export function Expenses() {
         <p className="text-xs text-muted-foreground mt-0.5">Track daily store expenditures, labor wages, rent, freight, tea, and overheads.</p>
       </div>
 
-      {/* TOP DATE FILTER BAR - From Date (1st of Current Month) to To Date (Today) */}
-      <div className="card-shell p-3.5 sm:p-4 bg-card border border-border/80 shadow-sm space-y-3">
-        <div className="flex items-center gap-2">
-          <div className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary">
-            <CalendarDays size={15} />
+      {/* COMPACT INLINE DATE FILTER BAR */}
+      <div className="card-shell p-2.5 sm:px-4 sm:py-3 bg-card border border-border/80 shadow-xs flex flex-wrap items-center gap-3 sm:gap-4">
+        {/* Title Badge */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary shrink-0">
+            <CalendarDays size={14} />
           </div>
-          <span className="text-xs font-extrabold text-foreground">Date Range Filter</span>
+          <span className="text-xs font-extrabold text-foreground whitespace-nowrap">Date Filter</span>
         </div>
 
-        {/* Date Inputs: From Date to To Date */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1 border-t border-border/50">
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold text-muted-foreground w-12 shrink-0">From:</span>
-            <div className="relative flex-1">
-              <Calendar size={13} className="absolute left-2.5 top-2.5 text-primary" />
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="input-shell w-full pl-8 pr-2.5 py-1.5 text-xs font-semibold"
-              />
-            </div>
+        <div className="h-4 w-px bg-border/60 hidden sm:block shrink-0" />
+
+        {/* Quick Presets */}
+        <div className="flex items-center gap-1 bg-muted/40 p-1 rounded-xl border border-border/50 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              setStartDate(getFirstDayOfCurrentMonth());
+              setEndDate(getTodayDate());
+            }}
+            className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
+              startDate === getFirstDayOfCurrentMonth() && endDate === getTodayDate()
+                ? 'bg-primary text-primary-foreground font-bold shadow-xs'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            This Month
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setStartDate(getTodayDate());
+              setEndDate(getTodayDate());
+            }}
+            className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
+              startDate === getTodayDate() && endDate === getTodayDate()
+                ? 'bg-primary text-primary-foreground font-bold shadow-xs'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Today
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setStartDate('');
+              setEndDate('');
+            }}
+            className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
+              !startDate && !endDate
+                ? 'bg-primary text-primary-foreground font-bold shadow-xs'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            All
+          </button>
+        </div>
+
+        <div className="h-4 w-px bg-border/60 hidden md:block shrink-0" />
+
+        {/* Date Inputs */}
+        <div className="flex flex-wrap items-center gap-2.5 text-xs">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">From</span>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="input-shell px-2.5 py-1 text-xs font-semibold rounded-lg text-foreground bg-background border border-border/70 focus:border-primary focus:ring-1 focus:ring-primary/20 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-70 [&::-webkit-calendar-picker-indicator]:hover:opacity-100"
+            />
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold text-muted-foreground w-12 shrink-0">To:</span>
-            <div className="relative flex-1">
-              <Calendar size={13} className="absolute left-2.5 top-2.5 text-primary" />
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="input-shell w-full pl-8 pr-2.5 py-1.5 text-xs font-semibold"
-              />
-            </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">To</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="input-shell px-2.5 py-1 text-xs font-semibold rounded-lg text-foreground bg-background border border-border/70 focus:border-primary focus:ring-1 focus:ring-primary/20 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-70 [&::-webkit-calendar-picker-indicator]:hover:opacity-100"
+            />
           </div>
         </div>
       </div>

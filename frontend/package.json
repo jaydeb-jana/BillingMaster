@@ -20,7 +20,9 @@
     "cap:add:android": "cap add android",
     "cap:open:android": "cap open android",
     "cap:build:android": "npm run build && cap sync android",
-    "mobile:dev": "npm run build && cap sync && cap open android"
+    "mobile:dev": "npm run build && cap sync && cap open android",
+    "assets:generate": "node scripts/generate-mobile-assets.cjs",
+    "apk:debug": "npm run cap:build:android && cd android && gradlew.bat assembleDebug"
   },
   "devDependencies": {
     "@electron/packager": "^20.3.0",
