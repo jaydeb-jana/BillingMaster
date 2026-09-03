@@ -1,0 +1,1 @@
+- [Supabase serverless billing](supabase-serverless.md) — keep business isolation in RLS and multi-table financial invariants in PostgreSQL RPCs.

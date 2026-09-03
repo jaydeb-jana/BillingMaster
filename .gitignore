@@ -1,0 +1,69 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Production & Build outputs
+dist/
+**/dist/
+build/
+**/build/
+out/
+**/out/
+
+# Electron packaging outputs
+release/
+**/release/
+release-app/
+**/release-app/
+
+# Environment variables & Secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# TypeScript & Compiler caches
+*.tsbuildinfo
+**/*.tsbuildinfo
+.cache/
+**/.cache/
+.vite/
+**/.vite/
+.eslintcache
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Operating System files
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDEs & Code Editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Platform & Tool Artifacts
+.replit-artifact/
+**/.replit-artifact/
+
+# Mobile / Capacitor build outputs
+frontend/android/app/build/
+frontend/android/.gradle/
+frontend/android/captures/
+frontend/android/local.properties

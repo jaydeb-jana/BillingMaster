@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Production builds & packaging
+dist/
+build/
+out/
+release/
+release-app/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Caches & Temp files
+*.tsbuildinfo
+.cache/
+.vite/
+.replit-artifact/
+
+# Logs
+*.log
+
+# Mobile / Android build outputs
+android/app/build/
+android/.gradle/
+android/captures/
+android/local.properties
