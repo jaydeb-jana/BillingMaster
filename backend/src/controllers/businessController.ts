@@ -39,10 +39,28 @@ export async function createBusiness(req: AuthRequest, res: Response) {
     const cleanCurrency = (business_currency || 'INR').trim().toUpperCase();
     const cleanMemberName = (member_name || req.user.email).trim();
 
-    // 1. Insert business
+    // Generate unique catalog handle/slug
+    let baseSlug = cleanName.toLowerCase().replace(/[^a-z0-9_-]/g, '').trim();
+    if (baseSlug.length < 3) {
+      const shortId = businessId.replace(/[^a-zA-Z0-9]/g, '').slice(-6).toLowerCase();
+      baseSlug = `store-${shortId}`;
+    }
+
+    let finalSlug = baseSlug;
+    let counter = 1;
+    while (true) {
+      const [dup]: any = await connection.query(
+        'SELECT id FROM businesses WHERE LOWER(catalog_slug) = ? OR LOWER(catalog_handle) = ? LIMIT 1',
+        [finalSlug, finalSlug]
+      );
+      if (!Array.isArray(dup) || dup.length === 0) break;
+      finalSlug = `${baseSlug}-${counter++}`;
+    }
+
+    // 1. Insert business with catalog_slug and catalog_handle
     await connection.query(
-      'INSERT INTO businesses (id, name, currency) VALUES (?, ?, ?)',
-      [businessId, cleanName, cleanCurrency]
+      'INSERT INTO businesses (id, name, currency, catalog_slug, catalog_handle) VALUES (?, ?, ?, ?, ?)',
+      [businessId, cleanName, cleanCurrency, finalSlug, finalSlug]
     );
 
     // 2. Insert profile
@@ -71,3 +89,47 @@ export async function createBusiness(req: AuthRequest, res: Response) {
     res.status(500).json({ error: err.message || 'Failed to create business' });
   }
 }
+
+export async function checkCatalogHandle(req: AuthRequest, res: Response) {
+  try {
+    const rawHandle = String(req.query.handle || '').trim().toLowerCase();
+    const excludeId = String(req.query.excludeId || req.query.exclude_id || '').trim();
+    const cleanHandle = rawHandle.replace(/[^a-z0-9_-]/g, '');
+
+    if (!cleanHandle || cleanHandle.length < 3) {
+      res.status(400).json({ available: false, error: 'Catalog handle must be at least 3 characters long.' });
+      return;
+    }
+
+    const [existing]: any = await pool.query(
+      `SELECT id, name FROM businesses WHERE id != ? AND (
+        LOWER(catalog_slug) = ? OR 
+        LOWER(catalog_handle) = ?
+      ) LIMIT 1`,
+      [excludeId || '', cleanHandle, cleanHandle]
+    );
+
+    if (Array.isArray(existing) && existing.length > 0) {
+      const [allRows]: any = await pool.query('SELECT catalog_slug, catalog_handle FROM businesses');
+      const takenSet = new Set(
+        (Array.isArray(allRows) ? allRows : []).map((r: any) => String(r.catalog_slug || r.catalog_handle || '').toLowerCase())
+      );
+      const candidates = [`${cleanHandle}-1`, `${cleanHandle}-store`, `${cleanHandle}-official`, `${cleanHandle}-shop`].filter(
+        c => !takenSet.has(c)
+      );
+      res.json({
+        available: false,
+        takenBy: existing[0].name,
+        suggestedHandles: candidates.slice(0, 3),
+        message: `The catalog handle "${cleanHandle}" is already taken by another store ("${existing[0].name}").`
+      });
+      return;
+    }
+
+    res.json({ available: true, handle: cleanHandle });
+  } catch (err: any) {
+    console.error('Check catalog handle error:', err);
+    res.status(500).json({ error: err.message || 'Failed to check catalog handle availability' });
+  }
+}
+

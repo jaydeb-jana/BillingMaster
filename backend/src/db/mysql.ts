@@ -73,7 +73,28 @@ export async function initDb(): Promise<boolean> {
         await connection.query(`ALTER TABLE businesses ADD COLUMN employees VARCHAR(50);`);
       } catch (e) {}
       try {
+        await connection.query(`ALTER TABLE businesses ADD COLUMN catalog_slug VARCHAR(255);`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE businesses ADD COLUMN catalog_handle VARCHAR(255);`);
+      } catch (e) {}
+      try {
         await connection.query(`ALTER TABLE settings ADD COLUMN id VARCHAR(36);`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE settings ADD COLUMN show_sales_rate BOOLEAN DEFAULT TRUE;`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE settings ADD COLUMN show_barcodes BOOLEAN DEFAULT TRUE;`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE settings ADD COLUMN location_radius_km INT DEFAULT NULL;`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE settings ADD COLUMN store_lat DECIMAL(10,8) DEFAULT NULL;`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE settings ADD COLUMN store_lng DECIMAL(11,8) DEFAULT NULL;`);
       } catch (e) {}
       try {
         await connection.query(`
@@ -93,6 +114,61 @@ export async function initDb(): Promise<boolean> {
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
           );
         `);
+      } catch (e) {}
+
+      // Backfill missing/duplicate catalog_slug / catalog_handle for existing businesses
+      try {
+        const [allBizes]: any = await connection.query(
+          "SELECT b.id, b.name, b.email, b.catalog_slug, b.catalog_handle, p.full_name FROM businesses b LEFT JOIN profiles p ON p.business_id = b.id"
+        );
+        if (Array.isArray(allBizes) && allBizes.length > 0) {
+          const usedSlugs = new Set<string>();
+          for (const biz of allBizes) {
+            let handle = String(biz.catalog_slug || biz.catalog_handle || '').trim().toLowerCase();
+            const baseStr = (biz.name || biz.full_name || (biz.email ? biz.email.split('@')[0] : '') || 'store').toLowerCase();
+            let clean = baseStr.replace(/[^a-z0-9_-]/g, '').trim();
+            if (clean.length < 3) {
+              const shortId = String(biz.id).replace(/[^a-zA-Z0-9]/g, '').slice(-6).toLowerCase();
+              clean = `store-${shortId}`;
+            }
+
+            if (!handle || handle.length < 3 || usedSlugs.has(handle)) {
+              let candidate = handle && handle.length >= 3 ? handle : clean;
+              let counter = 1;
+              while (usedSlugs.has(candidate)) {
+                candidate = `${clean}-${counter++}`;
+              }
+              handle = candidate;
+              await connection.query(
+                "UPDATE businesses SET catalog_slug = ?, catalog_handle = ? WHERE id = ?",
+                [handle, handle, biz.id]
+              );
+            }
+            usedSlugs.add(handle);
+          }
+        }
+      } catch (e) {}
+
+      // Add unique indexes for catalog_slug and catalog_handle
+      try {
+        await connection.query("ALTER TABLE businesses ADD UNIQUE INDEX idx_businesses_catalog_slug (catalog_slug);");
+      } catch (e) {}
+      try {
+        await connection.query("ALTER TABLE businesses ADD UNIQUE INDEX idx_businesses_catalog_handle (catalog_handle);");
+      } catch (e) {}
+
+      // Backfill missing/empty SKUs in products table to resolve UNIQUE constraint conflicts
+      try {
+        const [emptySkuProducts]: any = await connection.query(
+          "SELECT id FROM products WHERE sku IS NULL OR TRIM(sku) = '' OR sku = '0'"
+        );
+        if (Array.isArray(emptySkuProducts) && emptySkuProducts.length > 0) {
+          for (const p of emptySkuProducts) {
+            const cleanId = String(p.id).replace(/[^a-zA-Z0-9]/g, '').slice(0, 8);
+            const autoSku = `AUTOSKU-${cleanId.toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+            await connection.query("UPDATE products SET sku = ? WHERE id = ?", [autoSku, p.id]);
+          }
+        }
       } catch (e) {}
 
       console.log('[MySQL] Database tables initialized/verified');

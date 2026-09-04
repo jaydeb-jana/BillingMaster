@@ -1,0 +1,35 @@
+import { useEffect } from 'react';
+
+/**
+ * Resets window and element scroll positions to top when a trigger changes or component mounts.
+ */
+export function useScrollReset(trigger?: any) {
+  useEffect(() => {
+    // Reset window and document scroll
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+
+    // Reset container element scroll for modals and dialogs
+    const timer = setTimeout(() => {
+      window.scrollTo(0, 0);
+      const scrollables = document.querySelectorAll(
+        '.card-shell, .overflow-y-auto, .overflow-auto, [role="dialog"], [data-radix-scroll-area-viewport], main'
+      );
+      scrollables.forEach((el) => {
+        el.scrollTop = 0;
+      });
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, [trigger]);
+}
+
+/**
+ * Callback ref to attach to scrollable modal elements to guarantee scrollTop = 0 on mount.
+ */
+export function resetScrollRef(el: HTMLElement | null) {
+  if (el) {
+    el.scrollTop = 0;
+  }
+}

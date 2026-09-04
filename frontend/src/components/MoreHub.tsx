@@ -10,7 +10,8 @@ import {
   BarChart3, Layers, Users, Package, Box, Filter, LayoutTemplate,
   FileSpreadsheet
 } from 'lucide-react';
-import { db, auth } from '@/lib/api';
+import { db, auth, getBusinessId } from '@/lib/api';
+import { useScrollReset, resetScrollRef } from '@/lib/useScrollReset';
 import { toast } from 'sonner';
 import { useLocation } from 'wouter';
 import { HelpCenterModal } from '@/components/HelpCenterModal';
@@ -141,6 +142,7 @@ export const SAMPLE_RECYCLE_BIN_ITEMS: DeletedItem[] = [
 export function MoreHub({ onNavigate }: MoreHubProps) {
   const [, setLocation] = useLocation();
   const [activeModal, setActiveModal] = useState<string | null>(null);
+  useScrollReset(activeModal);
 
   const [business, setBusiness] = useState<any | null>(null);
   
@@ -262,9 +264,11 @@ export function MoreHub({ onNavigate }: MoreHubProps) {
     let active = true;
     async function loadBiz() {
       try {
-        const bizes = await db.list('businesses', {});
+        const activeBid = await getBusinessId();
+        const bizes = await db.list('businesses', activeBid ? { id: activeBid } : {});
         if (active && bizes.length > 0) {
-          setBusiness(bizes[0]);
+          const matched = bizes.find((b: any) => activeBid && String(b.id) === String(activeBid)) || bizes[0];
+          setBusiness(matched);
         }
       } catch (e) {}
     }

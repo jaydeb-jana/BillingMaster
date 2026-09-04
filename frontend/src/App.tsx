@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import domtoimage from 'dom-to-image';
 import jsPDF from 'jspdf';
@@ -6,8 +6,8 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { auth, db, getBusinessId, setCurrentBusinessId, supabase, supabaseConfigured, getSupabaseErrorMessage, getProductBarcode, generateInternalSku, getProductUniqueId } from '@/lib/api';
+import { useScrollReset, resetScrollRef } from '@/lib/useScrollReset';
 import { Link, Route, Switch, Router as WouterRouter, useLocation, useParams } from 'wouter';
 import { useHashLocation } from 'wouter/use-hash-location';
 import { useBrowserLocation } from 'wouter/use-browser-location';
@@ -111,6 +111,129 @@ function useTable<T extends Row>(table: string, query: Record<string, string | n
   };
   useEffect(() => { void load(); }, [table, queryKey]);
   return { data, loading, error, reload: load, setData };
+}
+
+function usePaginatedTable<T extends Row>(
+  table: string,
+  baseQuery: Record<string, any> = {},
+  pageSize: number = 40
+) {
+  const [data, setData] = useState<T[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [offset, setOffset] = useState(0);
+  const [search, setSearch] = useState('');
+  const [error, setError] = useState('');
+
+  const baseQueryKey = JSON.stringify(baseQuery);
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    setOffset(0);
+    try {
+      const queryPayload: Record<string, any> = {
+        ...baseQuery,
+        limit: pageSize,
+        offset: 0,
+      };
+      if (search.trim()) queryPayload.search = search.trim();
+
+      const items = await db.list<T>(table, queryPayload);
+      setData(items);
+      setHasMore(items.length >= pageSize);
+    } catch (e) {
+      setError(getSupabaseErrorMessage(e, 'Could not load data.'));
+    } finally {
+      setLoading(false);
+    }
+  }, [table, baseQueryKey, search, pageSize]);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  const loadMore = useCallback(async () => {
+    if (loading || loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    const nextOffset = offset + pageSize;
+    try {
+      const queryPayload: Record<string, any> = {
+        ...baseQuery,
+        limit: pageSize,
+        offset: nextOffset,
+      };
+      if (search.trim()) queryPayload.search = search.trim();
+
+      const newItems = await db.list<T>(table, queryPayload);
+      if (newItems.length > 0) {
+        setData((prev) => {
+          const existingIds = new Set(prev.map((i) => i.id));
+          const uniqueNew = newItems.filter((i) => !existingIds.has(i.id));
+          return [...prev, ...uniqueNew];
+        });
+        setOffset(nextOffset);
+        setHasMore(newItems.length >= pageSize);
+      } else {
+        setHasMore(false);
+      }
+    } catch (e) {
+      console.warn('Error loading more paginated data:', e);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [table, baseQueryKey, search, pageSize, offset, loading, loadingMore, hasMore]);
+
+  return {
+    data,
+    loading,
+    loadingMore,
+    hasMore,
+    search,
+    setSearch,
+    loadMore,
+    reload,
+    setData,
+    error,
+  };
+}
+
+function InfiniteScrollSentinel({ onIntersect, hasMore, loadingMore }: { onIntersect: () => void; hasMore: boolean; loadingMore: boolean }) {
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!hasMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          onIntersect();
+        }
+      },
+      { rootMargin: '400px' }
+    );
+
+    if (sentinelRef.current) {
+      observer.observe(sentinelRef.current);
+    }
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [onIntersect, hasMore]);
+
+  if (!hasMore) return null;
+
+  return (
+    <div ref={sentinelRef} className="py-4 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+      {loadingMore && (
+        <>
+          <RefreshCw size={14} className="animate-spin text-primary" />
+          <span>Loading more records seamlessly...</span>
+        </>
+      )}
+    </div>
+  );
 }
 
 const navItems: { href: string; label: string; icon: Icon }[] = [
@@ -1474,13 +1597,13 @@ function InvoiceRow({ row, customerName }: { row: Row; customerName?: string }) 
 }
 
 function Invoices() {
-  const [search, setSearch] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [deleteInvoiceData, setDeleteInvoiceData] = useState<Row | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const invoices = useTable<Row>('invoices', { order: 'issue_date.desc' });
-  const customers = useTable<Row>('customers');
+  const invoices = usePaginatedTable<Row>('invoices', { order: 'created_at.desc' }, 40);
+  const customers = useTable<Row>('customers', { limit: 200 });
+  const search = invoices.search;
 
   const customerMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -1490,24 +1613,7 @@ function Invoices() {
     return map;
   }, [customers.data]);
 
-  const filtered = useMemo(
-    () =>
-      invoices.data
-        .filter((item) =>
-          `${item.invoice_number || ''} ${item.status || ''} ${customerMap.get(item.customer_id) || ''}`
-            .toLowerCase()
-            .includes(search.toLowerCase())
-        )
-        .sort((a, b) => {
-          const timeA = new Date(a.created_at || a.created_time || a.issue_date || 0).getTime();
-          const timeB = new Date(b.created_at || b.created_time || b.issue_date || 0).getTime();
-          if (timeA !== timeB) return timeB - timeA;
-          const numA = parseInt(String(a.invoice_number || '').replace(/\D/g, ''), 10) || 0;
-          const numB = parseInt(String(b.invoice_number || '').replace(/\D/g, ''), 10) || 0;
-          return numB - numA;
-        }),
-    [invoices.data, search, customerMap]
-  );
+  const filtered = invoices.data;
 
   const handleDeleteInvoice = async () => {
     if (!deleteInvoiceData) return;
@@ -1529,7 +1635,7 @@ function Invoices() {
     <div className="mb-4 flex flex-col gap-3 sm:flex-row">
       <div className="relative flex-1">
         <Search className="absolute left-3 top-3 text-muted-foreground" size={17} />
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search invoice number or customer" className="input-shell w-full pl-10 pr-3 text-sm" data-testid="input-search-invoices" />
+        <input value={search} onChange={(e) => invoices.setSearch(e.target.value)} placeholder="Search invoice number or customer" className="input-shell w-full pl-10 pr-3 text-sm" data-testid="input-search-invoices" />
       </div>
       <button className="input-shell inline-flex items-center justify-center gap-2 px-3 text-xs font-bold text-muted-foreground hover:text-foreground" data-testid="button-filter-invoices"><SlidersHorizontal size={15} /> Filters</button>
     </div>
@@ -1629,6 +1735,7 @@ function Invoices() {
           <Empty icon={FileText} title={search ? 'No invoices match' : 'Your invoice list is clear'} description={search ? 'Try another search term.' : 'Invoices created in the workspace will appear here.'} actionLabel={!search ? 'Create invoice' : undefined} action={() => window.location.assign('/invoices/new')} />
         )}
       </State>
+      <InfiniteScrollSentinel onIntersect={invoices.loadMore} hasMore={invoices.hasMore} loadingMore={invoices.loadingMore} />
     </section>
     
     {/* Delete Invoice Modal */}
@@ -5345,10 +5452,12 @@ function InvoiceDetail() {
 }
 
 function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
-  const table = useTable<Row>(kind, { order: 'name.asc' });
-  const allInvoicesTable = useTable<Row>('invoices', kind === 'customers' ? { order: 'issue_date.desc' } : {});
+  const paginatedTable = usePaginatedTable<Row>(kind, { order: 'name.asc' }, 40);
+  const table = paginatedTable;
+  const allInvoicesTable = useTable<Row>('invoices', kind === 'customers' ? { limit: 100, order: 'created_at.desc' } : { limit: 50 });
   const [, setLocation] = useLocation();
-  const [search, setSearch] = useState('');
+  const search = paginatedTable.search;
+  const setSearch = paginatedTable.setSearch;
   const [showModal, setShowModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showBarcodeModal, setShowBarcodeModal] = useState(false);
@@ -5378,16 +5487,7 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
     }
   }, [isCustomer, table.data]);
 
-  const filtered = useMemo(() => {
-    return table.data
-      .filter((r) => {
-        const rBarcode = isCustomer ? '' : getProductBarcode(r);
-        const rProdId = isCustomer ? '' : getProductUniqueId(r);
-        const queryStr = `${r.name || ''} ${r.email || ''} ${r.phone || ''} ${rBarcode} ${rProdId} ${r.description || ''} ${r.notes || ''} ${r.type || ''}`.toLowerCase();
-        return queryStr.includes(search.toLowerCase());
-      })
-      .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
-  }, [table.data, search, isCustomer]);
+  const filtered = table.data;
 
   const openBarcodeVerifier = (target: Row | null = null, code = '') => {
     setBarcodeTargetProduct(target);
@@ -5411,6 +5511,7 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
       return_window_unit: 'days',
       return_window_value: '7',
       return_window_days: '7',
+      show_in_catalog: true,
     });
     setShowModal(true);
   };
@@ -5442,6 +5543,7 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
         return_window_unit: 'days',
         return_window_value: '7',
         return_window_days: '7',
+        show_in_catalog: true,
       });
     }
     setShowModal(true);
@@ -5475,6 +5577,8 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
     let returnWindowUnit = row.return_window_unit || 'days';
     let returnWindowValue = row.return_window_value !== undefined ? String(row.return_window_value) : (row.return_window_days !== undefined ? String(row.return_window_days) : '7');
     
+    let showInCatalog = row.show_in_catalog !== false && row.show_in_catalog !== 0 && row.show_in_catalog !== '0' && row.show_in_catalog !== 'false';
+    
     if (row.notes && (row.notes.startsWith('{') || row.notes.startsWith('['))) {
       try {
         const meta = JSON.parse(row.notes);
@@ -5489,6 +5593,7 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
         if (meta.restock_on_return !== undefined) restockOnReturn = Boolean(meta.restock_on_return);
         if (meta.return_window_unit) returnWindowUnit = meta.return_window_unit;
         if (meta.return_window_value !== undefined) returnWindowValue = String(meta.return_window_value);
+        if (meta.show_in_catalog !== undefined) showInCatalog = Boolean(meta.show_in_catalog);
       } catch (e) {}
     }
 
@@ -5513,6 +5618,7 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
       return_window_unit: returnWindowUnit,
       return_window_value: returnWindowValue,
       return_window_days: returnWindowUnit === 'days' ? returnWindowValue : String(Math.ceil((parseInt(returnWindowValue, 10) || 24) / 24)),
+      show_in_catalog: showInCatalog,
     });
     setShowModal(true);
   };
@@ -5646,7 +5752,7 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
         payload.buying_price = buyingPrice;
         payload.description = formData.description || '';
         payload.image_url = formData.image_url || '';
-        payload.sku = cleanSku || (formData.id ? generateInternalSku(formData.id) : '');
+        payload.sku = cleanSku || generateInternalSku(formData.id);
         payload.barcode = cleanSku || '';
         const isReturnable = !isService && (formData.is_returnable !== false);
         const restockOnReturn = isReturnable && (formData.restock_on_return !== false);
@@ -5654,12 +5760,14 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
         const returnWindowValue = isReturnable ? (Math.max(1, parseInt(formData.return_window_value || formData.return_window_days, 10) || 7)) : 0;
         const returnWindowDays = returnWindowUnit === 'days' ? returnWindowValue : Math.ceil(returnWindowValue / 24);
 
+        const showInCatalog = formData.show_in_catalog !== false;
         payload.allow_custom_price = allowCustomPrice;
         payload.is_returnable = isReturnable;
         payload.restock_on_return = restockOnReturn;
         payload.return_window_unit = returnWindowUnit;
         payload.return_window_value = returnWindowValue;
         payload.return_window_days = returnWindowDays;
+        payload.show_in_catalog = showInCatalog ? 1 : 0;
         
         payload.notes = JSON.stringify({
           type: isService ? 'service' : 'physical',
@@ -5673,6 +5781,7 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
           return_window_unit: returnWindowUnit,
           return_window_value: returnWindowValue,
           return_window_days: returnWindowDays,
+          show_in_catalog: showInCatalog,
           ...(cleanSku ? { sku: cleanSku, barcode: cleanSku } : {}),
         });
 
@@ -5754,7 +5863,8 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
 
     <State {...table}>
       {filtered.length ? (
-        <div className="space-y-3 sm:space-y-3.5 pb-28 sm:pb-16">
+        <>
+          <div className="space-y-3 sm:space-y-3.5 pb-28 sm:pb-16">
           {filtered.map(row => {
             let isService = row.type === 'service' || row.item_type === 'service' || row.unit === 'service' || row.unit === 'hour' || row.unit === 'project';
             let buyingPrice = row.buying_price !== undefined && row.buying_price !== null ? row.buying_price : row.cost_price;
@@ -5895,6 +6005,24 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
                               {Boolean(row.allow_custom_price) ? 'Custom Price at Billing' : (row.stock_quantity && row.stock_quantity < 999 ? `Capacity: ${row.stock_quantity}` : 'Unlimited Service')}
                             </span>
                           )}
+                          {(() => {
+                            let isCatVis = row.show_in_catalog !== false && row.show_in_catalog !== 0 && row.show_in_catalog !== '0' && row.show_in_catalog !== 'false';
+                            if (row.notes && (row.notes.startsWith('{') || row.notes.startsWith('['))) {
+                              try {
+                                const parsed = JSON.parse(row.notes);
+                                if (parsed.show_in_catalog !== undefined) isCatVis = Boolean(parsed.show_in_catalog);
+                              } catch (e) {}
+                            }
+                            return isCatVis ? (
+                              <span className="font-semibold px-2 py-0.5 rounded-md border bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/20">
+                                Catalog: <span className="font-bold">Visible</span>
+                              </span>
+                            ) : (
+                              <span className="font-semibold px-2 py-0.5 rounded-md border bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/30">
+                                Catalog: <span className="font-bold">POS Only</span>
+                              </span>
+                            );
+                          })()}
                         </div>
                       </>
                     )}
@@ -5983,6 +6111,8 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
             );
           })}
         </div>
+        <InfiniteScrollSentinel onIntersect={paginatedTable.loadMore} hasMore={paginatedTable.hasMore} loadingMore={paginatedTable.loadingMore} />
+        </>
       ) : (
         <div className="rounded-3xl border border-border/80 bg-card p-10 text-center space-y-3 shadow-2xs">
           <Empty 
@@ -6499,6 +6629,36 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
                     )}
                   </div>
                 )}
+
+                {/* Toggle Switch: Show in Online Store Catalog */}
+                <label className={`flex cursor-pointer items-start justify-between gap-3 rounded-xl border p-3.5 transition-colors select-none ${
+                  formData.show_in_catalog !== false
+                    ? 'border-teal-500/50 bg-teal-500/10 text-foreground'
+                    : 'border-border bg-muted/20 text-muted-foreground'
+                }`}>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-extrabold text-foreground">Show in Online Store Catalog</span>
+                      <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded ${
+                        formData.show_in_catalog !== false ? 'bg-teal-500/20 text-teal-700 dark:text-teal-300' : 'bg-muted text-muted-foreground'
+                      }`}>
+                        {formData.show_in_catalog !== false ? 'Catalog Visible' : 'POS Only (Hidden)'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-0.5 leading-normal">
+                      {formData.show_in_catalog !== false 
+                        ? 'This item will be visible to online customers in your public store catalog & link.' 
+                        : 'This item will be hidden from online customers and only available for in-store POS billing.'}
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={formData.show_in_catalog !== false}
+                    onChange={(e) => setFormData({ ...formData, show_in_catalog: e.target.checked })}
+                    className="mt-1 h-4 w-4 rounded border-border text-teal-600 accent-teal-600 cursor-pointer"
+                    data-testid="toggle-show-in-catalog"
+                  />
+                </label>
               </div>
             )}
           </div>
@@ -8299,10 +8459,10 @@ function Home() {
 }
 
 function useAppLocation(options?: any): [string, (to: string, options?: { replace?: boolean }) => void] {
-  const isDesktopOrFile = typeof window !== 'undefined' && (window.location.protocol === 'file:' || !!window.electronAPI?.isElectron);
+  const isDesktop = isDesktopOrFile();
   const hashLoc = useHashLocation(options);
   const browserLoc = useBrowserLocation(options);
-  return isDesktopOrFile ? hashLoc : browserLoc;
+  return isDesktop ? hashLoc : browserLoc;
 }
 
 function RoutedErrorBoundary({ children }: { children: ReactNode }) { const [location] = useAppLocation(); return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>; }
@@ -8313,8 +8473,14 @@ function KhataBookWrapper() {
   return <KhataBook initialCustomerId={params.id} />;
 }
 
+function ScrollToTop() {
+  const [location] = useAppLocation();
+  useScrollReset(location);
+  return null;
+}
+
 function Router() {
-  return <RoutedErrorBoundary><Switch>
+  return <RoutedErrorBoundary><ScrollToTop /><Switch>
     <Route path="/" component={Home} />
     <Route path="/login"><Auth mode="login" /></Route>
     <Route path="/signup"><Auth mode="signup" /></Route>
@@ -8343,7 +8509,14 @@ function Router() {
 }
 
 function App() {
-  const isDesktopOrFile = typeof window !== 'undefined' && (window.location.protocol === 'file:' || !!window.electronAPI?.isElectron);
+  const isDesktop = isDesktopOrFile();
+
+  useEffect(() => {
+    void mobileService.init();
+  }, []);
+
+  const rawBase = import.meta.env.BASE_URL?.replace(/\/$/, '') || '';
+  const routerBase = (!rawBase || rawBase === '.' || rawBase === './') ? undefined : rawBase;
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -8351,7 +8524,7 @@ function App() {
         <DesktopTitlebar />
         <WouterRouter
           hook={useAppLocation}
-          base={isDesktopOrFile ? undefined : import.meta.env.BASE_URL?.replace(/\/$/, '') || ''}
+          base={isDesktop ? undefined : routerBase}
         >
           <Router />
         </WouterRouter>

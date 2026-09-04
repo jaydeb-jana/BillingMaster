@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 import { initDb } from './db/mysql.js';
 import { authenticateToken } from './middleware/auth.js';
 import { signup, login, getSession, updateUser, resetPassword } from './controllers/authController.js';
-import { createBusiness } from './controllers/businessController.js';
+import { createBusiness, checkCatalogHandle } from './controllers/businessController.js';
 import { createInvoiceTransaction } from './controllers/invoiceController.js';
 import {
   listRecords,
@@ -28,6 +28,9 @@ app.use(authenticateToken);
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', name: 'BillingMaster API (Node.js + Express + MySQL)', timestamp: new Date().toISOString() });
 });
+
+// Business Catalog Handle Check Route
+app.get('/api/businesses/check-handle', checkCatalogHandle);
 
 // Auth Routes
 app.post('/api/auth/signup', signup);

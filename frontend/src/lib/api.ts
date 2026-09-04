@@ -35,7 +35,7 @@ export function setCurrentBusinessId(id: string | null) {
   }
 }
 
-async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+export async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
@@ -53,7 +53,10 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.error || data.message || `API error (${response.status})`);
+    const err: any = new Error(data.error || data.message || `API error (${response.status})`);
+    err.status = response.status;
+    err.response = data;
+    throw err;
   }
 
   return data as T;
@@ -180,7 +183,14 @@ const NO_BUSINESS_ID_TABLES = ['businesses', 'profiles', 'settings', 'invoice_it
 function filterLocals<T>(locals: T[], query: Query): T[] {
   let result = [...locals];
   Object.entries(query).forEach(([key, value]) => {
-    if (value === undefined || key === 'order' || key === 'limit') return;
+    if (
+      value === undefined ||
+      key === 'order' ||
+      key === 'limit' ||
+      key === 'offset' ||
+      key === 'search' ||
+      key === 'q'
+    ) return;
     const valStr = String(value);
     const targetVal = valStr.startsWith('eq.') ? valStr.slice(3) : valStr;
     result = result.filter((item: any) => {
@@ -188,6 +198,13 @@ function filterLocals<T>(locals: T[], query: Query): T[] {
       return String(item[key]) === targetVal;
     });
   });
+
+  if (query.search || query.q) {
+    const s = String(query.search || query.q).toLowerCase().trim();
+    result = result.filter((item: any) =>
+      JSON.stringify(item).toLowerCase().includes(s)
+    );
+  }
 
   if (query.order) {
     const [column, direction] = String(query.order).split('.');
@@ -199,6 +216,10 @@ function filterLocals<T>(locals: T[], query: Query): T[] {
     });
   }
 
+  if (query.offset) {
+    result = result.slice(Number(query.offset));
+  }
+
   if (query.limit) {
     result = result.slice(0, Number(query.limit));
   }
@@ -208,14 +229,19 @@ function filterLocals<T>(locals: T[], query: Query): T[] {
 
 export function getProductBarcode(product: any): string {
   if (!product) return '';
-  let code = String(product.barcode !== undefined ? product.barcode : (product.sku || '')).trim();
+  let raw = product.barcode !== undefined && product.barcode !== null ? product.barcode : (product.sku || '');
+  let code = String(raw || '').trim();
+  if (code === 'null' || code === 'undefined') code = '';
+
   if (product.notes && typeof product.notes === 'string' && (product.notes.startsWith('{') || product.notes.startsWith('['))) {
     try {
       const parsed = JSON.parse(product.notes);
       if (parsed.barcode !== undefined && parsed.barcode !== null) {
-        code = String(parsed.barcode).trim();
+        const b = String(parsed.barcode).trim();
+        if (b && b !== 'null' && b !== 'undefined') code = b;
       } else if (parsed.sku !== undefined && parsed.sku !== null) {
-        code = String(parsed.sku).trim();
+        const s = String(parsed.sku).trim();
+        if (s && s !== 'null' && s !== 'undefined') code = s;
       }
     } catch (e) {}
   }
@@ -256,6 +282,76 @@ export function getProductUniqueId(p: any): string {
   return 'PRD-0000';
 }
 
+export function getBusinessCatalogHandle(biz: any): string {
+  if (!biz) return 'shop';
+  if (biz.catalog_slug && String(biz.catalog_slug).trim()) {
+    return String(biz.catalog_slug).trim().toLowerCase();
+  }
+  if (biz.catalog_handle && String(biz.catalog_handle).trim()) {
+    return String(biz.catalog_handle).trim().toLowerCase();
+  }
+  if (biz.slug && String(biz.slug).trim()) {
+    return String(biz.slug).trim().toLowerCase();
+  }
+  if (biz.handle && String(biz.handle).trim()) {
+    return String(biz.handle).trim().toLowerCase();
+  }
+  if (biz.id && String(biz.id).trim()) {
+    const cleanId = String(biz.id).replace(/[^a-zA-Z0-9]/g, '').slice(-6).toLowerCase();
+    if (cleanId) return `shop-${cleanId}`;
+  }
+  if (biz.name && String(biz.name).trim()) {
+    const cleanName = String(biz.name).toLowerCase().replace(/[^a-z0-9_-]/g, '').trim();
+    if (cleanName.length >= 3) return cleanName;
+  }
+  return 'shop';
+}
+
+export async function checkCatalogHandleAvailability(
+  handle: string,
+  excludeBusinessId?: string
+): Promise<{ available: boolean; handle?: string; takenBy?: string; suggestedHandles?: string[]; message?: string }> {
+  const cleanHandle = handle.toLowerCase().trim().replace(/[^a-z0-9_-]/g, '');
+  if (!cleanHandle || cleanHandle.length < 3) {
+    return { available: false, message: 'Catalog handle must be at least 3 characters long.' };
+  }
+
+  try {
+    const params = new URLSearchParams();
+    params.append('handle', cleanHandle);
+    if (excludeBusinessId) params.append('excludeId', excludeBusinessId);
+
+    return await request<{ available: boolean; handle?: string; takenBy?: string; suggestedHandles?: string[]; message?: string }>(
+      `/api/businesses/check-handle?${params.toString()}`
+    );
+  } catch (e) {
+    const bizes = await db.list('businesses', {}).catch(() => []);
+    const duplicate = bizes.find((b: any) => {
+      if (excludeBusinessId && String(b.id) === String(excludeBusinessId)) return false;
+      const bHandle = getBusinessCatalogHandle(b).toLowerCase();
+      return (
+        bHandle === cleanHandle ||
+        (b.catalog_slug && String(b.catalog_slug).toLowerCase() === cleanHandle) ||
+        (b.catalog_handle && String(b.catalog_handle).toLowerCase() === cleanHandle)
+      );
+    });
+
+    if (duplicate) {
+      const takenSet = new Set(bizes.map((b: any) => getBusinessCatalogHandle(b).toLowerCase()));
+      const candidates = [`${cleanHandle}-1`, `${cleanHandle}-store`, `${cleanHandle}-official`, `${cleanHandle}-shop`].filter(
+        c => !takenSet.has(c)
+      );
+      return {
+        available: false,
+        takenBy: duplicate.name,
+        suggestedHandles: candidates.slice(0, 3),
+        message: `The catalog handle "${cleanHandle}" is already taken by another store ("${duplicate.name}").`
+      };
+    }
+    return { available: true, handle: cleanHandle };
+  }
+}
+
 export const db = {
   async list<T extends Record<string, any>>(table: string, query: Query = {}): Promise<T[]> {
     const activeQuery = { ...query };
@@ -271,18 +367,20 @@ export const db = {
       });
 
       const remoteData = await request<T[]>(`/api/db/${table}?${params.toString()}`);
-      const locals = getLocalStore<T>(table);
-
-      if (remoteData && Array.isArray(remoteData) && remoteData.length > 0) {
+      if (remoteData && Array.isArray(remoteData)) {
+        if (activeQuery.limit !== undefined || activeQuery.offset !== undefined || activeQuery.search || activeQuery.q) {
+          return remoteData;
+        }
+        const locals = getLocalStore<T>(table);
         const remoteIds = new Set(remoteData.map((r: any) => r.id));
         const missingLocals = locals.filter((l: any) => l.id && !remoteIds.has(l.id));
         const combined = [...remoteData, ...missingLocals];
         setLocalStore(table, combined);
         return filterLocals(combined, activeQuery);
-      } else {
-        if (locals.length > 0) return filterLocals(locals, activeQuery);
-        return remoteData || [];
       }
+      const locals = getLocalStore<T>(table);
+      if (locals.length > 0) return filterLocals(locals, activeQuery);
+      return remoteData || [];
     } catch (err) {
       console.warn(`db.list fallback to local store for table "${table}":`, err);
       const locals = getLocalStore<T>(table);
@@ -298,7 +396,7 @@ export const db = {
 
     const itemWithId = {
       id: (values.id as string) || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `id_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`),
-      created_at: (values.created_at as string) || new Date().toISOString(),
+      created_at: (values.created_at as string) || new Date().toISOString().slice(0, 19).replace('T', ' '),
       ...values,
     };
 
@@ -314,7 +412,10 @@ export const db = {
         setLocalStore(table, [merged, ...locals.filter((x: any) => x.id !== (inserted as any).id)]);
         return merged;
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err && (err.status || err.response)) {
+        throw err;
+      }
       console.warn(`db.insert fallback to local store for table "${table}":`, err);
     }
 
@@ -341,7 +442,10 @@ export const db = {
         setLocalStore(table, [merged, ...locals.filter((x: any) => x.id !== (upserted as any).id)]);
         return merged;
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err && (err.status || err.response)) {
+        throw err;
+      }
       console.warn(`db.upsert fallback to local store for table "${table}":`, err);
     }
 
@@ -373,7 +477,10 @@ export const db = {
         }
         return merged;
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err && (err.status || err.response)) {
+        throw err;
+      }
       console.warn(`db.update fallback to local store for table "${table}":`, err);
     }
 
@@ -390,7 +497,10 @@ export const db = {
   async remove(table: string, id: string): Promise<void> {
     try {
       await request(`/api/db/${table}/${id}`, { method: 'DELETE' });
-    } catch (err) {
+    } catch (err: any) {
+      if (err && (err.status || err.response)) {
+        throw err;
+      }
       console.warn(`db.remove fallback to local store for table "${table}":`, err);
     }
     const locals = getLocalStore<any>(table);

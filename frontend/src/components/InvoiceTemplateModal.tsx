@@ -5,6 +5,7 @@ import {
   Palette, Stamp
 } from 'lucide-react';
 import { db, auth, supabase } from '@/lib/api';
+import { useScrollReset } from '@/lib/useScrollReset';
 
 export interface InvoiceTemplateSettings {
   template_id: 'standard' | 'modern' | 'gst-pro' | 'pos-thermal' | 'executive';
@@ -134,6 +135,7 @@ interface InvoiceTemplateModalProps {
 }
 
 export function InvoiceTemplateModal({ isOpen, onClose, onSaved }: InvoiceTemplateModalProps) {
+  useScrollReset(isOpen);
   const [activeTab, setActiveTab] = useState<'templates' | 'sizes'>('templates');
   const [settings, setSettings] = useState<InvoiceTemplateSettings>(() => {
     try {

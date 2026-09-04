@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { db, getBusinessId, auth, getSupabaseErrorMessage } from '@/lib/api';
+import { useScrollReset } from '@/lib/useScrollReset';
 import { toast } from 'sonner';
 import { GSTVerificationInput } from './GSTVerificationInput';
 
@@ -125,6 +126,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
   const [showEntryModal, setShowEntryModal] = useState(false);
   const [entryModalType, setEntryModalType] = useState<'gave' | 'got'>('gave');
   const [editingEntry, setEditingEntry] = useState<KhataEntry | null>(null);
+  useScrollReset(selectedCustomerId || showEntryModal || editingEntry);
 
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [newCustomerForm, setNewCustomerForm] = useState({

@@ -798,7 +798,7 @@ export function Reports() {
                         dataKey="value"
                       >
                         {paymentStatusPieData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
+                          <Cell key={`cell-${index}`} fill={entry?.color || '#10b981'} />
                         ))}
                       </Pie>
                       <Tooltip

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useScrollReset } from '@/lib/useScrollReset';
 import {
   HelpCircle, Mail, Phone, MessageSquare, Search, Copy, Check,
   ChevronDown, ChevronUp, ExternalLink, X, Clock, ShieldCheck,
@@ -64,6 +65,7 @@ const FAQ_LIST: FAQItem[] = [
 ];
 
 export function HelpCenterModal({ isOpen, onClose }: HelpCenterModalProps) {
+  useScrollReset(isOpen);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [expandedFaq, setExpandedFaq] = useState<string | null>('faq-1');

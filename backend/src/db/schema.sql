@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS businesses (
   address TEXT,
   turnover VARCHAR(100),
   employees VARCHAR(50),
+  catalog_slug VARCHAR(255) UNIQUE,
+  catalog_handle VARCHAR(255) UNIQUE,
   currency VARCHAR(10) NOT NULL DEFAULT 'INR',
   tax_rate DECIMAL(6,3) NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -38,6 +40,11 @@ CREATE TABLE IF NOT EXISTS settings (
   default_due_days INT NOT NULL DEFAULT 30,
   tax_rate DECIMAL(6,3) NOT NULL DEFAULT 0,
   currency VARCHAR(10) NOT NULL DEFAULT 'INR',
+  show_sales_rate BOOLEAN DEFAULT TRUE,
+  show_barcodes BOOLEAN DEFAULT TRUE,
+  location_radius_km INT DEFAULT NULL,
+  store_lat DECIMAL(10,8) DEFAULT NULL,
+  store_lng DECIMAL(11,8) DEFAULT NULL,
   FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
 );
 

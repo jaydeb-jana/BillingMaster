@@ -1,13 +1,14 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Sparkles, FileText, Calendar, Share2, Users, BarChart3, Store,
   Send, Gift, CheckCircle2, Calculator, ArrowRight, Download,
   ExternalLink, Copy, Check, Clock, ShieldCheck, DollarSign,
   TrendingUp, RefreshCw, X, MessageSquare, Phone, Percent,
   Building2, Briefcase, Plus, FileSpreadsheet, AlertCircle,
-  QrCode, Printer, Smartphone, ChevronRight, ChevronDown, CheckCheck, Mail, Search
+  QrCode, Printer, Smartphone, ChevronRight, ChevronDown, CheckCheck, Mail, Search, Pencil, Sliders, Barcode, MapPin, Navigation, Globe, Trash2
 } from 'lucide-react';
-import { db, auth } from '@/lib/api';
+import { db, auth, request, getBusinessCatalogHandle, checkCatalogHandleAvailability, getBusinessId } from '@/lib/api';
+import { useScrollReset, resetScrollRef } from '@/lib/useScrollReset';
 import { toast } from 'sonner';
 import { Link, useLocation } from 'wouter';
 import jsPDF from 'jspdf';
@@ -16,9 +17,382 @@ interface ForYouHubProps {
   onNavigate?: (path: string) => void;
 }
 
+function LocationMapPickerModal({
+  initialLat,
+  initialLng,
+  onConfirm,
+  onClose,
+}: {
+  initialLat: number | null;
+  initialLng: number | null;
+  onConfirm: (lat: number | null, lng: number | null, address?: string) => void;
+  onClose: () => void;
+}) {
+  const defaultLat = initialLat || 22.5726; // Default Kolkata / India fallback
+  const defaultLng = initialLng || 88.3639;
+  const [lat, setLat] = useState<number>(defaultLat);
+  const [lng, setLng] = useState<number>(defaultLng);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [selectedAddress, setSelectedAddress] = useState<string>('');
+  const mapRef = useRef<HTMLDivElement>(null);
+  const searchWrapperRef = useRef<HTMLDivElement>(null);
+  const leafletMapInstance = useRef<any>(null);
+  const leafletMarkerInstance = useRef<any>(null);
+
+  // Click-outside listener to dismiss search results when tapping anywhere
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent | TouchEvent) {
+      if (searchWrapperRef.current && !searchWrapperRef.current.contains(event.target as Node)) {
+        setSearchResults([]);
+      }
+    }
+    document.addEventListener('pointerdown', handleClickOutside);
+    return () => {
+      document.removeEventListener('pointerdown', handleClickOutside);
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function initMap() {
+      if (!(window as any).L) {
+        if (!document.getElementById('leaflet-css')) {
+          const link = document.createElement('link');
+          link.id = 'leaflet-css';
+          link.rel = 'stylesheet';
+          link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+          document.head.appendChild(link);
+        }
+        if (!document.getElementById('leaflet-js')) {
+          const script = document.createElement('script');
+          script.id = 'leaflet-js';
+          script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+          document.head.appendChild(script);
+          await new Promise((resolve) => { script.onload = resolve; });
+        }
+      }
+
+      const L = (window as any).L;
+      if (L && mapRef.current && isMounted) {
+        if (leafletMapInstance.current) {
+          leafletMapInstance.current.remove();
+        }
+
+        const map = L.map(mapRef.current).setView([lat, lng], 13);
+        leafletMapInstance.current = map;
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '© OpenStreetMap contributors',
+        }).addTo(map);
+
+        const marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+        leafletMarkerInstance.current = marker;
+
+        marker.on('dragend', () => {
+          const pos = marker.getLatLng();
+          if (isMounted) {
+            setLat(pos.lat);
+            setLng(pos.lng);
+            setSearchResults([]);
+          }
+        });
+
+        map.on('click', (e: any) => {
+          const clickLat = e.latlng.lat;
+          const clickLng = e.latlng.lng;
+          marker.setLatLng([clickLat, clickLng]);
+          if (isMounted) {
+            setLat(clickLat);
+            setLng(clickLng);
+            setSearchResults([]);
+          }
+        });
+      }
+    }
+
+    initMap();
+
+    return () => {
+      isMounted = false;
+      if (leafletMapInstance.current) {
+        leafletMapInstance.current.remove();
+        leafletMapInstance.current = null;
+      }
+    };
+  }, []);
+
+  const updateMapPosition = (newLat: number, newLng: number, zoomLevel = 16) => {
+    setLat(newLat);
+    setLng(newLng);
+    if (leafletMapInstance.current && leafletMarkerInstance.current) {
+      leafletMapInstance.current.setView([newLat, newLng], zoomLevel);
+      leafletMarkerInstance.current.setLatLng([newLat, newLng]);
+    }
+  };
+
+  const handleSearchLocation = async () => {
+    const rawQuery = searchQuery.trim();
+    if (!rawQuery) return;
+
+    try {
+      setSearching(true);
+
+      // 1. Check if user pasted Lat,Lng coordinates or Google Maps URL with coordinates
+      const coordMatch = rawQuery.match(/(-?\d+\.\d+)\s*[,:\s]\s*(-?\d+\.\d+)/);
+      if (coordMatch) {
+        const pLat = parseFloat(coordMatch[1]);
+        const pLng = parseFloat(coordMatch[2]);
+        if (!isNaN(pLat) && !isNaN(pLng) && pLat >= -90 && pLat <= 90 && pLng >= -180 && pLng <= 180) {
+          updateMapPosition(pLat, pLng, 17);
+          toast.success(`Position set to coordinates: ${pLat.toFixed(4)}°, ${pLng.toFixed(4)}°`);
+
+          // Reverse geocode to fetch human readable address
+          try {
+            const revRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${pLat}&lon=${pLng}`, {
+              headers: { 'Accept-Language': 'en' },
+            });
+            const revData = await revRes.json();
+            if (revData && revData.display_name) {
+              setSelectedAddress(revData.display_name);
+            }
+          } catch (err) {
+            console.error('Reverse geocode error:', err);
+          }
+          setSearchResults([]);
+          return;
+        }
+      }
+
+      // 2. Multi-tier text search for Indian locations & landmarks
+      // Tier 1: Search restricted to India with countrycodes=in
+      let searchUrl = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&countrycodes=in&q=${encodeURIComponent(rawQuery)}`;
+      let res = await fetch(searchUrl, { headers: { 'Accept-Language': 'en' } });
+      let data = await res.json();
+
+      // Tier 2: If no results found, append ', India' and retry
+      if (!data || data.length === 0) {
+        const isIndiaIncluded = /india|\bin\b/i.test(rawQuery);
+        if (!isIndiaIncluded) {
+          const fallbackIndiaUrl = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&countrycodes=in&q=${encodeURIComponent(rawQuery + ', India')}`;
+          res = await fetch(fallbackIndiaUrl, { headers: { 'Accept-Language': 'en' } });
+          data = await res.json();
+        }
+      }
+
+      // Tier 3: Global fallback if India-restricted queries return no results
+      if (!data || data.length === 0) {
+        const globalUrl = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&q=${encodeURIComponent(rawQuery)}`;
+        res = await fetch(globalUrl, { headers: { 'Accept-Language': 'en' } });
+        data = await res.json();
+      }
+
+      if (data && data.length > 0) {
+        setSearchResults(data);
+        const first = data[0];
+        const nLat = parseFloat(first.lat);
+        const nLng = parseFloat(first.lon);
+        updateMapPosition(nLat, nLng, 16);
+        setSelectedAddress(first.display_name);
+        toast.success(`Found ${data.length} matching location(s)`);
+      } else {
+        toast.error('No matching Indian locations found. Try adding city or state name (e.g. Park Street, Kolkata).');
+        setSearchResults([]);
+      }
+    } catch (e) {
+      console.error('Error searching location:', e);
+      toast.error('Failed to search location.');
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleUseCurrentGPS = () => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      toast.error('Geolocation is not supported by your browser.');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const uLat = pos.coords.latitude;
+        const uLng = pos.coords.longitude;
+        updateMapPosition(uLat, uLng, 17);
+        toast.success(`GPS Location set: ${uLat.toFixed(4)}°, ${uLng.toFixed(4)}°`);
+      },
+      (err) => {
+        console.error('GPS error:', err);
+        toast.error('Could not access GPS location. Please check browser permissions.');
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-fade-in font-sans">
+      <div className="card-shell w-full max-w-2xl p-6 animate-rise shadow-2xl border border-border flex flex-col space-y-4 max-h-[90vh]">
+        <div className="flex items-center justify-between pb-3 border-b border-border">
+          <div className="flex items-center gap-2.5">
+            <div className="grid h-10 w-10 place-items-center rounded-2xl bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+              <MapPin size={20} />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-foreground">Interactive Store Location Picker</h3>
+              <p className="text-xs text-muted-foreground font-medium">Search address or click on map to pinpoint store location</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded-xl p-2 text-muted-foreground hover:bg-muted hover:text-foreground">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Search Bar & GPS button */}
+        <div ref={searchWrapperRef} className="space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  if (!e.target.value.trim()) setSearchResults([]);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSearchLocation();
+                  if (e.key === 'Escape') setSearchResults([]);
+                }}
+                placeholder="Search Indian city, area, pincode, shop name or paste Google Maps Lat,Lng..."
+                className="w-full rounded-xl bg-background border border-border pl-9 pr-8 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-primary/40 shadow-2xs"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setSearchResults([]);
+                  }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 rounded-md transition-colors"
+                  title="Clear search query"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={handleSearchLocation}
+              disabled={searching || !searchQuery.trim()}
+              className="btn-primary rounded-xl px-4 py-2 text-xs font-extrabold flex items-center gap-1.5 shadow-2xs shrink-0"
+            >
+              {searching ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
+              <span>Search</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSearchResults([]);
+                handleUseCurrentGPS();
+              }}
+              className="rounded-xl bg-card border border-border px-3 py-2 text-xs font-bold text-foreground hover:bg-muted transition-colors flex items-center gap-1.5 shadow-2xs shrink-0"
+              title="Detect Current GPS Location"
+            >
+              <Navigation size={14} className="text-rose-500" />
+              <span className="hidden sm:inline">Use GPS</span>
+            </button>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground font-medium flex items-center gap-1 pl-1">
+            <Sparkles size={11} className="text-amber-500 shrink-0" />
+            <span>Search Indian places (e.g. Park Street Kolkata, Barasat) or paste Lat,Lng (e.g. 22.5726, 88.3639)</span>
+          </p>
+
+          {searchResults.length > 0 && (
+            <div className="rounded-xl border border-border bg-card p-2 max-h-40 overflow-y-auto divide-y divide-border/60 text-xs shadow-lg animate-in fade-in duration-100">
+              {searchResults.map((r, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => {
+                    const rLat = parseFloat(r.lat);
+                    const rLng = parseFloat(r.lon);
+                    updateMapPosition(rLat, rLng, 17);
+                    setSelectedAddress(r.display_name);
+                    setSearchResults([]);
+                  }}
+                  className="p-2.5 hover:bg-muted/70 cursor-pointer transition-colors flex items-center justify-between gap-3 rounded-lg"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <MapPin size={14} className="text-primary shrink-0" />
+                    <span className="font-semibold text-foreground truncate">{r.display_name}</span>
+                  </div>
+                  <span className="text-[10px] font-extrabold text-primary bg-primary/10 px-2 py-0.5 rounded-md shrink-0">
+                    Pin Here
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Map Canvas Container */}
+        <div
+          onClick={() => setSearchResults([])}
+          className="relative min-h-[300px] w-full rounded-2xl overflow-hidden border border-border shadow-inner bg-muted/30"
+        >
+          <div ref={mapRef} className="h-[300px] w-full z-10" />
+        </div>
+
+        {/* Status & Confirm Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-border">
+          <div className="space-y-0.5 min-w-0">
+            <p className="text-[10px] font-extrabold text-muted-foreground uppercase">Selected Store Coordinates</p>
+            <p className="text-xs font-mono font-bold text-foreground truncate">
+              {lat.toFixed(6)}° N, {lng.toFixed(6)}° E
+            </p>
+            {selectedAddress && (
+              <p className="text-[11px] text-muted-foreground font-medium truncate max-w-md">{selectedAddress}</p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {(initialLat != null || initialLng != null) && (
+              <button
+                type="button"
+                onClick={() => onConfirm(null, null, '')}
+                className="rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 px-3.5 py-2 text-xs font-bold transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer"
+                title="Remove set store location coordinates"
+              >
+                <Trash2 size={13} />
+                <span>Remove Location</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => onConfirm(lat, lng, selectedAddress)}
+              className="btn-primary rounded-xl px-5 py-2 text-xs font-extrabold flex items-center gap-1.5 shadow-md"
+            >
+              <Check size={15} />
+              <span>Confirm Location</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ForYouHub({ onNavigate }: ForYouHubProps) {
   const [, setLocation] = useLocation();
   const [activeModal, setActiveModal] = useState<string | null>(null);
+  useScrollReset(activeModal);
 
   // Workspace data
   const [products, setProducts] = useState<any[]>([]);
@@ -28,11 +402,63 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
   const [business, setBusiness] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Custom Catalog Handle Edit State
+  const [isEditingCatalogHandle, setIsEditingCatalogHandle] = useState(false);
+  const [catalogHandleInput, setCatalogHandleInput] = useState('');
+  const [savingCatalogHandle, setSavingCatalogHandle] = useState(false);
+  const [handleAvailabilityState, setHandleAvailabilityState] = useState<'unchecked' | 'checking' | 'available' | 'taken' | 'invalid'>('unchecked');
+  const [checkedHandleText, setCheckedHandleText] = useState('');
+  const [suggestedHandles, setSuggestedHandles] = useState<string[]>([]);
+
   // Copied feedback & search states
   const [copied, setCopied] = useState(false);
   const [hsnSearchQuery, setHsnSearchQuery] = useState('');
   const [catalogSearch, setCatalogSearch] = useState('');
   const [catalogStockFilter, setCatalogStockFilter] = useState<'all' | 'instock' | 'outstock' | 'lowstock'>('all');
+
+  // Store Catalog Preferences & Geofencing State
+  const [showSalesRate, setShowSalesRate] = useState<boolean>(true);
+  const [showBarcodes, setShowBarcodes] = useState<boolean>(true);
+  const [locationRadiusKm, setLocationRadiusKm] = useState<string>('');
+  const [storeLat, setStoreLat] = useState<number | null>(null);
+  const [storeLng, setStoreLng] = useState<number | null>(null);
+  const [detectingStoreGps, setDetectingStoreGps] = useState<boolean>(false);
+  const [showLocationMapModal, setShowLocationMapModal] = useState<boolean>(false);
+  const [savingCatalogSettings, setSavingCatalogSettings] = useState<boolean>(false);
+
+  // Initial / Saved State for dirty tracking
+  const [savedSettings, setSavedSettings] = useState<{
+    showSalesRate: boolean;
+    showBarcodes: boolean;
+    locationRadiusKm: string;
+    storeLat: number | null;
+    storeLng: number | null;
+  }>({
+    showSalesRate: true,
+    showBarcodes: true,
+    locationRadiusKm: '',
+    storeLat: null,
+    storeLng: null,
+  });
+
+  const isSettingsDirty = useMemo(() => {
+    if (showSalesRate !== savedSettings.showSalesRate) return true;
+    if (showBarcodes !== savedSettings.showBarcodes) return true;
+    if (locationRadiusKm !== savedSettings.locationRadiusKm) return true;
+    if (storeLat !== savedSettings.storeLat) return true;
+    if (storeLng !== savedSettings.storeLng) return true;
+    return false;
+  }, [showSalesRate, showBarcodes, locationRadiusKm, storeLat, storeLng, savedSettings]);
+
+  const handleSetRadiusValue = (val: string) => {
+    const numVal = Number(val);
+    if (val.trim() !== '' && numVal > 0 && (storeLat == null || storeLng == null)) {
+      toast.error('Please set your store location coordinates first! Use "Pick Location on Map" or "Detect GPS".');
+      setShowLocationMapModal(true);
+      return;
+    }
+    setLocationRadiusKm(val);
+  };
 
   // Load active business & workspace data
   useEffect(() => {
@@ -41,12 +467,14 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
       try {
         setLoading(true);
         const session = auth.session();
-        const [prods, invs, custs, exps, bizes] = await Promise.all([
+        const activeBid = await getBusinessId();
+        const [prods, invs, custs, exps, bizes, settingsList] = await Promise.all([
           db.list('products', {}).catch(() => []),
           db.list('invoices', {}).catch(() => []),
           db.list('customers', {}).catch(() => []),
           db.list('expenses', {}).catch(() => []),
-          db.list('businesses', {}).catch(() => []),
+          db.list('businesses', activeBid ? { id: activeBid } : {}).catch(() => []),
+          db.list('settings', activeBid ? { business_id: activeBid } : {}).catch(() => []),
         ]);
         if (active) {
           setProducts(prods || []);
@@ -54,7 +482,30 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
           setCustomers(custs || []);
           setExpenses(exps || []);
           if (bizes && bizes.length > 0) {
-            setBusiness(bizes[0]);
+            const matched = bizes.find((b: any) => activeBid && String(b.id) === String(activeBid)) || bizes[0];
+            setBusiness(matched);
+          }
+          if (settingsList && settingsList.length > 0) {
+            const s = settingsList.find((st: any) => activeBid && String(st.business_id) === String(activeBid)) || settingsList[0];
+            const initSales = s.show_sales_rate !== undefined && s.show_sales_rate !== null ? Boolean(Number(s.show_sales_rate)) : true;
+            const initBarcodes = s.show_barcodes !== undefined && s.show_barcodes !== null ? Boolean(Number(s.show_barcodes)) : true;
+            const initRadius = s.location_radius_km !== undefined && s.location_radius_km !== null ? String(s.location_radius_km) : '';
+            const initLat = s.store_lat !== undefined && s.store_lat !== null ? Number(s.store_lat) : null;
+            const initLng = s.store_lng !== undefined && s.store_lng !== null ? Number(s.store_lng) : null;
+
+            setShowSalesRate(initSales);
+            setShowBarcodes(initBarcodes);
+            setLocationRadiusKm(initRadius);
+            setStoreLat(initLat);
+            setStoreLng(initLng);
+
+            setSavedSettings({
+              showSalesRate: initSales,
+              showBarcodes: initBarcodes,
+              locationRadiusKm: initRadius,
+              storeLat: initLat,
+              storeLng: initLng,
+            });
           }
         }
       } catch (err) {
@@ -66,6 +517,49 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
     loadData();
     return () => { active = false; };
   }, []);
+
+  const handleSaveAllCatalogSettings = async (overrideUpdates?: Record<string, any>) => {
+    try {
+      setSavingCatalogSettings(true);
+      const activeBid = business?.id || (await getBusinessId());
+      if (!activeBid) return;
+
+      const targetSalesRate = overrideUpdates?.show_sales_rate !== undefined ? Boolean(overrideUpdates.show_sales_rate) : showSalesRate;
+      const targetBarcodes = overrideUpdates?.show_barcodes !== undefined ? Boolean(overrideUpdates.show_barcodes) : showBarcodes;
+      const targetRadiusStr = overrideUpdates?.location_radius_km !== undefined 
+        ? (overrideUpdates.location_radius_km === null ? '' : String(overrideUpdates.location_radius_km)) 
+        : locationRadiusKm;
+      const targetLat = overrideUpdates?.store_lat !== undefined ? overrideUpdates.store_lat : storeLat;
+      const targetLng = overrideUpdates?.store_lng !== undefined ? overrideUpdates.store_lng : storeLng;
+
+      const numRadius = targetRadiusStr.trim() === '' || Number(targetRadiusStr) <= 0 ? null : Number(targetRadiusStr);
+      const payload = {
+        business_id: activeBid,
+        show_sales_rate: targetSalesRate ? 1 : 0,
+        show_barcodes: targetBarcodes ? 1 : 0,
+        location_radius_km: numRadius,
+        store_lat: targetLat,
+        store_lng: targetLng,
+        ...(overrideUpdates || {}),
+      };
+      await db.upsert('settings', payload);
+
+      setSavedSettings({
+        showSalesRate: targetSalesRate,
+        showBarcodes: targetBarcodes,
+        locationRadiusKm: targetRadiusStr,
+        storeLat: targetLat,
+        storeLng: targetLng,
+      });
+
+      toast.success('Catalog preferences & geofencing saved!');
+    } catch (err: any) {
+      console.error('Error saving catalog settings:', err);
+      toast.error('Failed to save catalog preferences.');
+    } finally {
+      setSavingCatalogSettings(false);
+    }
+  };
 
   const businessName = business?.name || 'BillingMaster';
   const businessPhone = business?.phone || '+91 98765 43210';
@@ -1553,14 +2047,29 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
 
       {/* MODAL 10: Online Store / Digital Catalog (Read-Only Stock Inspector) */}
       {activeModal === 'online-store' && (() => {
-        const inStockCount = products.filter(p => (Number(p.stock_quantity ?? p.stock ?? 0)) > 4).length;
-        const lowStockCount = products.filter(p => {
+        const visibleCatalogProducts = products.filter((p: any) => {
+          if (p.show_in_catalog === 0 || p.show_in_catalog === false || p.show_in_catalog === '0' || p.show_in_catalog === 'false') {
+            return false;
+          }
+          if (p.notes && typeof p.notes === 'string' && (p.notes.startsWith('{') || p.notes.startsWith('['))) {
+            try {
+              const parsed = JSON.parse(p.notes);
+              if (parsed.show_in_catalog === false || parsed.show_in_catalog === 0 || parsed.show_in_catalog === '0' || parsed.show_in_catalog === 'false') {
+                return false;
+              }
+            } catch (e) {}
+          }
+          return true;
+        });
+
+        const inStockCount = visibleCatalogProducts.filter(p => (Number(p.stock_quantity ?? p.stock ?? 0)) > 4).length;
+        const lowStockCount = visibleCatalogProducts.filter(p => {
           const qty = Number(p.stock_quantity ?? p.stock ?? 0);
           return qty > 0 && qty <= 4;
         }).length;
-        const outOfStockCount = products.filter(p => (Number(p.stock_quantity ?? p.stock ?? 0)) <= 0).length;
+        const outOfStockCount = visibleCatalogProducts.filter(p => (Number(p.stock_quantity ?? p.stock ?? 0)) <= 0).length;
 
-        const filteredCatalog = products.filter(p => {
+        const filteredCatalog = visibleCatalogProducts.filter(p => {
           const qty = Number(p.stock_quantity ?? p.stock ?? 0);
           const matchesSearch = !catalogSearch || 
             (p.name && p.name.toLowerCase().includes(catalogSearch.toLowerCase())) ||
@@ -1574,11 +2083,99 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
           return true;
         });
 
-        const storeUrl = `${window.location.origin}/catalog/${businessName.toLowerCase().replace(/\s+/g, '-') || 'shop'}`;
+        const currentCatalogHandle = getBusinessCatalogHandle(business);
+        const storeUrl = `${window.location.origin}/catalog/${currentCatalogHandle}`;
+
+        const cleanCurrentInput = catalogHandleInput.toLowerCase().trim().replace(/[^a-z0-9_-]/g, '');
+        const isCurrentlyAvailable = handleAvailabilityState === 'available' && checkedHandleText === cleanCurrentInput && cleanCurrentInput.length >= 3;
+
+        const handleCheckCatalogHandle = async () => {
+          const cleanHandle = catalogHandleInput.toLowerCase().trim().replace(/[^a-z0-9_-]/g, '');
+          if (!cleanHandle || cleanHandle.length < 3) {
+            toast.error('Catalog handle must be at least 3 characters long (letters, numbers, hyphens, underscores).');
+            setHandleAvailabilityState('invalid');
+            return;
+          }
+
+          try {
+            setHandleAvailabilityState('checking');
+            const result = await checkCatalogHandleAvailability(cleanHandle, business?.id);
+
+            if (!result.available) {
+              if (result.suggestedHandles && result.suggestedHandles.length > 0) {
+                setSuggestedHandles(result.suggestedHandles);
+              } else {
+                setSuggestedHandles([`${cleanHandle}-1`, `${cleanHandle}-store`, `${cleanHandle}-official`]);
+              }
+              const storeOwner = result.takenBy ? ` by another store ("${result.takenBy}")` : ' by another store';
+              toast.error(`The catalog handle "${cleanHandle}" is already taken${storeOwner}. Please choose a different handle.`);
+              setHandleAvailabilityState('taken');
+              setCheckedHandleText('');
+              return;
+            }
+
+            setSuggestedHandles([]);
+            toast.success(`Catalog handle "${cleanHandle}" is available! Click "Save Handle" to claim it.`);
+            setHandleAvailabilityState('available');
+            setCheckedHandleText(cleanHandle);
+          } catch (err: any) {
+            console.error('Error checking catalog handle:', err);
+            toast.error('Failed to check handle availability. Please try again.');
+            setHandleAvailabilityState('unchecked');
+          }
+        };
+
+        const handleSaveCatalogHandle = async () => {
+          const cleanHandle = catalogHandleInput.toLowerCase().trim().replace(/[^a-z0-9_-]/g, '');
+          if (!cleanHandle || cleanHandle.length < 3) {
+            toast.error('Catalog handle must be at least 3 characters long.');
+            return;
+          }
+
+          if (!isCurrentlyAvailable) {
+            toast.error('Please check handle availability first before saving.');
+            return;
+          }
+
+          try {
+            setSavingCatalogHandle(true);
+            let updatedOrNew: any = null;
+            if (business && business.id) {
+              updatedOrNew = await db.update('businesses', business.id, {
+                catalog_slug: cleanHandle,
+                catalog_handle: cleanHandle,
+              });
+            } else {
+              updatedOrNew = await db.insert('businesses', {
+                name: businessName,
+                catalog_slug: cleanHandle,
+                catalog_handle: cleanHandle,
+              });
+            }
+
+            setBusiness(updatedOrNew || { ...business, catalog_slug: cleanHandle, catalog_handle: cleanHandle });
+            toast.success(`Catalog link updated to "/catalog/${cleanHandle}" successfully!`);
+            setIsEditingCatalogHandle(false);
+            setHandleAvailabilityState('unchecked');
+            setCheckedHandleText('');
+          } catch (err: any) {
+            console.error('Error saving catalog handle:', err);
+            const errMsg = err?.message || 'Failed to update catalog handle. Please try again.';
+            if (errMsg.toLowerCase().includes('already taken') || errMsg.toLowerCase().includes('duplicate')) {
+              toast.error(errMsg);
+              setHandleAvailabilityState('taken');
+              setCheckedHandleText('');
+            } else {
+              toast.error(errMsg);
+            }
+          } finally {
+            setSavingCatalogHandle(false);
+          }
+        };
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-fade-in">
-            <div className="card-shell w-full max-w-2xl p-6 sm:p-7 animate-rise shadow-2xl border border-border max-h-[92vh] flex flex-col">
+            <div className="card-shell w-full max-w-3xl sm:max-w-4xl p-6 sm:p-7 animate-rise shadow-2xl border border-border max-h-[92vh] flex flex-col">
               {/* Modal Header */}
               <div className="flex items-center justify-between pb-4 border-b border-border">
                 <div className="flex items-center gap-3">
@@ -1591,7 +2188,12 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
                   </div>
                 </div>
                 <button
-                  onClick={() => setActiveModal(null)}
+                  onClick={() => {
+                    setIsEditingCatalogHandle(false);
+                    setHandleAvailabilityState('unchecked');
+                    setCheckedHandleText('');
+                    setActiveModal(null);
+                  }}
                   className="rounded-xl p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                   title="Close"
                 >
@@ -1601,22 +2203,414 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
 
               <div className="py-4 space-y-4 overflow-y-auto flex-1 pr-1">
 
+                {/* Live Store Link Bar with Edit Feature */}
+                {!isEditingCatalogHandle ? (
+                  <div className="p-3.5 rounded-2xl bg-muted/50 border border-border/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-[10px] font-extrabold text-muted-foreground uppercase tracking-wider">Shareable Read-Only Catalog Link</p>
+                        <span className="rounded-md bg-primary/10 text-primary px-1.5 py-0.5 text-[9px] font-mono font-bold border border-primary/20">/catalog/{currentCatalogHandle}</span>
+                      </div>
+                      <p className="text-xs font-mono font-bold text-foreground truncate mt-0.5">
+                        {storeUrl}
+                      </p>
+                    </div>
 
-                {/* Live Store Link Bar */}
-                <div className="p-3.5 rounded-2xl bg-muted/50 border border-border/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[10px] font-extrabold text-muted-foreground uppercase tracking-wider">Shareable Read-Only Catalog Link</p>
-                    <p className="text-xs font-mono font-bold text-foreground truncate mt-0.5">
-                      {storeUrl}
-                    </p>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCatalogHandleInput(currentCatalogHandle);
+                          setIsEditingCatalogHandle(true);
+                          setHandleAvailabilityState('unchecked');
+                          setCheckedHandleText('');
+                        }}
+                        className="rounded-xl bg-card border border-border/80 px-3 py-2 text-xs font-bold text-foreground hover:bg-muted transition-colors flex items-center justify-center gap-1.5 shadow-2xs"
+                        title="Edit Custom Store Link Handle / Slug"
+                      >
+                        <Pencil size={13} className="text-primary" />
+                        <span>Edit Handle</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(storeUrl)}
+                        className="rounded-xl bg-card border border-border/80 px-3.5 py-2 text-xs font-bold text-foreground hover:bg-muted transition-colors flex items-center justify-center gap-1.5 shadow-2xs"
+                      >
+                        {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                        <span>{copied ? 'Link Copied!' : 'Copy Link'}</span>
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    onClick={() => copyToClipboard(storeUrl)}
-                    className="rounded-xl bg-card border border-border/80 px-3.5 py-2 text-xs font-bold text-foreground hover:bg-muted transition-colors flex items-center justify-center gap-1.5 shrink-0 shadow-xs"
-                  >
-                    {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
-                    <span>{copied ? 'Link Copied!' : 'Copy Catalog Link'}</span>
-                  </button>
+                ) : (
+                  <div className="p-4 rounded-2xl bg-card border-2 border-primary/40 space-y-3 shadow-md animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-extrabold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                        <Pencil size={14} className="text-primary" />
+                        <span>Edit Custom Catalog Handle / Slug</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsEditingCatalogHandle(false);
+                          setHandleAvailabilityState('unchecked');
+                          setCheckedHandleText('');
+                        }}
+                        className="text-muted-foreground hover:text-foreground text-xs font-bold"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="flex items-center rounded-xl bg-muted border border-border overflow-hidden focus-within:ring-2 focus-within:ring-primary/40">
+                        <span className="px-3 py-2 text-xs font-mono font-bold text-muted-foreground bg-muted/80 border-r border-border shrink-0 select-none">
+                          {window.location.origin}/catalog/
+                        </span>
+                        <input
+                          type="text"
+                          value={catalogHandleInput}
+                          onChange={(e) => {
+                            const val = e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+                            setCatalogHandleInput(val);
+                            if (val !== checkedHandleText) {
+                              setHandleAvailabilityState('unchecked');
+                            }
+                          }}
+                          placeholder="e.g. my-fashion-store"
+                          className="w-full bg-transparent px-3 py-2 text-xs font-mono font-bold text-foreground focus:outline-none"
+                          autoFocus
+                        />
+                      </div>
+
+                      {/* Status indicator / instructions */}
+                      <div className="text-[11px] font-medium pt-0.5">
+                        {handleAvailabilityState === 'checking' && (
+                          <p className="text-amber-600 dark:text-amber-400 font-bold flex items-center gap-1">
+                            <RefreshCw size={12} className="animate-spin" />
+                            Checking availability in database...
+                          </p>
+                        )}
+                        {isCurrentlyAvailable && (
+                          <p className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                            <CheckCircle2 size={13} />
+                            Handle &quot;{cleanCurrentInput}&quot; is available! Click &quot;Save Handle&quot; below to claim it.
+                          </p>
+                        )}
+                        {handleAvailabilityState === 'taken' && (
+                          <div className="space-y-1.5 pt-0.5">
+                            <p className="text-rose-600 dark:text-rose-400 font-bold flex items-center gap-1">
+                              <AlertCircle size={13} className="shrink-0" />
+                              Handle &quot;{cleanCurrentInput}&quot; is already taken by another store.
+                            </p>
+                            {suggestedHandles.length > 0 && (
+                              <div className="flex items-center flex-wrap gap-1.5 pt-1 text-[11px]">
+                                <span className="text-muted-foreground font-semibold">Available suggestions:</span>
+                                {suggestedHandles.map(sugg => (
+                                  <button
+                                    key={sugg}
+                                    type="button"
+                                    onClick={() => {
+                                      setCatalogHandleInput(sugg);
+                                      setHandleAvailabilityState('unchecked');
+                                      setSuggestedHandles([]);
+                                    }}
+                                    className="px-2 py-0.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-mono font-bold border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900 transition-colors shadow-2xs cursor-pointer"
+                                  >
+                                    +{sugg}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {(handleAvailabilityState === 'unchecked' || (!isCurrentlyAvailable && handleAvailabilityState !== 'taken' && handleAvailabilityState !== 'checking')) && (
+                          <p className="text-muted-foreground flex items-center gap-1">
+                            <Sparkles size={12} className="text-amber-500 shrink-0" />
+                            <span>Click &quot;Check Availability&quot; to verify if handle is available before saving.</span>
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsEditingCatalogHandle(false);
+                          setHandleAvailabilityState('unchecked');
+                          setCheckedHandleText('');
+                        }}
+                        className="rounded-xl px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted transition-colors"
+                        disabled={savingCatalogHandle || handleAvailabilityState === 'checking'}
+                      >
+                        Cancel
+                      </button>
+
+                      {/* Step 1: Check Availability Button */}
+                      <button
+                        type="button"
+                        onClick={handleCheckCatalogHandle}
+                        disabled={handleAvailabilityState === 'checking' || savingCatalogHandle || !catalogHandleInput.trim()}
+                        className={`rounded-xl px-4 py-2 text-xs font-extrabold flex items-center gap-1.5 shadow-2xs border ${
+                          isCurrentlyAvailable
+                            ? 'bg-muted text-muted-foreground border-border hover:bg-muted'
+                            : 'bg-primary text-primary-foreground border-transparent hover:bg-primary/90'
+                        }`}
+                      >
+                        {handleAvailabilityState === 'checking' ? <RefreshCw size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                        <span>{handleAvailabilityState === 'checking' ? 'Checking...' : isCurrentlyAvailable ? 'Re-check Handle' : 'Check Availability'}</span>
+                      </button>
+
+                      {/* Step 2: Save Handle Button */}
+                      <button
+                        type="button"
+                        onClick={handleSaveCatalogHandle}
+                        disabled={!isCurrentlyAvailable || savingCatalogHandle}
+                        className={`rounded-xl px-4 py-2 text-xs font-extrabold flex items-center gap-1.5 shadow-2xs transition-all ${
+                          isCurrentlyAvailable
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md'
+                            : 'bg-muted text-muted-foreground border border-border cursor-not-allowed opacity-60'
+                        }`}
+                      >
+                        {savingCatalogHandle ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
+                        <span>{savingCatalogHandle ? 'Saving Handle...' : 'Save Handle'}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Catalog Display Preferences & Restriction Controls */}
+                <div className="p-4 sm:p-5 rounded-2xl bg-card border border-border/80 space-y-4 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Sliders size={16} className="text-primary" />
+                      <h4 className="text-xs font-black text-foreground uppercase tracking-wider">Catalog Preferences & Restrictions</h4>
+                    </div>
+                  </div>
+
+                  {/* Top Row: 2-Column Grid for Show Sales Rate & Show Barcode */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Control 1: Show Sales Rate */}
+                    <div className="p-3.5 rounded-xl bg-muted/40 border border-border/60 flex flex-col justify-between space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="grid h-7 w-7 place-items-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                            <TrendingUp size={15} />
+                          </div>
+                          <span className="text-xs font-bold text-foreground truncate">Show Sales Rate</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={showSalesRate}
+                          onChange={(e) => setShowSalesRate(e.target.checked)}
+                          className="w-4.5 h-4.5 rounded-md text-primary focus:ring-primary accent-primary cursor-pointer shrink-0"
+                        />
+                      </div>
+                      <p className="text-[10px] text-muted-foreground leading-relaxed font-medium">
+                        Display monthly/yearly sales rate stats & velocity graphs on product pages.
+                      </p>
+                    </div>
+
+                    {/* Control 2: Show Barcode */}
+                    <div className="p-3.5 rounded-xl bg-muted/40 border border-border/60 flex flex-col justify-between space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="grid h-7 w-7 place-items-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                            <Barcode size={15} />
+                          </div>
+                          <span className="text-xs font-bold text-foreground truncate">Show Product Barcode</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={showBarcodes}
+                          onChange={(e) => setShowBarcodes(e.target.checked)}
+                          className="w-4.5 h-4.5 rounded-md text-primary focus:ring-primary accent-primary cursor-pointer shrink-0"
+                        />
+                      </div>
+                      <p className="text-[10px] text-muted-foreground leading-relaxed font-medium">
+                        Display scannable vector barcode graphics & SKU numbers on product pages.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Bottom Row: Full-Width Geofenced Location Access Restriction Block */}
+                  <div className="p-4 rounded-xl bg-muted/40 border border-border/60 space-y-3.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="grid h-7 w-7 place-items-center rounded-lg bg-rose-500/10 text-rose-500 border border-rose-500/20">
+                          <MapPin size={15} />
+                        </div>
+                        <div>
+                          <h5 className="text-xs font-black text-foreground">Location Access Restriction (Geofencing)</h5>
+                          <p className="text-[10px] text-muted-foreground font-medium">Restrict digital catalog access to local visitors within set radius</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowLocationMapModal(true)}
+                          className="rounded-xl bg-card border border-border px-3 py-1.5 text-xs font-bold text-foreground hover:bg-muted transition-colors flex items-center justify-center gap-1.5 shadow-2xs shrink-0"
+                        >
+                          <Globe size={13} className="text-primary" />
+                          <span>Pick Location on Map</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (typeof navigator === 'undefined' || !navigator.geolocation) {
+                              toast.error('Geolocation is not supported by your browser.');
+                              return;
+                            }
+                            setDetectingStoreGps(true);
+                            navigator.geolocation.getCurrentPosition(
+                              (pos) => {
+                                const lat = pos.coords.latitude;
+                                const lng = pos.coords.longitude;
+                                setStoreLat(lat);
+                                setStoreLng(lng);
+                                setDetectingStoreGps(false);
+                                toast.success(`Store GPS detected: ${lat.toFixed(4)}°, ${lng.toFixed(4)}°. Click "Save Preferences" below.`);
+                              },
+                              (err) => {
+                                console.error('GPS detection error:', err);
+                                setDetectingStoreGps(false);
+                                toast.error('Could not access GPS location. Please check browser permissions.');
+                              },
+                              { enableHighAccuracy: true, timeout: 10000 }
+                            );
+                          }}
+                          disabled={detectingStoreGps}
+                          className="rounded-xl bg-card border border-border px-3 py-1.5 text-xs font-bold text-foreground hover:bg-muted transition-colors flex items-center justify-center gap-1.5 shadow-2xs shrink-0"
+                        >
+                          <RefreshCw size={13} className={detectingStoreGps ? "animate-spin" : "text-rose-500"} />
+                          <span>{detectingStoreGps ? "Detecting..." : "Detect GPS"}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Location Settings: Custom Input + Preset Chips */}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-2.5 border-t border-border/50">
+                      <div className="flex items-center gap-2 shrink-0">
+                        <label className="text-xs font-extrabold text-foreground shrink-0">Access Radius (m):</label>
+                        <div className="relative w-36 sm:w-40">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100000"
+                            placeholder="Unlimited (0)"
+                            value={locationRadiusKm}
+                            onChange={(e) => handleSetRadiusValue(e.target.value)}
+                            className="w-full rounded-xl bg-card border border-border pl-3 pr-8 py-1.5 text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 shadow-2xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          />
+                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-muted-foreground pointer-events-none">m</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                        <span className="text-[10px] font-extrabold text-muted-foreground uppercase tracking-wider shrink-0 mr-0.5">Presets:</span>
+                        {[
+                          { label: 'Disabled', val: '' },
+                          { label: '100 m', val: '100' },
+                          { label: '500 m', val: '500' },
+                          { label: '1000 m', val: '1000' },
+                          { label: '2000 m', val: '2000' },
+                          { label: '5000 m', val: '5000' },
+                          { label: '10000 m', val: '10000' },
+                        ].map((chip) => {
+                          const isActive = (chip.val === '' && (!locationRadiusKm || Number(locationRadiusKm) <= 0)) || locationRadiusKm === chip.val;
+                          return (
+                            <button
+                              key={chip.label}
+                              type="button"
+                              onClick={() => handleSetRadiusValue(chip.val)}
+                              className={`rounded-lg px-2.5 py-1 text-[11px] font-extrabold transition-all border shrink-0 ${
+                                isActive
+                                  ? 'bg-primary text-primary-foreground border-transparent shadow-xs'
+                                  : 'bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted'
+                              }`}
+                            >
+                              {chip.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* GPS Status Indicator */}
+                    <div className="text-[11px] font-medium pt-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-muted-foreground">
+                      {storeLat != null && storeLng != null ? (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                            <CheckCircle2 size={13} />
+                            Store Coordinates Set: {storeLat.toFixed(4)}° N, {storeLng.toFixed(4)}° E
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStoreLat(null);
+                              setStoreLng(null);
+                              toast.info('Store location cleared. Click "Save Preferences" below to commit changes.');
+                            }}
+                            className="rounded-lg px-2 py-0.5 text-[10px] font-bold bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 transition-colors flex items-center gap-1 shrink-0 cursor-pointer"
+                            title="Clear set store location coordinates"
+                          >
+                            <Trash2 size={11} />
+                            <span>Clear Location</span>
+                          </button>
+                        </div>
+                      ) : locationRadiusKm && Number(locationRadiusKm) > 0 ? (
+                        <span className="text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1">
+                          <AlertCircle size={13} className="shrink-0" />
+                          Coordinates not set. Click &quot;Pick Location on Map&quot; or &quot;Detect GPS&quot; to set store position.
+                        </span>
+                      ) : (
+                        <span />
+                      )}
+                      {locationRadiusKm && Number(locationRadiusKm) > 0 ? (
+                        <span className="font-bold text-rose-500 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-md shrink-0 self-start sm:self-auto">
+                          Restricted to {locationRadiusKm} m
+                        </span>
+                      ) : (
+                        <span className="font-bold text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md shrink-0 self-start sm:self-auto">
+                          Unlimited Access (Disabled)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Bottom Action Footer for Catalog Preferences */}
+                  <div className="pt-3 border-t border-border/60 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <div className="text-[11px] font-medium text-muted-foreground flex items-center gap-1.5">
+                      {isSettingsDirty ? (
+                        <span className="text-amber-600 dark:text-amber-400 font-extrabold flex items-center gap-1">
+                          <Sparkles size={13} className="animate-pulse text-amber-500" />
+                          You have unsaved preference changes
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground/80 font-bold flex items-center gap-1">
+                          <CheckCircle2 size={13} className="text-emerald-500" />
+                          All preferences up to date
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveAllCatalogSettings()}
+                      disabled={!isSettingsDirty || savingCatalogSettings}
+                      className={`w-full sm:w-auto rounded-xl px-5 py-2.5 text-xs font-extrabold flex items-center justify-center gap-2 transition-all ${
+                        isSettingsDirty && !savingCatalogSettings
+                          ? 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-md cursor-pointer'
+                          : 'bg-muted text-muted-foreground border border-border cursor-not-allowed opacity-60'
+                      }`}
+                    >
+                      {savingCatalogSettings ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
+                      <span>{savingCatalogSettings ? 'Saving Preferences...' : 'Save Preferences'}</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Stock Overview Stat Cards */}
@@ -1795,6 +2789,25 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
                   <span>Share Catalog Link on WhatsApp</span>
                 </button>
               </div>
+
+              {/* Interactive Location Map Picker Modal */}
+              {showLocationMapModal && (
+                <LocationMapPickerModal
+                  initialLat={storeLat}
+                  initialLng={storeLng}
+                  onClose={() => setShowLocationMapModal(false)}
+                  onConfirm={(newLat, newLng) => {
+                    setStoreLat(newLat);
+                    setStoreLng(newLng);
+                    setShowLocationMapModal(false);
+                    if (newLat === null || newLng === null) {
+                      toast.info('Store location cleared. Click "Save Preferences" below to commit changes.');
+                    } else {
+                      toast.success(`Store location set to ${newLat.toFixed(4)}°, ${newLng.toFixed(4)}°!`);
+                    }
+                  }}
+                />
+              )}
             </div>
           </div>
         );
