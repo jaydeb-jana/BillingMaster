@@ -182,3 +182,33 @@ export async function updateUser(req: AuthRequest, res: Response) {
     res.status(500).json({ error: err.message || 'Failed to update user' });
   }
 }
+
+export async function resetPassword(req: AuthRequest, res: Response) {
+  const { email, password, otp } = req.body;
+  if (!email || !password) {
+    res.status(400).json({ error: 'Email and new password are required' });
+    return;
+  }
+
+  if (otp && otp !== '123456') {
+    res.status(400).json({ error: 'Invalid verification code. Please enter 123456.' });
+    return;
+  }
+
+  try {
+    const [rows]: any = await pool.query('SELECT id FROM users WHERE email = ? LIMIT 1', [email.toLowerCase().trim()]);
+    if (!Array.isArray(rows) || rows.length === 0) {
+      res.status(404).json({ error: 'No user account found with this email address' });
+      return;
+    }
+
+    const userId = rows[0].id;
+    const passwordHash = await bcrypt.hash(password, 10);
+    await pool.query('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, userId]);
+
+    res.json({ success: true, message: 'Password reset successfully' });
+  } catch (err: any) {
+    console.error('Reset password error:', err);
+    res.status(500).json({ error: err.message || 'Failed to reset password' });
+  }
+}

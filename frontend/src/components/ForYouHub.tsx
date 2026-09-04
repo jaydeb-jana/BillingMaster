@@ -1743,7 +1743,7 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
                               <img
                                 src={imgUrl}
                                 alt={p.name}
-                                className="h-11 w-11 shrink-0 rounded-xl object-cover border border-border/80 bg-muted/20"
+                                className="h-11 w-11 shrink-0 rounded-xl object-contain p-0.5 border border-border/80 bg-muted/30"
                                 onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
                               />
                             )}

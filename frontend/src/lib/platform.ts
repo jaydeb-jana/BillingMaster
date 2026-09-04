@@ -34,11 +34,11 @@ export function isElectron(): boolean {
 }
 
 /**
- * Checks if running in desktop Electron or file protocol
+ * Checks if running in desktop Electron, native mobile (Capacitor), or file protocol
  */
 export function isDesktopOrFile(): boolean {
   if (typeof window === 'undefined') return false;
-  return window.location.protocol === 'file:' || isElectron();
+  return window.location.protocol === 'file:' || isElectron() || isCapacitor();
 }
 
 /**

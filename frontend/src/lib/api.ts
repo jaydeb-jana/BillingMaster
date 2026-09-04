@@ -123,6 +123,12 @@ export const auth = {
       body: JSON.stringify(attributes),
     });
   },
+  async resetPassword(email: string, password: string, otp?: string) {
+    return await request('/api/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, otp }),
+    });
+  },
   signOut() {
     authToken = null;
     currentSession = null;
@@ -202,12 +208,15 @@ function filterLocals<T>(locals: T[], query: Query): T[] {
 
 export function getProductBarcode(product: any): string {
   if (!product) return '';
-  let code = String(product.barcode || product.sku || '').trim();
+  let code = String(product.barcode !== undefined ? product.barcode : (product.sku || '')).trim();
   if (product.notes && typeof product.notes === 'string' && (product.notes.startsWith('{') || product.notes.startsWith('['))) {
     try {
       const parsed = JSON.parse(product.notes);
-      if (parsed.barcode && !code) code = String(parsed.barcode).trim();
-      if (parsed.sku && !code) code = String(parsed.sku).trim();
+      if (parsed.barcode !== undefined && parsed.barcode !== null) {
+        code = String(parsed.barcode).trim();
+      } else if (parsed.sku !== undefined && parsed.sku !== null) {
+        code = String(parsed.sku).trim();
+      }
     } catch (e) {}
   }
   if (!code) return '';
@@ -225,6 +234,26 @@ export function getProductBarcode(product: any): string {
 export function generateInternalSku(id?: string): string {
   const cleanId = id ? id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) : Date.now().toString(36);
   return `AUTOSKU-${cleanId.toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+}
+
+export function getProductUniqueId(p: any): string {
+  if (!p) return 'PRD-0000';
+  if (p.product_code && String(p.product_code).trim()) {
+    return String(p.product_code).trim();
+  }
+  if (p.notes && typeof p.notes === 'string' && (p.notes.startsWith('{') || p.notes.startsWith('['))) {
+    try {
+      const parsed = JSON.parse(p.notes);
+      if (parsed.product_code && String(parsed.product_code).trim()) {
+        return String(parsed.product_code).trim();
+      }
+    } catch (e) {}
+  }
+  if (p.id) {
+    const cleanId = String(p.id).replace(/[^a-zA-Z0-9]/g, '').slice(-8).toUpperCase();
+    return `PRD-${cleanId}`;
+  }
+  return 'PRD-0000';
 }
 
 export const db = {
@@ -421,6 +450,14 @@ export const supabase = {
     async updateUser(attributes: any) {
       try {
         const res = await auth.updateUser(attributes);
+        return { data: res, error: null };
+      } catch (err: any) {
+        return { data: null, error: err };
+      }
+    },
+    async resetPassword(attributes: { email: string; password: string; otp?: string }) {
+      try {
+        const res = await auth.resetPassword(attributes.email, attributes.password, attributes.otp);
         return { data: res, error: null };
       } catch (err: any) {
         return { data: null, error: err };

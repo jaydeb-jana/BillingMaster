@@ -3,7 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { initDb } from './db/mysql.js';
 import { authenticateToken } from './middleware/auth.js';
-import { signup, login, getSession, updateUser } from './controllers/authController.js';
+import { signup, login, getSession, updateUser, resetPassword } from './controllers/authController.js';
 import { createBusiness } from './controllers/businessController.js';
 import { createInvoiceTransaction } from './controllers/invoiceController.js';
 import {
@@ -32,6 +32,7 @@ app.get('/api/health', (_req, res) => {
 // Auth Routes
 app.post('/api/auth/signup', signup);
 app.post('/api/auth/login', login);
+app.post('/api/auth/reset-password', resetPassword);
 app.get('/api/auth/session', getSession);
 app.put('/api/auth/user', updateUser);
 

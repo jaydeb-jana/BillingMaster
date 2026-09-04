@@ -43,7 +43,13 @@ export async function initDb(): Promise<boolean> {
         await connection.query(`ALTER TABLE products ADD COLUMN image_url LONGTEXT;`);
       } catch (e) {}
       try {
+        await connection.query(`ALTER TABLE products ADD COLUMN notes LONGTEXT;`);
+      } catch (e) {}
+      try {
         await connection.query(`ALTER TABLE products MODIFY COLUMN notes LONGTEXT;`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE products ADD COLUMN barcode VARCHAR(100);`);
       } catch (e) {}
       try {
         await connection.query(`ALTER TABLE products MODIFY COLUMN image_url LONGTEXT;`);

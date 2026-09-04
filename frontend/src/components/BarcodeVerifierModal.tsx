@@ -164,10 +164,12 @@ export function BarcodeVerifierModal({
   const streamRef = useRef<MediaStream | null>(null);
   const scanIntervalRef = useRef<number | null>(null);
   const html5ScannerRef = useRef<Html5Qrcode | null>(null);
+  const isCameraCanceledRef = useRef(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
 
   // Stop camera media stream and scanning loop
   const stopCamera = async () => {
+    isCameraCanceledRef.current = true;
     if (scanIntervalRef.current) {
       clearInterval(scanIntervalRef.current);
       scanIntervalRef.current = null;
@@ -189,11 +191,17 @@ export function BarcodeVerifierModal({
       streamRef.current = null;
     }
     if (videoRef.current) {
+      try {
+        if (videoRef.current.srcObject) {
+          const srcStream = videoRef.current.srcObject as MediaStream;
+          srcStream.getTracks?.().forEach((t) => t.stop());
+        }
+      } catch (e) {}
       videoRef.current.srcObject = null;
     }
     if (html5ScannerRef.current) {
       try {
-        html5ScannerRef.current.stop().catch(() => {});
+        await html5ScannerRef.current.stop().catch(() => {});
         html5ScannerRef.current.clear();
       } catch (e) {}
       html5ScannerRef.current = null;
@@ -255,7 +263,9 @@ export function BarcodeVerifierModal({
 
   // Start Camera with multi-tiered fallback
   const startCamera = async () => {
+    isCameraCanceledRef.current = false;
     await stopCamera();
+    isCameraCanceledRef.current = false;
     setScannerError(null);
     setIsPermissionDenied(false);
     setIsScanning(true);
@@ -288,6 +298,11 @@ export function BarcodeVerifierModal({
 
       if (!stream) {
         throw new Error('Unable to access camera');
+      }
+
+      if (isCameraCanceledRef.current || !isOpen) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
       }
 
       streamRef.current = stream;
@@ -415,22 +430,28 @@ export function BarcodeVerifierModal({
 
   useEffect(() => {
     if (isOpen && activeTab === 'scan' && !scannedCode && (!targetProduct || !currentProductBarcode || isChangingBarcode)) {
+      isCameraCanceledRef.current = false;
       const timer = setTimeout(() => {
-        void startCamera();
+        if (!isCameraCanceledRef.current && isOpen) {
+          void startCamera();
+        }
       }, 150);
       return () => {
+        isCameraCanceledRef.current = true;
         clearTimeout(timer);
-        stopCamera();
+        void stopCamera();
       };
     } else {
-      stopCamera();
+      isCameraCanceledRef.current = true;
+      void stopCamera();
       return undefined;
     }
   }, [isOpen, activeTab, scannedCode, targetProduct, currentProductBarcode, isChangingBarcode]);
 
   useEffect(() => {
     return () => {
-      stopCamera();
+      isCameraCanceledRef.current = true;
+      void stopCamera();
     };
   }, []);
 
@@ -497,13 +518,13 @@ export function BarcodeVerifierModal({
           meta = JSON.parse(targetProduct.notes);
         } catch (e) {}
       }
-      delete meta.sku;
-      delete meta.barcode;
+      meta.sku = '';
+      meta.barcode = '';
 
       const payload = {
         sku: internalSku,
         barcode: '',
-        notes: Object.keys(meta).length > 0 ? JSON.stringify(meta) : '',
+        notes: JSON.stringify(meta),
       };
 
       await db.update('products', targetProduct.id, payload);
@@ -511,7 +532,7 @@ export function BarcodeVerifierModal({
         ...targetProduct, 
         sku: internalSku, 
         barcode: '', 
-        notes: Object.keys(meta).length > 0 ? JSON.stringify(meta) : '' 
+        notes: JSON.stringify(meta) 
       };
       setTargetProduct(updated);
       setBarcodeInput('');
@@ -546,35 +567,36 @@ export function BarcodeVerifierModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-sidebar/60 backdrop-blur-xs p-0 sm:items-center sm:p-4 print:hidden animate-in fade-in-0 duration-200">
-      <div className="w-full max-w-lg max-h-[92dvh] overflow-y-auto rounded-t-3xl sm:rounded-2xl border border-border bg-card shadow-float relative flex flex-col animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-sidebar/60 backdrop-blur-xs p-0 sm:p-4 print:hidden animate-in fade-in-0 duration-200">
+      <div className="w-full max-w-lg max-h-[90vh] rounded-t-3xl sm:rounded-2xl border border-border bg-card shadow-float relative flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
         
         {/* Modal Header */}
-        <div className="flex items-center justify-between p-4 sm:p-5 border-b border-border/70 bg-card sticky top-0 z-10">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+        <div className="flex items-center justify-between p-4 sm:px-6 sm:py-4 border-b border-border/70 bg-card shrink-0">
+          <div className="flex items-center gap-3 min-w-0 pr-2">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary border border-primary/20">
               <ScanLine size={20} />
             </div>
             <div className="min-w-0">
-              <h3 className="text-base font-extrabold text-foreground tracking-tight truncate">
-                {targetProduct ? `Barcode for "${targetProduct.name}"` : 'Verify Barcode'}
+              <h3 className="text-sm sm:text-base font-black text-foreground tracking-tight truncate">
+                {targetProduct ? `Barcode: ${targetProduct.name}` : 'Verify & Manage Barcode'}
               </h3>
-              <p className="text-[11px] text-muted-foreground truncate">
-                {targetProduct ? 'Scan or enter barcode to attach to this product' : 'Scan or enter barcode to lookup product'}
+              <p className="text-[11px] text-muted-foreground truncate font-medium">
+                {targetProduct ? 'Scan or enter scannable barcode to attach' : 'Scan or enter barcode to lookup product'}
               </p>
             </div>
           </div>
           <button 
             type="button" 
             onClick={onClose} 
-            className="rounded-xl p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
+            className="rounded-xl p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0 cursor-pointer"
+            title="Close modal"
           >
             <X size={18} />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-4 sm:p-6 space-y-5">
+        <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 custom-scrollbar">
           
           {/* Target Product Summary Box (Only shown when no barcode is set yet or when changing) */}
           {targetProduct && !currentProductBarcode && (
@@ -943,7 +965,7 @@ export function BarcodeVerifierModal({
                           }
                         }
                       }}
-                      placeholder="e.g. PRD-080043 or 8901234567890"
+                      placeholder="e.g. 8901234567890 (Scan or enter barcode)"
                       className={`input-shell w-full pl-3.5 pr-10 py-2.5 text-sm font-semibold tracking-wide ${
                         duplicateConflictProduct ? 'border-rose-500 ring-1 ring-rose-500/40 bg-rose-500/5' : ''
                       }`}

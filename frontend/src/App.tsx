@@ -7,16 +7,18 @@ import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { auth, db, getBusinessId, setCurrentBusinessId, supabase, supabaseConfigured, getSupabaseErrorMessage, getProductBarcode, generateInternalSku } from '@/lib/api';
+import { auth, db, getBusinessId, setCurrentBusinessId, supabase, supabaseConfigured, getSupabaseErrorMessage, getProductBarcode, generateInternalSku, getProductUniqueId } from '@/lib/api';
 import { Link, Route, Switch, Router as WouterRouter, useLocation, useParams } from 'wouter';
 import { useHashLocation } from 'wouter/use-hash-location';
 import { useBrowserLocation } from 'wouter/use-browser-location';
 import { DesktopTitlebar } from '@/components/DesktopTitlebar';
+import { isDesktopOrFile } from '@/lib/platform';
+import { mobileService } from '@/services/mobileService';
 import {
   ArrowDownToLine, ArrowLeft, ArrowRight, Ban, BarChart3, Bell, BookOpen, Boxes, BriefcaseBusiness, Building2, Calendar, Check,
   CheckCircle2, ChevronDown, CircleDollarSign, ClipboardList, Clock, CreditCard, Download, FilePlus2, FileText, HelpCircle,
   Landmark, LayoutDashboard, Lock, Unlock, LogOut, ImagePlus, Camera, Mail, MapPin, Menu, MessageCircle, Minus, MoreHorizontal, Package, Pencil, Phone, PhoneCall, Plus, Printer, QrCode, Receipt,
-  RefreshCw, Search, Send, Settings as SettingsIcon, ShoppingCart, SlidersHorizontal, Sparkles, Store, Trash2, Eye,
+  RefreshCw, Search, Send, Settings as SettingsIcon, ShoppingCart, SlidersHorizontal, Sparkles, Store, Trash2, Eye, EyeOff,
   Truck, UserRound, Users, Wallet, X, XCircle, AlertCircle, Share2, Copy, ScanLine, Barcode, ShieldCheck, ShieldAlert,
   AlertTriangle, CheckCheck, ExternalLink, Inbox, Info, BellRing, Filter, RotateCcw, History,
 } from 'lucide-react';
@@ -132,9 +134,33 @@ const mobileNavItems: { href: string; label: string; icon: Icon }[] = [
 ];
 
 function AppField({ label, value, onChange, type = 'text', required, test, placeholder }: { label: string; value: any; onChange: (v: string) => void; type?: string; required?: boolean; test?: string; placeholder?: string }) {
+  const [showPassword, setShowPassword] = useState(false);
+  const isPassword = type === 'password';
+  const effectiveType = isPassword ? (showPassword ? 'text' : 'password') : type;
+
   return (
     <label className="block text-xs font-bold">{label}
-      <input type={type} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} required={required} className="input-shell mt-2 w-full px-3 text-sm font-normal" data-testid={test} />
+      <div className="relative mt-2">
+        <input
+          type={effectiveType}
+          value={value}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+          required={required}
+          className={`input-shell w-full px-3 text-sm font-normal ${isPassword ? 'pr-10' : ''}`}
+          data-testid={test}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+            title={showPassword ? 'Hide password' : 'Show password'}
+          >
+            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        )}
+      </div>
     </label>
   );
 }
@@ -4191,22 +4217,32 @@ function InvoiceDetail() {
 
   const handleDownload = async () => {
     const element = document.getElementById('invoice-download-container');
-    if (!element) return;
+    if (!element) {
+      toast.error('Invoice preview container not found.');
+      return;
+    }
     
     try {
-      // Temporarily remove print classes or specific problematic styles if needed
       const scale = 2; // For better resolution
+      const width = element.clientWidth || element.offsetWidth || 800;
+      const height = element.clientHeight || element.offsetHeight || 1100;
+
       const dataUrl = await domtoimage.toJpeg(element, {
         quality: 0.98,
         bgcolor: '#ffffff',
+        filter: (node: Node) => {
+          if (!node) return false;
+          if (node.nodeType === 1 && (node as HTMLElement).tagName === 'SCRIPT') return false;
+          return true;
+        },
         style: {
           transform: `scale(${scale})`,
           transformOrigin: 'top left',
-          width: `${element.offsetWidth}px`,
-          height: `${element.offsetHeight}px`
+          width: `${width}px`,
+          height: `${height}px`
         },
-        width: element.offsetWidth * scale,
-        height: element.offsetHeight * scale,
+        width: width * scale,
+        height: height * scale,
       });
 
       const printSize = templateSettings.print_size;
@@ -4222,13 +4258,14 @@ function InvoiceDetail() {
       });
 
       const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (element.offsetHeight * pdfWidth) / element.offsetWidth;
+      const pdfHeight = (height * pdfWidth) / (width || 1);
       
       pdf.addImage(dataUrl, 'JPEG', 0, 0, pdfWidth, pdfHeight);
       pdf.save(`Invoice_${invoice?.invoice_number || '0001'}.pdf`);
+      toast.success('Invoice PDF downloaded successfully!');
     } catch (err) {
       console.error('Error generating PDF:', err);
-      // Fallback to window print if generation fails
+      toast.error('Direct PDF export encountered an error. Opening print preview...');
       window.print();
     }
   };
@@ -5345,7 +5382,8 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
     return table.data
       .filter((r) => {
         const rBarcode = isCustomer ? '' : getProductBarcode(r);
-        const queryStr = `${r.name || ''} ${r.email || ''} ${r.phone || ''} ${rBarcode} ${r.description || ''} ${r.notes || ''} ${r.type || ''}`.toLowerCase();
+        const rProdId = isCustomer ? '' : getProductUniqueId(r);
+        const queryStr = `${r.name || ''} ${r.email || ''} ${r.phone || ''} ${rBarcode} ${rProdId} ${r.description || ''} ${r.notes || ''} ${r.type || ''}`.toLowerCase();
         return queryStr.includes(search.toLowerCase());
       })
       .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
@@ -5665,6 +5703,55 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
       action={openAddModal} 
     />
 
+    {/* Search & Filter Bar */}
+    <div className="mb-5 space-y-2.5 animate-rise">
+      <div className="relative flex items-center">
+        <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={
+            isCustomer
+              ? "Search customers by name, phone number, email address, or notes..."
+              : "Search products by name, barcode, SKU, or category..."
+          }
+          className="w-full rounded-2xl bg-card border border-border/80 pl-10 pr-10 py-3 text-xs sm:text-sm font-semibold placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 shadow-2xs transition-all"
+        />
+        {search && (
+          <button
+            type="button"
+            onClick={() => setSearch('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
+            title="Clear search"
+          >
+            <X size={15} />
+          </button>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
+        <span>
+          Showing <strong className="font-extrabold text-foreground">{filtered.length}</strong> of{' '}
+          <strong className="font-extrabold text-foreground">{table.data.length}</strong> {isCustomer ? 'customers' : 'items'}
+          {search && (
+            <span> matching &ldquo;<span className="text-primary font-bold">{search}</span>&rdquo;</span>
+          )}
+        </span>
+
+        {search && (
+          <button
+            type="button"
+            onClick={() => setSearch('')}
+            className="text-xs font-extrabold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+          >
+            <RotateCcw size={12} />
+            <span>Clear Search</span>
+          </button>
+        )}
+      </div>
+    </div>
+
     <State {...table}>
       {filtered.length ? (
         <div className="space-y-3 sm:space-y-3.5 pb-28 sm:pb-16">
@@ -5758,12 +5845,22 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
                         )}
                         <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground flex-wrap">
                           {(() => {
+                            const productId = getProductUniqueId(row);
                             const pBarcode = getProductBarcode(row);
-                            return pBarcode ? (
-                              <span className="mono font-semibold bg-muted/60 px-2 py-0.5 rounded-md border border-border/50">
-                                Barcode: {pBarcode}
-                              </span>
-                            ) : null;
+                            return (
+                              <>
+                                <span className="mono font-extrabold bg-primary/10 text-primary px-2.5 py-0.5 rounded-md border border-primary/20 flex items-center gap-1 shadow-2xs">
+                                  <Boxes size={12} />
+                                  <span>Product ID: {productId}</span>
+                                </span>
+                                {pBarcode ? (
+                                  <span className="mono font-semibold bg-muted/60 text-foreground/90 px-2 py-0.5 rounded-md border border-border/50 flex items-center gap-1">
+                                    <ScanLine size={12} className="text-muted-foreground" />
+                                    <span>Barcode: {pBarcode}</span>
+                                  </span>
+                                ) : null}
+                              </>
+                            );
                           })()}
                           {!isService && (() => {
                             const stockVal = Number(row.stock_quantity ?? 0);
@@ -5887,7 +5984,27 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
           })}
         </div>
       ) : (
-        <Empty icon={kind === 'customers' ? Users : Package} title={`No ${kind} yet`} description={`Start by clicking New ${kind.slice(0,-1)} above.`} />
+        <div className="rounded-3xl border border-border/80 bg-card p-10 text-center space-y-3 shadow-2xs">
+          <Empty 
+            icon={kind === 'customers' ? Users : Package} 
+            title={search ? `No matching ${kind} found` : `No ${kind} yet`} 
+            description={
+              search 
+                ? `No ${kind} match "${search}". Try searching with a different keyword or phone number.` 
+                : `Start by clicking New ${kind.slice(0,-1)} above.`
+            } 
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className="btn-primary rounded-xl px-4 py-2 text-xs font-bold shadow-2xs cursor-pointer inline-flex items-center gap-1.5"
+            >
+              <RotateCcw size={14} />
+              <span>Clear Search Query</span>
+            </button>
+          )}
+        </div>
       )}
     </State>
 
@@ -7583,6 +7700,16 @@ function Auth({ mode }: { mode: 'login' | 'signup' }) {
   const [step, setStep] = useState<'form' | 'otp'>('form');
   const [otp, setOtp] = useState('');
 
+  // Forgot password states
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
+  const [forgotOtp, setForgotOtp] = useState('');
+  const [forgotStep, setForgotStep] = useState<'email' | 'otp' | 'new_password'>('email');
+  const [forgotError, setForgotError] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+
   const submitForm = async (e: React.FormEvent) => { 
     e.preventDefault(); 
     setError(''); 
@@ -7628,11 +7755,139 @@ function Auth({ mode }: { mode: 'login' | 'signup' }) {
     } 
   };
   
-  return <div className="noise flex min-h-[100dvh] items-center justify-center bg-background px-5 py-10"><div className="w-full max-w-sm animate-rise"><div className="mb-10 flex justify-center"><Logo /></div><div className="card-shell p-6 sm:p-9"><h1 className="mb-6 text-center text-2xl font-extrabold tracking-tight">{mode === 'login' ? 'Sign in' : 'Create account'}</h1>{error && <div className="mb-4 rounded-xl bg-destructive/10 p-3 text-xs text-destructive">{error}</div>}<form onSubmit={(e) => void submitForm(e)} className="space-y-4">
-    {mode === 'signup' && step === 'form' && <><AppField label="Full name" value={name} onChange={setName} required test="input-signup-name" /><AppField label="Phone number" type="tel" value={phone} onChange={setPhone} required test="input-signup-phone" /></>}
-    {step === 'form' && <><AppField label="Email" type="email" value={email} onChange={setEmail} required test="input-auth-email" /><AppField label="Password" type="password" value={password} onChange={setPassword} required test="input-auth-password" /></>}
-    {step === 'otp' && <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-center"><div className="mb-4 text-xs text-muted-foreground">We sent a 6-digit code to <strong>{email}</strong></div><AppField label="Enter OTP" value={otp} onChange={setOtp} required test="input-signup-otp" /></div>}
-    <button disabled={loading || !supabaseConfigured} className="btn-primary mt-2 min-h-12 w-full rounded-xl text-sm font-extrabold disabled:opacity-50" data-testid="button-auth-submit">{loading ? 'Working…' : step === 'form' && mode === 'signup' ? 'Continue' : mode === 'login' ? 'Sign in' : 'Verify & Create account'}</button></form></div><p className="mt-8 text-center text-[13px] text-muted-foreground">{mode === 'login' ? 'New here? ' : 'Already have an account? '}<Link href={mode === 'login' ? '/signup' : '/login'} className="font-bold text-foreground hover:underline">{mode === 'login' ? 'Create an account' : 'Sign in'}</Link></p></div></div>;
+  return (
+    <div className="noise flex min-h-[100dvh] items-center justify-center bg-background px-5 py-10">
+      <div className="w-full max-w-sm animate-rise">
+        <div className="mb-10 flex justify-center"><Logo /></div>
+        <div className="card-shell p-6 sm:p-9">
+          <h1 className="mb-6 text-center text-2xl font-extrabold tracking-tight">{mode === 'login' ? 'Sign in' : 'Create account'}</h1>
+          {error && <div className="mb-4 rounded-xl bg-destructive/10 p-3 text-xs text-destructive font-bold">{error}</div>}
+          <form onSubmit={(e) => void submitForm(e)} className="space-y-4">
+            {mode === 'signup' && step === 'form' && <><AppField label="Full name" value={name} onChange={setName} required test="input-signup-name" /><AppField label="Phone number" type="tel" value={phone} onChange={setPhone} required test="input-signup-phone" /></>}
+            {step === 'form' && (
+              <>
+                <AppField label="Email" type="email" value={email} onChange={setEmail} required test="input-auth-email" />
+                <div className="space-y-1">
+                  <AppField label="Password" type="password" value={password} onChange={setPassword} required test="input-auth-password" />
+                  {mode === 'login' && (
+                    <div className="flex justify-end pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForgotEmail(email || '');
+                          setForgotNewPassword('');
+                          setForgotConfirmPassword('');
+                          setForgotOtp('');
+                          setForgotStep('email');
+                          setForgotError('');
+                          setShowForgotModal(true);
+                        }}
+                        className="text-xs font-bold text-primary hover:underline"
+                      >
+                        Forgot password?
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+            {step === 'otp' && <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-center"><div className="mb-4 text-xs text-muted-foreground">We sent a 6-digit code to <strong>{email}</strong></div><AppField label="Enter OTP" value={otp} onChange={setOtp} required test="input-signup-otp" /></div>}
+            <button disabled={loading || !supabaseConfigured} className="btn-primary mt-2 min-h-12 w-full rounded-xl text-sm font-extrabold disabled:opacity-50" data-testid="button-auth-submit">{loading ? 'Working…' : step === 'form' && mode === 'signup' ? 'Continue' : mode === 'login' ? 'Sign in' : 'Verify & Create account'}</button>
+          </form>
+        </div>
+        <p className="mt-8 text-center text-[13px] text-muted-foreground">{mode === 'login' ? 'New here? ' : 'Already have an account? '}<Link href={mode === 'login' ? '/signup' : '/login'} className="font-bold text-foreground hover:underline">{mode === 'login' ? 'Create an account' : 'Sign in'}</Link></p>
+      </div>
+
+      {/* Forgot Password Modal */}
+      {showForgotModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-fade-in">
+          <div className="card-shell w-full max-w-sm p-6 sm:p-7 animate-rise shadow-2xl border border-border">
+            <div className="flex items-center justify-between pb-4 border-b border-border">
+              <h3 className="text-base font-black text-foreground">Reset Password</h3>
+              <button onClick={() => setShowForgotModal(false)} className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><X size={18} /></button>
+            </div>
+
+            {forgotError && (
+              <div className="mt-3 rounded-xl bg-destructive/10 p-3 text-xs text-destructive font-bold">{forgotError}</div>
+            )}
+
+            {forgotStep === 'email' && (
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                if (!forgotEmail.trim()) { setForgotError('Please enter your registered email.'); return; }
+                setForgotError('');
+                setForgotStep('otp');
+              }} className="mt-4 space-y-4">
+                <AppField label="Registered Email" type="email" value={forgotEmail} onChange={setForgotEmail} required placeholder="Enter your email (e.g. name@example.com)" />
+                <p className="text-[11px] text-muted-foreground">Enter your registered email address to receive your password reset verification code.</p>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button type="button" onClick={() => setShowForgotModal(false)} className="rounded-xl px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted">Cancel</button>
+                  <button type="submit" className="btn-primary rounded-xl px-5 py-2 text-xs font-bold">Send Reset Code</button>
+                </div>
+              </form>
+            )}
+
+            {forgotStep === 'otp' && (
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                if (forgotOtp !== '123456') {
+                  setForgotError('Invalid verification code. Please enter 123456.');
+                  return;
+                }
+                setForgotError('');
+                setForgotStep('new_password');
+              }} className="mt-4 space-y-4">
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-center text-xs text-muted-foreground">
+                  Verification code generated for <strong>{forgotEmail}</strong>.<br />
+                  <span className="font-mono text-primary font-bold">Verification Code: 123456</span>
+                </div>
+                <AppField label="Verification Code" value={forgotOtp} onChange={setForgotOtp} required placeholder="123456" />
+                <div className="flex justify-end gap-2 pt-2">
+                  <button type="button" onClick={() => setForgotStep('email')} className="rounded-xl px-3 py-2 text-xs font-bold text-muted-foreground hover:bg-muted">Back</button>
+                  <button type="submit" className="btn-primary rounded-xl px-5 py-2 text-xs font-bold">Verify Code</button>
+                </div>
+              </form>
+            )}
+
+            {forgotStep === 'new_password' && (
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                if (!forgotNewPassword.trim()) { setForgotError('Please enter your new password.'); return; }
+                if (forgotNewPassword.length < 4) { setForgotError('Password must be at least 4 characters.'); return; }
+                if (forgotNewPassword !== forgotConfirmPassword) { setForgotError('Passwords do not match. Please make sure both passwords match.'); return; }
+                setForgotLoading(true);
+                setForgotError('');
+                try {
+                  const { error: resetErr } = await supabase.auth.resetPassword({ email: forgotEmail, password: forgotNewPassword, otp: forgotOtp });
+                  if (resetErr) throw resetErr;
+                  toast.success('Password updated successfully! You can now sign in.');
+                  setPassword(forgotNewPassword);
+                  setEmail(forgotEmail);
+                  setShowForgotModal(false);
+                } catch (err: any) {
+                  setForgotError(getSupabaseErrorMessage(err, 'Failed to reset password.'));
+                } finally {
+                  setForgotLoading(false);
+                }
+              }} className="mt-4 space-y-4">
+                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-center text-xs text-emerald-600 dark:text-emerald-400 font-bold">
+                  ✓ Code Verified! Set your new password below.
+                </div>
+                <AppField label="New Password" type="password" value={forgotNewPassword} onChange={setForgotNewPassword} required placeholder="Enter new password" />
+                <AppField label="Confirm New Password" type="password" value={forgotConfirmPassword} onChange={setForgotConfirmPassword} required placeholder="Re-enter new password" />
+                <div className="flex justify-end gap-2 pt-2">
+                  <button type="button" onClick={() => setForgotStep('otp')} className="rounded-xl px-3 py-2 text-xs font-bold text-muted-foreground hover:bg-muted">Back</button>
+                  <button type="submit" disabled={forgotLoading} className="btn-primary rounded-xl px-5 py-2 text-xs font-bold disabled:opacity-50">
+                    {forgotLoading ? 'Updating...' : 'Update Password'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function Onboarding() {
