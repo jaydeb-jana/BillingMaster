@@ -6,7 +6,7 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { auth, db, getBusinessId, setCurrentBusinessId, supabase, supabaseConfigured, getSupabaseErrorMessage, getProductBarcode, generateInternalSku, getProductUniqueId } from '@/lib/api';
+import { auth, db, getBusinessId, getImpersonatedBusinessId, setCurrentBusinessId, supabase, supabaseConfigured, getSupabaseErrorMessage, getProductBarcode, generateInternalSku, getProductUniqueId } from '@/lib/api';
 import { useScrollReset, resetScrollRef } from '@/lib/useScrollReset';
 import { Link, Route, Switch, Router as WouterRouter, useLocation, useParams } from 'wouter';
 import { useHashLocation } from 'wouter/use-hash-location';
@@ -20,7 +20,7 @@ import {
   Landmark, LayoutDashboard, Lock, Unlock, LogOut, ImagePlus, Camera, Mail, MapPin, Menu, MessageCircle, Minus, MoreHorizontal, Package, Pencil, Phone, PhoneCall, Plus, Printer, QrCode, Receipt,
   RefreshCw, Search, Send, Settings as SettingsIcon, ShoppingCart, SlidersHorizontal, Sparkles, Store, Trash2, Eye, EyeOff,
   Truck, UserRound, Users, Wallet, X, XCircle, AlertCircle, Share2, Copy, ScanLine, Barcode, ShieldCheck, ShieldAlert,
-  AlertTriangle, CheckCheck, ExternalLink, Inbox, Info, BellRing, Filter, RotateCcw, History,
+  AlertTriangle, CheckCheck, ExternalLink, Inbox, Info, BellRing, Filter, RotateCcw, History, Upload, Crown,
 } from 'lucide-react';
 import { KhataBook } from '@/components/KhataBook';
 import { BarcodeVerifierModal } from '@/components/BarcodeVerifierModal';
@@ -31,6 +31,8 @@ import { ForYouHub } from '@/components/ForYouHub';
 import { PublicCatalog } from '@/components/PublicCatalog';
 import { MoreHub } from '@/components/MoreHub';
 import { HelpCenterModal } from '@/components/HelpCenterModal';
+import { PlanPage } from '@/components/PlanPage';
+import { PlanCheckout } from '@/components/PlanCheckout';
 import {
   InvoiceTemplateModal,
   INVOICE_TEMPLATES,
@@ -119,6 +121,7 @@ function usePaginatedTable<T extends Row>(
   pageSize: number = 40
 ) {
   const [data, setData] = useState<T[]>([]);
+  const [total, setTotal] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -140,9 +143,10 @@ function usePaginatedTable<T extends Row>(
       };
       if (search.trim()) queryPayload.search = search.trim();
 
-      const items = await db.list<T>(table, queryPayload);
-      setData(items);
-      setHasMore(items.length >= pageSize);
+      const res = await db.listWithMeta<T>(table, queryPayload);
+      setData(res.data);
+      setTotal(res.total);
+      setHasMore(res.data.length < res.total && res.data.length >= pageSize);
     } catch (e) {
       setError(getSupabaseErrorMessage(e, 'Could not load data.'));
     } finally {
@@ -166,15 +170,17 @@ function usePaginatedTable<T extends Row>(
       };
       if (search.trim()) queryPayload.search = search.trim();
 
-      const newItems = await db.list<T>(table, queryPayload);
-      if (newItems.length > 0) {
+      const res = await db.listWithMeta<T>(table, queryPayload);
+      if (res.data.length > 0) {
         setData((prev) => {
           const existingIds = new Set(prev.map((i) => i.id));
-          const uniqueNew = newItems.filter((i) => !existingIds.has(i.id));
-          return [...prev, ...uniqueNew];
+          const uniqueNew = res.data.filter((i) => !existingIds.has(i.id));
+          const updated = [...prev, ...uniqueNew];
+          setHasMore(updated.length < res.total && res.data.length >= pageSize);
+          return updated;
         });
+        setTotal(res.total);
         setOffset(nextOffset);
-        setHasMore(newItems.length >= pageSize);
       } else {
         setHasMore(false);
       }
@@ -187,6 +193,7 @@ function usePaginatedTable<T extends Row>(
 
   return {
     data,
+    total,
     loading,
     loadingMore,
     hasMore,
@@ -199,18 +206,55 @@ function usePaginatedTable<T extends Row>(
   };
 }
 
-function InfiniteScrollSentinel({ onIntersect, hasMore, loadingMore }: { onIntersect: () => void; hasMore: boolean; loadingMore: boolean }) {
+function InfiniteScrollSentinel({
+  onIntersect,
+  hasMore,
+  loadingMore,
+}: {
+  onIntersect: () => void;
+  hasMore: boolean;
+  loadingMore: boolean;
+}) {
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const userScrolledRef = useRef(false);
+  const lastTriggerTimeRef = useRef(0);
 
   useEffect(() => {
-    if (!hasMore) return;
+    function handleUserScroll() {
+      userScrolledRef.current = true;
+    }
+
+    window.addEventListener('scroll', handleUserScroll, { passive: true });
+    window.addEventListener('wheel', handleUserScroll, { passive: true });
+    window.addEventListener('touchmove', handleUserScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', handleUserScroll);
+      window.removeEventListener('wheel', handleUserScroll);
+      window.removeEventListener('touchmove', handleUserScroll);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!loadingMore) {
+      userScrolledRef.current = false;
+    }
+  }, [loadingMore]);
+
+  useEffect(() => {
+    if (!hasMore || loadingMore) return;
+
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting) {
+        const entry = entries[0];
+        const now = Date.now();
+        if (entry.isIntersecting && userScrolledRef.current && now - lastTriggerTimeRef.current > 800) {
+          lastTriggerTimeRef.current = now;
+          userScrolledRef.current = false;
           onIntersect();
         }
       },
-      { rootMargin: '400px' }
+      { rootMargin: '50px' }
     );
 
     if (sentinelRef.current) {
@@ -220,17 +264,17 @@ function InfiniteScrollSentinel({ onIntersect, hasMore, loadingMore }: { onInter
     return () => {
       observer.disconnect();
     };
-  }, [onIntersect, hasMore]);
+  }, [onIntersect, hasMore, loadingMore]);
 
   if (!hasMore) return null;
 
   return (
-    <div ref={sentinelRef} className="py-4 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+    <div ref={sentinelRef} className="py-6 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
       {loadingMore && (
-        <>
+        <div className="flex items-center gap-2 font-medium bg-muted/60 px-4 py-2 rounded-xl border border-border/50 shadow-2xs">
           <RefreshCw size={14} className="animate-spin text-primary" />
-          <span>Loading more records seamlessly...</span>
-        </>
+          <span>Loading more items...</span>
+        </div>
       )}
     </div>
   );
@@ -242,6 +286,7 @@ const navItems: { href: string; label: string; icon: Icon }[] = [
   { href: '/customers', label: 'Customers', icon: Users },
   { href: '/products', label: 'Products', icon: Package },
   { href: '/khatabook', label: 'Khata Book', icon: BookOpen },
+  { href: '/plan', label: 'Plan', icon: Crown },
   { href: '/for-you', label: 'Toolkit', icon: Sparkles },
   { href: '/expenses', label: 'Expenses', icon: Wallet },
   { href: '/reports', label: 'Reports', icon: BarChart3 },
@@ -254,6 +299,7 @@ const mobileNavItems: { href: string; label: string; icon: Icon }[] = [
   { href: '/customers', label: 'Customers', icon: Users },
   { href: '/products', label: 'Products', icon: Package },
   { href: '/khatabook', label: 'Khata Book', icon: BookOpen },
+  { href: '/plan', label: 'Plan', icon: Crown },
 ];
 
 function AppField({ label, value, onChange, type = 'text', required, test, placeholder }: { label: string; value: any; onChange: (v: string) => void; type?: string; required?: boolean; test?: string; placeholder?: string }) {
@@ -327,10 +373,24 @@ function CustomDropdown({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const selectedOption = options.find((o) => o.value === value);
 
+  useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [open]);
+
   return (
-    <div className={className}>
+    <div ref={dropdownRef} className={className}>
       <button
         type="button"
         data-testid={testId}
@@ -356,46 +416,43 @@ function CustomDropdown({
       </button>
 
       {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div
-            role="listbox"
-            className="absolute top-full left-0 z-50 mt-1.5 max-h-64 w-full overflow-y-auto rounded-xl border border-border/80 bg-card p-1.5 text-card-foreground shadow-xl ring-1 ring-black/5 animate-in fade-in-0 zoom-in-95"
-          >
-            {options.map((opt) => {
-              const isSelected = value === opt.value;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  role="option"
-                  aria-selected={isSelected}
-                  onClick={() => {
-                    onChange(opt.value);
-                    setOpen(false);
-                  }}
-                  className={`relative flex w-full cursor-pointer select-none items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm transition-colors duration-150 ${
-                    isSelected
-                      ? 'bg-primary/10 font-semibold text-primary'
-                      : 'text-foreground hover:bg-muted/80'
-                  }`}
-                >
-                  <div className="min-w-0 flex-1 pr-4">
-                    <div className="truncate">{opt.label}</div>
-                    {opt.hint && (
-                      <div className="text-[11px] font-normal text-muted-foreground">{opt.hint}</div>
-                    )}
-                  </div>
-                  {isSelected && (
-                    <span className="flex h-4 w-4 shrink-0 items-center justify-center text-primary">
-                      <Check className="h-4 w-4 stroke-[2.5]" />
-                    </span>
+        <div
+          role="listbox"
+          className="absolute top-full left-0 z-50 mt-1.5 max-h-64 w-full overflow-y-auto rounded-xl border border-border/80 bg-card p-1.5 text-card-foreground shadow-xl ring-1 ring-black/5 animate-in fade-in-0 zoom-in-95"
+        >
+          {options.map((opt) => {
+            const isSelected = value === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
+                onClick={() => {
+                  onChange(opt.value);
+                  setOpen(false);
+                }}
+                className={`relative flex w-full cursor-pointer select-none items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm transition-colors duration-150 ${
+                  isSelected
+                    ? 'bg-primary/10 font-semibold text-primary'
+                    : 'text-foreground hover:bg-muted/80'
+                }`}
+              >
+                <div className="min-w-0 flex-1 pr-4">
+                  <div className="truncate">{opt.label}</div>
+                  {opt.hint && (
+                    <div className="text-[11px] font-normal text-muted-foreground">{opt.hint}</div>
                   )}
-                </button>
-              );
-            })}
-          </div>
-        </>
+                </div>
+                {isSelected && (
+                  <span className="flex h-4 w-4 shrink-0 items-center justify-center text-primary">
+                    <Check className="h-4 w-4 stroke-[2.5]" />
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       )}
     </div>
   );
@@ -405,11 +462,11 @@ function Logo() {
   return (
     <Link href="/dashboard" className="flex items-center gap-2.5 text-inherit no-underline" data-testid="link-logo">
       <img 
-        src="/logo.webp" 
+        src="/logo.png" 
         alt="BillingMaster Logo" 
-        className="h-9 w-9 rounded-xl object-contain shadow-xs bg-white/10 p-0.5" 
+        className="h-9 w-9 rounded-xl object-contain shadow-xs p-0.5" 
         onError={(e) => {
-          (e.target as HTMLImageElement).src = "https://cdn-1.webcatalog.io/catalog/mybillbook/mybillbook-icon-filled-256.webp?v=1716618710030";
+          (e.target as HTMLImageElement).src = "/logo.png";
         }}
       />
       <span className="text-[15px] font-extrabold tracking-[-.04em]">BillingMaster<span className="text-secondary">.</span></span>
@@ -504,10 +561,94 @@ function Shell({ children }: { children: ReactNode }) {
     setHelpOpen(false);
   }, [location]);
 
+  // Listen for real-time tenant deletion events from Admin panel
+  useEffect(() => {
+    const handleTenantDeleted = (deletedBizId: string) => {
+      const currentBid = business?.id || getImpersonatedBusinessId();
+      if (currentBid && (String(currentBid) === String(deletedBizId) || currentBid === deletedBizId)) {
+        sessionStorage.removeItem('billingmaster_impersonated_tenant');
+        auth.signOut();
+        toast.error(`Merchant store account "${business?.name || 'Store'}" has been permanently deleted by Admin.`);
+        setTimeout(() => {
+          setLocation('/login');
+        }, 300);
+      }
+    };
+
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel('billingmaster_tenant_channel');
+      channel.onmessage = (event) => {
+        if (event.data?.type === 'TENANT_DELETED' && event.data?.bizId) {
+          handleTenantDeleted(event.data.bizId);
+        }
+      };
+    } catch (e) {}
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'billingmaster_tenant_deleted_event' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (parsed?.bizId) handleTenantDeleted(parsed.bizId);
+        } catch (err) {}
+      }
+    };
+
+    const onUnauthorized = () => {
+      auth.signOut();
+      toast.error('Your session has expired or your account has been permanently deleted.');
+      setTimeout(() => {
+        setLocation('/login');
+      }, 300);
+    };
+
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('billingmaster_unauthorized', onUnauthorized);
+
+    return () => {
+      if (channel) channel.close();
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('billingmaster_unauthorized', onUnauthorized);
+    };
+  }, [business?.id, business?.name, setLocation]);
+
   useEffect(() => {
     let active = true;
     async function loadData() {
       try {
+        const impersonatedBid = getImpersonatedBusinessId();
+        if (impersonatedBid) {
+          const [businesses, prods, invs, custs] = await Promise.all([
+            db.list<Row>('businesses', { id: impersonatedBid }).catch(() => []),
+            db.list<Row>('products', { business_id: impersonatedBid }).catch(() => []),
+            db.list<Row>('invoices', { business_id: impersonatedBid }).catch(() => []),
+            db.list<Row>('customers', { business_id: impersonatedBid }).catch(() => []),
+          ]);
+          if (active) {
+            if (!businesses || businesses.length === 0) {
+              // Store was permanently deleted by Admin!
+              sessionStorage.removeItem('billingmaster_impersonated_tenant');
+              toast.error('This merchant store account has been permanently deleted by Admin.');
+              setLocation('/login');
+              return;
+            }
+
+            const targetBiz = businesses[0];
+            setBusiness(targetBiz);
+            setProfile({
+              id: `profile-${impersonatedBid}`,
+              full_name: targetBiz.name || 'Merchant Owner',
+              role: 'owner',
+              business_id: impersonatedBid,
+              email: targetBiz.email || 'merchant@billingmaster.com',
+            });
+            setWorkspaceProducts(prods || []);
+            setWorkspaceInvoices(invs || []);
+            setWorkspaceCustomers(custs || []);
+          }
+          return;
+        }
+
         let session = auth.session();
         if (!session) {
           session = await auth.getSession();
@@ -534,7 +675,14 @@ function Shell({ children }: { children: ReactNode }) {
                 db.list<Row>('customers', {}).catch(() => []),
               ]);
               if (active) {
-                if (businesses.length) setBusiness(businesses[0]);
+                if (!businesses || businesses.length === 0) {
+                  // Merchant store was permanently deleted by Admin!
+                  auth.signOut();
+                  toast.error('Your merchant store account has been permanently deleted by Admin.');
+                  setLocation('/login');
+                  return;
+                }
+                setBusiness(businesses[0]);
                 setWorkspaceProducts(prods || []);
                 setWorkspaceInvoices(invs || []);
                 setWorkspaceCustomers(custs || []);
@@ -744,13 +892,112 @@ function Shell({ children }: { children: ReactNode }) {
     setLocation('/login');
   };
 
+  const handleContactWhatsApp = () => {
+    const bizName = business?.name || 'BillingMaster Merchant Store';
+    const bizId = business?.id || 'N/A';
+    const email = userEmail || business?.email || 'N/A';
+    const reasonText = business?.suspend_reason ? `\n- Suspension Reason: ${business.suspend_reason}` : '';
+
+    const text = `Hello Admin, my account has been suspended. Please review my account details and contact me to assist with restoring access:
+
+- Store Name: ${bizName}
+- Tenant ID: ${bizId}
+- Email: ${email}${reasonText}
+
+Why has my account been suspended? Please contact me as soon as possible.`;
+
+    const encodedText = encodeURIComponent(text);
+    const whatsappUrl = `https://api.whatsapp.com/send?phone=919876543210&text=${encodedText}`;
+    window.open(whatsappUrl, '_blank');
+  };
+
+  if (business?.status === 'suspended') {
+    return (
+      <div className="fixed inset-0 z-50 bg-[#09090b] flex items-center justify-center p-4 sm:p-6 text-center text-white select-none">
+        {/* Glowing Background Radial Overlay */}
+        <div 
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: 'radial-gradient(circle at 50% 40%, rgba(225, 29, 72, 0.12) 0%, rgba(9, 9, 11, 0.95) 70%)',
+          }}
+        />
+
+        {/* Modal Card */}
+        <div className="relative max-w-lg w-full bg-[#121217] border border-rose-500/30 rounded-3xl p-6 sm:p-8 shadow-[0_0_60px_rgba(225,29,72,0.15)] space-y-6 overflow-hidden backdrop-blur-2xl">
+          {/* Top Decorative Gradient Strip */}
+          <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-rose-500 via-amber-500 to-rose-500" />
+
+          {/* Icon Header */}
+          <div className="w-20 h-20 rounded-2xl bg-gradient-to-b from-rose-500/20 to-rose-500/5 border border-rose-500/30 text-rose-400 flex items-center justify-center mx-auto shadow-lg shadow-rose-500/10">
+            <ShieldAlert className="w-10 h-10" />
+          </div>
+
+          {/* Title & Subtitle */}
+          <div className="space-y-1">
+            <h1 className="text-2xl font-extrabold text-white tracking-tight">Account Suspended</h1>
+            <p className="text-xs text-rose-400 font-semibold tracking-wide uppercase">
+              Access Temporarily Restricted
+            </p>
+          </div>
+
+          {/* Store Info Pill */}
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-neutral-900 border border-neutral-800 text-[11px] font-medium text-neutral-300 mx-auto">
+            <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+            <span>Store: <strong className="text-white">{business.name || 'Merchant Store'}</strong></span>
+            <span className="text-neutral-500 font-mono">({business.id})</span>
+          </div>
+
+          {/* Suspension Reason Banner */}
+          {business.suspend_reason ? (
+            <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/25 text-left space-y-1.5">
+              <div className="flex items-center gap-1.5 text-rose-400 text-[10px] font-bold uppercase tracking-wider">
+                <Info className="w-3.5 h-3.5" />
+                <span>Reason Specified by Super Admin</span>
+              </div>
+              <p className="text-xs text-rose-200 leading-relaxed font-medium">
+                {business.suspend_reason}
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs text-neutral-400 leading-relaxed max-w-sm mx-auto">
+              All merchant activities, invoicing, and profile access for this store have been paused by platform administration.
+            </p>
+          )}
+
+          {/* Contact Support Guidance */}
+          <p className="text-[11px] text-neutral-400 leading-relaxed max-w-sm mx-auto">
+            If you believe this is an error or wish to restore full access, please contact BillingMaster support directly on WhatsApp.
+          </p>
+
+          {/* Buttons */}
+          <div className="space-y-2.5 pt-2">
+            <button
+              onClick={handleContactWhatsApp}
+              className="w-full py-3.5 px-5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-extrabold text-xs shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <MessageCircle className="w-4 h-4 stroke-[2.5]" />
+              <span>Contact Support (WhatsApp)</span>
+            </button>
+            <button
+              onClick={handleSignOut}
+              className="w-full py-3 px-5 rounded-2xl bg-neutral-800/80 hover:bg-neutral-700 text-neutral-300 hover:text-white font-bold text-xs border border-neutral-700/60 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Sign Out / Change Account</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return <div className="noise flex min-h-[100dvh] bg-background print:bg-white print:p-0">
     <aside className={`fixed inset-y-0 left-0 z-40 flex w-[252px] flex-col bg-sidebar px-4 py-5 text-sidebar-foreground transition-transform duration-300 lg:static lg:translate-x-0 print:hidden ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
       <div className="mb-9 flex items-center justify-between px-2"><Logo /><button onClick={() => setMobileOpen(false)} className="rounded-md p-1 text-sidebar-foreground/60 lg:hidden" data-testid="button-close-menu"><X size={18} /></button></div>
       <div className="mb-3 px-3 text-[10px] font-bold uppercase tracking-[.16em] text-sidebar-foreground/40">Workspace</div>
       <nav className="space-y-1">
         {navItems.map(({ href, label, icon: NavIcon }) => <Link key={href} href={href} onClick={() => setMobileOpen(false)} className={`group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold no-underline transition-colors ${location.startsWith(href) ? 'bg-sidebar-accent text-sidebar-foreground' : 'text-sidebar-foreground/62 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground'}`} data-testid={`link-nav-${label.toLowerCase()}`}>
-          <NavIcon size={17} strokeWidth={location.startsWith(href) ? 2.5 : 1.8} /><span>{label}</span>{label === 'Invoices' && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-secondary" />}
+          <NavIcon size={17} strokeWidth={location.startsWith(href) ? 2.5 : 1.8} /><span>{label}</span>{label === 'Invoices' && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-secondary" />}{label === 'Plan' && <span className="ml-auto rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-extrabold text-primary border border-primary/20 capitalize">{business?.plan_name || 'Free'}</span>}
         </Link>)}
       </nav>
       <div className="mt-8 px-3 text-[10px] font-bold uppercase tracking-[.16em] text-sidebar-foreground/40">Manage</div>
@@ -765,6 +1012,30 @@ function Shell({ children }: { children: ReactNode }) {
     </aside>
     {mobileOpen && <button className="fixed inset-0 z-30 bg-sidebar/30 lg:hidden print:hidden" onClick={() => setMobileOpen(false)} aria-label="Close navigation" data-testid="button-overlay" />}
     <main className="min-w-0 flex-1 print:w-full print:p-0">
+      {getImpersonatedBusinessId() && (
+        <div className="bg-[#18181b] border-b border-amber-500/40 px-4 py-1.5 text-xs text-neutral-200 flex items-center justify-between shadow-md print:hidden z-40 relative">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0"></span>
+            <span className="font-extrabold text-amber-400 tracking-wide text-xs">Admin Impersonation Mode:</span>
+            <span className="text-neutral-400 text-xs hidden sm:inline">Viewing store</span>
+            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-extrabold border border-amber-500/30 text-[11px] font-mono">
+              {business?.name || 'Merchant Store'}
+            </span>
+            <span className="text-neutral-500 text-[11px] hidden md:inline">(Temporary tab session)</span>
+          </div>
+          <button
+            onClick={() => {
+              sessionStorage.removeItem('billingmaster_impersonated_tenant');
+              window.location.href = '/';
+            }}
+            className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 active:scale-95 text-neutral-950 font-extrabold text-[11px] shadow-md transition-all cursor-pointer shrink-0 border border-amber-400 flex items-center gap-1.5"
+            title="Exit Impersonated Merchant Session"
+          >
+            <LogOut className="w-3.5 h-3.5 text-neutral-950" />
+            <span>Exit Impersonation</span>
+          </button>
+        </div>
+      )}
       <header className="sticky top-0 z-30 flex h-[70px] items-center justify-between border-b border-border/70 bg-background/95 px-4 backdrop-blur-md sm:px-7 lg:px-10 print:hidden">
         <div className="flex items-center gap-3">
           <button onClick={() => setMobileOpen(true)} className="rounded-lg p-2 hover:bg-muted lg:hidden" data-testid="button-open-menu">
@@ -1735,7 +2006,11 @@ function Invoices() {
           <Empty icon={FileText} title={search ? 'No invoices match' : 'Your invoice list is clear'} description={search ? 'Try another search term.' : 'Invoices created in the workspace will appear here.'} actionLabel={!search ? 'Create invoice' : undefined} action={() => window.location.assign('/invoices/new')} />
         )}
       </State>
-      <InfiniteScrollSentinel onIntersect={invoices.loadMore} hasMore={invoices.hasMore} loadingMore={invoices.loadingMore} />
+      <InfiniteScrollSentinel
+        onIntersect={invoices.loadMore}
+        hasMore={invoices.hasMore}
+        loadingMore={invoices.loadingMore}
+      />
     </section>
     
     {/* Delete Invoice Modal */}
@@ -5841,8 +6116,7 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
 
       <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
         <span>
-          Showing <strong className="font-extrabold text-foreground">{filtered.length}</strong> of{' '}
-          <strong className="font-extrabold text-foreground">{table.data.length}</strong> {isCustomer ? 'customers' : 'items'}
+          Total <strong className="font-extrabold text-foreground">{(paginatedTable.total || filtered.length).toLocaleString('en-US')}</strong> {isCustomer ? 'customers' : 'items'}
           {search && (
             <span> matching &ldquo;<span className="text-primary font-bold">{search}</span>&rdquo;</span>
           )}
@@ -6111,7 +6385,11 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
             );
           })}
         </div>
-        <InfiniteScrollSentinel onIntersect={paginatedTable.loadMore} hasMore={paginatedTable.hasMore} loadingMore={paginatedTable.loadingMore} />
+        <InfiniteScrollSentinel
+          onIntersect={paginatedTable.loadMore}
+          hasMore={paginatedTable.hasMore}
+          loadingMore={paginatedTable.loadingMore}
+        />
         </>
       ) : (
         <div className="rounded-3xl border border-border/80 bg-card p-10 text-center space-y-3 shadow-2xs">
@@ -7067,6 +7345,20 @@ function Settings() {
   const [error, setError] = useState('');
   const [businessId, setBusinessId] = useState<string | null>(null);
 
+  // Security Modal States
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [passwordAuthMethod, setPasswordAuthMethod] = useState<'password' | 'otp'>('password');
+  const [oldPasswordInput, setOldPasswordInput] = useState('');
+  const [otpInput, setOtpInput] = useState('');
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
+  const [passwordSubmitting, setPasswordSubmitting] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [deleteOtpInput, setDeleteOtpInput] = useState('');
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+
   useEffect(() => {
     let active = true;
     async function loadSettings() {
@@ -7711,114 +8003,75 @@ function Settings() {
                     ]}
                   />
                 </label>
-                <AppField
-                  label="Branch Name / City (Optional)"
-                  value={form.branch_name}
-                  onChange={(v) => setForm({ ...form, branch_name: v })}
-                  placeholder="e.g. Connaught Place Branch, New Delhi"
-                  test="input-branch-name"
-                />
-              </div>
-              <div className="mt-4">
-                <AppField
-                  label="Additional Payment Instructions / Notes (Optional)"
-                  value={form.payment_instructions}
-                  onChange={(v) => setForm({ ...form, payment_instructions: v })}
-                  placeholder="e.g. Please share transaction screenshot or UTR number after transfer."
-                  test="input-payment-instructions"
-                />
               </div>
             </div>
           </section>
 
-          {/* Invoice Template & Print Setup */}
-          <section className="card-shell mt-6 p-5 sm:p-7">
-            <div className="mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <div>
-                <h3 className="text-sm sm:text-base font-extrabold text-foreground">Invoice Template & Print Format</h3>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Select your visual invoice layout and default printer paper size.
-                </p>
-              </div>
+          {/* Account Security & Privacy Section */}
+          <section className="card-shell mt-6 p-5 sm:p-7" data-testid="section-account-security">
+            <div className="mb-5">
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20">
-                  {INVOICE_TEMPLATES.find(t => t.id === form.invoice_template)?.name} • {form.invoice_print_size}
-                </span>
+                <div className="grid h-8 w-8 place-items-center rounded-xl bg-primary/10 text-primary">
+                  <ShieldCheck size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-foreground">Account Security & Privacy</h3>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Manage your login password and permanent account data options safely.
+                  </p>
+                </div>
               </div>
             </div>
 
-            {/* Template Selection */}
-            <div className="mb-6">
-              <label className="text-xs font-black text-foreground uppercase tracking-wider block mb-3">
-                1. Choose Visual Design Template
-              </label>
-              <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
-                {INVOICE_TEMPLATES.map((tpl) => {
-                  const isSelected = form.invoice_template === tpl.id;
-                  return (
-                    <button
-                      type="button"
-                      key={tpl.id}
-                      onClick={() => setForm({ ...form, invoice_template: tpl.id })}
-                      className={`flex flex-col p-4 rounded-xl border text-left transition-all cursor-pointer ${
-                        isSelected
-                          ? 'border-primary bg-primary/5 ring-2 ring-primary/80 shadow-sm'
-                          : 'border-border bg-card hover:border-primary/40 hover:bg-muted/30'
-                      }`}
-                      data-testid={`button-template-${tpl.id}`}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-black text-foreground">{tpl.name}</span>
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${tpl.badgeColor}`}>
-                          {tpl.badge}
-                        </span>
-                      </div>
-                      <p className="text-[11px] leading-relaxed text-muted-foreground flex-1">{tpl.desc}</p>
-                      <div className="mt-3.5 pt-2.5 border-t border-border/50 flex items-center justify-between text-xs">
-                        <span className="text-[10px] text-muted-foreground">{tpl.tagline}</span>
-                        {isSelected ? (
-                          <span className="flex items-center gap-1 font-black text-primary text-[11px]">
-                            <Check size={13} className="stroke-[3]" /> Active
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground text-[11px] hover:text-foreground font-semibold">Select</span>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
+            <div className="grid gap-4 sm:grid-cols-2">
+              {/* Change Password Card */}
+              <div className="rounded-xl border border-border/80 bg-muted/20 p-4 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Lock size={16} className="text-primary shrink-0" />
+                    <h4 className="text-xs font-extrabold text-foreground">Change Password</h4>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">
+                    Update your account password using your current password or email verification OTP.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOldPasswordInput('');
+                    setOtpInput('');
+                    setNewPasswordInput('');
+                    setConfirmPasswordInput('');
+                    setPasswordAuthMethod('password');
+                    setShowChangePasswordModal(true);
+                  }}
+                  className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-xs font-bold text-foreground hover:bg-muted transition-colors shadow-xs"
+                >
+                  <Lock size={14} /> Change Password
+                </button>
               </div>
-            </div>
 
-            {/* Print Page Size */}
-            <div className="pt-4 border-t border-border/70">
-              <label className="text-xs font-black text-foreground uppercase tracking-wider block mb-3">
-                2. Default Print Paper Size
-              </label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
-                {PRINT_SIZES.map((sz) => {
-                  const isSelected = form.invoice_print_size === sz.id;
-                  return (
-                    <button
-                      type="button"
-                      key={sz.id}
-                      onClick={() => setForm({ ...form, invoice_print_size: sz.id })}
-                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                        isSelected
-                          ? 'border-primary bg-primary/10 text-primary font-bold shadow-xs'
-                          : 'border-border bg-card text-foreground hover:bg-muted/30'
-                      }`}
-                      data-testid={`button-printsize-${sz.id}`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-black">{sz.id}</span>
-                        <span className="text-[9px] font-medium text-muted-foreground">{sz.tag}</span>
-                      </div>
-                      <p className="text-[10px] text-muted-foreground mt-1">{sz.dimensions}</p>
-                      <p className="text-[9px] text-muted-foreground/80 mt-0.5 line-clamp-1">{sz.desc}</p>
-                    </button>
-                  );
-                })}
+              {/* Delete Account Card */}
+              <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Trash2 size={16} className="text-destructive shrink-0" />
+                    <h4 className="text-xs font-extrabold text-destructive">Delete Account</h4>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-destructive/80">
+                    Permanently delete your merchant store, invoices, customer records, and all data.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteOtpInput('');
+                    setShowDeleteAccountModal(true);
+                  }}
+                  className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl bg-destructive text-destructive-foreground px-4 py-2.5 text-xs font-bold hover:bg-destructive/90 transition-colors shadow-xs"
+                >
+                  <Trash2 size={14} /> Delete Account
+                </button>
               </div>
             </div>
           </section>
@@ -7850,12 +8103,320 @@ function Settings() {
           </section>
         </form>
       )}
+
+      {/* Change Password Modal */}
+      {showChangePasswordModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-sidebar/50 backdrop-blur-xs p-4 animate-in fade-in-0 print:hidden">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-border/60 pb-3.5 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary/10 text-primary">
+                  <Lock size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-foreground">Change Account Password</h3>
+                  <p className="text-[11px] text-muted-foreground">Verify your identity to set a new password</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowChangePasswordModal(false)}
+                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!newPasswordInput || newPasswordInput.length < 6) {
+                  toast.error('New password must be at least 6 characters long');
+                  return;
+                }
+                if (newPasswordInput !== confirmPasswordInput) {
+                  toast.error('New password and confirm password do not match');
+                  return;
+                }
+                if (passwordAuthMethod === 'password' && !oldPasswordInput) {
+                  toast.error('Please enter your current password');
+                  return;
+                }
+                if (passwordAuthMethod === 'otp' && !otpInput) {
+                  toast.error('Please enter the verification OTP');
+                  return;
+                }
+
+                setPasswordSubmitting(true);
+                try {
+                  await auth.changePassword({
+                    oldPassword: passwordAuthMethod === 'password' ? oldPasswordInput : undefined,
+                    otp: passwordAuthMethod === 'otp' ? otpInput : undefined,
+                    newPassword: newPasswordInput,
+                  });
+                  toast.success('Password changed successfully!');
+                  setShowChangePasswordModal(false);
+                } catch (err: any) {
+                  toast.error(err?.message || 'Failed to change password');
+                } finally {
+                  setPasswordSubmitting(false);
+                }
+              }}
+              className="space-y-4"
+            >
+              {/* Verification Method Toggle */}
+              <div>
+                <label className="text-xs font-bold text-foreground block mb-2">Verification Method</label>
+                <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-muted/60 border border-border/60">
+                  <button
+                    type="button"
+                    onClick={() => setPasswordAuthMethod('password')}
+                    className={`py-1.5 text-xs font-bold rounded-lg transition-all ${
+                      passwordAuthMethod === 'password'
+                        ? 'bg-card text-foreground shadow-xs'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Old Password
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPasswordAuthMethod('otp')}
+                    className={`py-1.5 text-xs font-bold rounded-lg transition-all ${
+                      passwordAuthMethod === 'otp'
+                        ? 'bg-card text-foreground shadow-xs'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Email OTP
+                  </button>
+                </div>
+              </div>
+
+              {passwordAuthMethod === 'password' ? (
+                <div>
+                  <label className="text-xs font-bold text-foreground block mb-1.5">Current Password</label>
+                  <input
+                    type="password"
+                    required
+                    value={oldPasswordInput}
+                    onChange={(e) => setOldPasswordInput(e.target.value)}
+                    placeholder="Enter current password"
+                    className="input-shell w-full px-3 py-2 text-xs"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-foreground">Email OTP</label>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await auth.sendOtp('change-password');
+                          toast.info('Verification OTP sent to email! (Default OTP: 123456)');
+                        } catch {
+                          toast.info('Verification OTP sent! Use default OTP: 123456');
+                        }
+                      }}
+                      className="text-[11px] font-bold text-primary hover:underline"
+                    >
+                      Send OTP
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    value={otpInput}
+                    onChange={(e) => setOtpInput(e.target.value)}
+                    placeholder="Enter 6-digit OTP (e.g. 123456)"
+                    className="input-shell w-full px-3 py-2 text-xs font-mono tracking-wider"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">Default verification OTP is 123456</p>
+                </div>
+              )}
+
+              <div>
+                <label className="text-xs font-bold text-foreground block mb-1.5">New Password</label>
+                <div className="relative">
+                  <input
+                    type={showNewPassword ? 'text' : 'password'}
+                    required
+                    minLength={6}
+                    value={newPasswordInput}
+                    onChange={(e) => setNewPasswordInput(e.target.value)}
+                    placeholder="Minimum 6 characters"
+                    className="input-shell w-full pl-3 pr-9 py-2 text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground"
+                  >
+                    {showNewPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-foreground block mb-1.5">Confirm New Password</label>
+                <input
+                  type="password"
+                  required
+                  value={confirmPasswordInput}
+                  onChange={(e) => setConfirmPasswordInput(e.target.value)}
+                  placeholder="Re-enter new password"
+                  className="input-shell w-full px-3 py-2 text-xs"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-border/60">
+                <button
+                  type="button"
+                  onClick={() => setShowChangePasswordModal(false)}
+                  className="px-4 py-2 text-xs font-bold rounded-xl border border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={passwordSubmitting}
+                  className="btn-primary inline-flex items-center gap-2 px-5 py-2 text-xs font-bold rounded-xl disabled:opacity-50"
+                >
+                  {passwordSubmitting ? 'Updating…' : 'Update Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Account Modal */}
+      {showDeleteAccountModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-sidebar/50 backdrop-blur-xs p-4 animate-in fade-in-0 print:hidden">
+          <div className="w-full max-w-md rounded-2xl border border-destructive/30 bg-card p-5 sm:p-6 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-border/60 pb-3.5 mb-4">
+              <div className="flex items-center gap-2.5 text-destructive">
+                <div className="grid h-9 w-9 place-items-center rounded-xl bg-destructive/10">
+                  <AlertTriangle size={20} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold">Permanently Delete Account?</h3>
+                  <p className="text-[11px] text-destructive/80 font-medium">Irreversible database deletion</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDeleteAccountModal(false)}
+                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Warning Alert Box */}
+            <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 mb-4">
+              <div className="flex items-start gap-2.5 text-xs text-destructive">
+                <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <span className="font-extrabold uppercase tracking-wide block">Warning: Action Cannot Be Undone</span>
+                  <p className="text-[11px] leading-relaxed opacity-90 font-medium">
+                    All your store details, invoices, products, customer balances, purchases, and records will be <strong>permanently deleted</strong> from the database. <strong>This data cannot be recovered under any circumstances.</strong>
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!deleteOtpInput) {
+                  toast.error('Please enter the verification OTP');
+                  return;
+                }
+                if (deleteOtpInput !== '123456') {
+                  toast.error('Invalid OTP. Please enter default OTP 123456');
+                  return;
+                }
+
+                setDeleteSubmitting(true);
+                try {
+                  await auth.deleteAccount(deleteOtpInput);
+                  toast.error('Account and all business data deleted permanently.');
+                  setShowDeleteAccountModal(false);
+                  auth.signOut();
+                  window.location.href = '#/auth';
+                  window.location.reload();
+                } catch (err: any) {
+                  toast.error(err?.message || 'Failed to delete account');
+                } finally {
+                  setDeleteSubmitting(false);
+                }
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-foreground">Enter Verification OTP</label>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await auth.sendOtp('delete-account');
+                        toast.info('Verification OTP sent to email! (Default OTP: 123456)');
+                      } catch {
+                        toast.info('Verification OTP sent! Use default OTP: 123456');
+                      }
+                    }}
+                    className="text-[11px] font-bold text-destructive hover:underline"
+                  >
+                    Send OTP
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  required
+                  value={deleteOtpInput}
+                  onChange={(e) => setDeleteOtpInput(e.target.value)}
+                  placeholder="Enter 6-digit OTP (e.g. 123456)"
+                  className="input-shell w-full px-3 py-2 text-xs font-mono tracking-wider border-destructive/40 focus:border-destructive"
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">Default verification OTP is 123456</p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-border/60">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteAccountModal(false)}
+                  className="px-4 py-2 text-xs font-bold rounded-xl border border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={deleteSubmitting}
+                  className="inline-flex items-center gap-2 px-5 py-2 text-xs font-bold rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 transition-colors"
+                >
+                  {deleteSubmitting ? 'Deleting Account…' : 'Permanently Delete Account'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }
 
 function Auth({ mode }: { mode: 'login' | 'signup' }) {
   const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (getImpersonatedBusinessId()) {
+      setLocation('/dashboard');
+    }
+  }, [setLocation]);
+
   const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [name, setName] = useState(''); const [phone, setPhone] = useState(''); const [error, setError] = useState(''); const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<'form' | 'otp'>('form');
   const [otp, setOtp] = useState('');
@@ -8052,7 +8613,7 @@ function Auth({ mode }: { mode: 'login' | 'signup' }) {
 
 function Onboarding() {
   const [, setLocation] = useLocation(); 
-  const [onboardingStep, setOnboardingStep] = useState<'shop' | 'gst'>('shop');
+  const [onboardingStep, setOnboardingStep] = useState<'shop' | 'gst' | 'payment'>('shop');
   const [hasGstin, setHasGstin] = useState<boolean | null>(null);
   const [isGstVerified, setIsGstVerified] = useState(false);
   const [gstin, setGstin] = useState('');
@@ -8061,6 +8622,18 @@ function Onboarding() {
   const [turnover, setTurnover] = useState('');
   const [employees, setEmployees] = useState('');
   const [currency, setCurrency] = useState('INR'); 
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoFileName, setLogoFileName] = useState<string>('');
+
+  // Payment & Online Store Catalog states (Step 3 - Optional)
+  const [catalogHandle, setCatalogHandle] = useState('');
+  const [upiId, setUpiId] = useState('');
+  const [upiNumber, setUpiNumber] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [accountHolder, setAccountHolder] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [ifscCode, setIfscCode] = useState('');
+
   const [error, setError] = useState(''); 
   const [saving, setSaving] = useState(false);
   
@@ -8069,10 +8642,18 @@ function Onboarding() {
       let session = auth.session();
       if (!session) session = await auth.getSession();
       const meta = session?.user?.user_metadata || {};
-      if (meta.business_name) setName(meta.business_name);
+      if (meta.business_name) {
+        setName(meta.business_name);
+        setCatalogHandle(meta.business_name.toLowerCase().replace(/[^a-z0-9_-]/g, ''));
+      }
       if (meta.address) setAddress(meta.address);
       if (meta.turnover) setTurnover(meta.turnover);
       if (meta.employees) setEmployees(meta.employees);
+      if (meta.logo_url) setLogoUrl(meta.logo_url);
+      if (meta.upi_id) setUpiId(meta.upi_id);
+      if (meta.bank_name) setBankName(meta.bank_name);
+      if (meta.account_number) setAccountNumber(meta.account_number);
+      if (meta.ifsc_code) setIfscCode(meta.ifsc_code);
     }
     void preload();
   }, []);
@@ -8083,11 +8664,14 @@ function Onboarding() {
       setError('Please enter your business name.');
       return;
     }
+    if (!catalogHandle.trim()) {
+      setCatalogHandle(name.trim().toLowerCase().replace(/[^a-z0-9_-]/g, ''));
+    }
     setError('');
     setOnboardingStep('gst');
   };
 
-  const save = async (e?: React.FormEvent) => { 
+  const save = async (e?: React.FormEvent, skipPayment = false) => { 
     if (e) e.preventDefault(); 
     setSaving(true); 
     setError('');
@@ -8102,6 +8686,26 @@ function Onboarding() {
       const userPhone = userMeta.phone || (session?.user as any)?.phone || '';
       const finalGstin = hasGstin === true ? gstin.trim().toUpperCase() : '';
 
+      const finalUpiId = skipPayment ? '' : upiId.trim();
+      const finalUpiNum = skipPayment ? '' : upiNumber.trim();
+      const finalBank = skipPayment ? '' : bankName.trim();
+      const finalHolder = skipPayment ? '' : (accountHolder.trim() || memberName);
+      const finalAccNum = skipPayment ? '' : accountNumber.trim();
+      const finalIfsc = skipPayment ? '' : ifscCode.trim();
+      const finalCatalog = catalogHandle.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+
+      // Cache payment settings in localStorage
+      try {
+        localStorage.setItem('arventa_payment_settings', JSON.stringify({
+          upi_id: finalUpiId,
+          upi_number: finalUpiNum,
+          bank_name: finalBank,
+          account_holder_name: finalHolder,
+          account_number: finalAccNum,
+          ifsc_code: finalIfsc,
+        }));
+      } catch (pe) {}
+
       // Immediately cache in localStorage
       if (session?.user?.id) {
         try {
@@ -8115,6 +8719,12 @@ function Onboarding() {
             employees,
             currency: currency || 'INR',
             gstin: finalGstin,
+            logo_url: logoUrl || null,
+            upi_id: finalUpiId,
+            bank_name: finalBank,
+            account_number: finalAccNum,
+            ifsc_code: finalIfsc,
+            catalog_handle: finalCatalog,
           }));
         } catch (le) {
           console.warn('localStorage cache error:', le);
@@ -8133,6 +8743,11 @@ function Onboarding() {
             name: memberName,
             phone: userPhone,
             gstin: finalGstin,
+            logo_url: logoUrl || null,
+            upi_id: finalUpiId,
+            bank_name: finalBank,
+            account_number: finalAccNum,
+            ifsc_code: finalIfsc,
           }
         });
       } catch (ae) {
@@ -8164,7 +8779,9 @@ function Onboarding() {
             employees,
             email: userEmail,
             phone: userPhone,
-            currency: currency || 'INR'
+            currency: currency || 'INR',
+            logo_url: logoUrl || null,
+            ...(finalCatalog ? { catalog_slug: finalCatalog, catalog_handle: finalCatalog } : {}),
           });
         } catch (e) {
           console.warn('Fallback update business fields:', e);
@@ -8173,7 +8790,8 @@ function Onboarding() {
               address: address.trim(), 
               name: name.trim(),
               email: userEmail,
-              phone: userPhone
+              phone: userPhone,
+              logo_url: logoUrl || null,
             });
           } catch (e2) {}
         }
@@ -8187,6 +8805,12 @@ function Onboarding() {
             gstin: finalGstin,
             enable_tax: Boolean(finalGstin),
             tax_rate: finalGstin ? 18 : 0,
+            upi_id: finalUpiId,
+            upi_number: finalUpiNum,
+            bank_name: finalBank,
+            account_holder_name: finalHolder,
+            account_number: finalAccNum,
+            ifsc_code: finalIfsc,
           });
         } catch (e3) {
           console.warn('Default settings setup:', e3);
@@ -8208,7 +8832,7 @@ function Onboarding() {
           <>
             <div className="mb-7">
               <div className="mb-3 flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-[.18em] text-primary">Step 1 of 2</span>
+                <span className="text-[10px] font-bold uppercase tracking-[.18em] text-primary">Step 1 of 3</span>
                 <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[10px] font-extrabold text-primary">Shop Details</span>
               </div>
               <h1 className="text-3xl font-extrabold tracking-[-.06em]">Tell us about the shop.</h1>
@@ -8216,8 +8840,105 @@ function Onboarding() {
             </div>
             {error && <div className="mb-4 rounded-xl bg-destructive/10 p-3 text-xs text-destructive">{error}</div>}
             <form onSubmit={handleStep1Submit} className="space-y-4">
+              {/* Premium Top Business Logo Upload (Optional, Max 5MB) */}
+              <div className="mb-2 flex flex-col items-center justify-center sm:flex-row sm:items-center sm:justify-start gap-4 rounded-2xl border border-border/80 bg-muted/20 p-4 shadow-xs">
+                <div className="relative group shrink-0">
+                  <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl border-2 border-dashed border-primary/30 bg-background shadow-inner transition-all group-hover:border-primary/60 overflow-hidden">
+                    {logoUrl ? (
+                      <img
+                        src={logoUrl}
+                        alt="Business Logo"
+                        className="h-full w-full object-contain p-1.5 bg-white dark:bg-zinc-900"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center text-muted-foreground transition-colors group-hover:text-primary">
+                        <Store className="h-8 w-8 stroke-[1.5]" />
+                      </div>
+                    )}
+                    <label className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/50 text-white opacity-0 transition-opacity group-hover:opacity-100 backdrop-blur-[2px]">
+                      <Camera className="h-5 w-5" />
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/svg+xml,image/gif"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
+                          if (file.size > MAX_SIZE) {
+                            toast.error('Logo file size exceeds 5MB limit. Please choose a smaller image.');
+                            e.target.value = '';
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onload = (evt) => {
+                            const rawUrl = evt.target?.result as string;
+                            if (!rawUrl) return;
+                            setLogoUrl(rawUrl);
+                            setLogoFileName(file.name);
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex-1 text-center sm:text-left space-y-1">
+                  <div className="flex items-center justify-center sm:justify-start gap-2">
+                    <span className="text-xs font-bold text-foreground">Business Logo</span>
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">Optional</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    {logoUrl ? logoFileName || 'Logo ready to save' : 'Upload logo to display on invoices, receipts & reports (PNG/JPG up to 5MB)'}
+                  </p>
+                  <div className="pt-1 flex items-center justify-center sm:justify-start gap-2">
+                    <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-bold text-foreground shadow-xs hover:bg-muted transition-all">
+                      <Upload className="h-3.5 w-3.5 text-primary" />
+                      <span>{logoUrl ? 'Change Logo' : 'Upload Logo'}</span>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/svg+xml,image/gif"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
+                          if (file.size > MAX_SIZE) {
+                            toast.error('Logo file size exceeds 5MB limit. Please choose a smaller image.');
+                            e.target.value = '';
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onload = (evt) => {
+                            const rawUrl = evt.target?.result as string;
+                            if (!rawUrl) return;
+                            setLogoUrl(rawUrl);
+                            setLogoFileName(file.name);
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                    </label>
+                    {logoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLogoUrl(null);
+                          setLogoFileName('');
+                        }}
+                        className="inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10 transition-all cursor-pointer"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <AppField label="Business name" value={name} onChange={setName} test="input-onboarding-business" required />
               <AppField label="Business address" value={address} onChange={setAddress} test="input-onboarding-address" />
+
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-xs font-bold">
                   Turnover (approx)
@@ -8265,16 +8986,16 @@ function Onboarding() {
                   options={[{ label: "INR — Indian Rupee", value: "INR" }]}
                 />
               </label>
-              <button disabled={!supabaseConfigured} className="btn-primary mt-2 min-h-12 w-full rounded-xl text-sm font-extrabold disabled:opacity-50" data-testid="button-finish-onboarding">
+              <button disabled={!supabaseConfigured} className="btn-primary mt-2 min-h-12 w-full rounded-xl text-sm font-extrabold disabled:opacity-50 cursor-pointer" data-testid="button-finish-onboarding">
                 Continue to GST Setup
               </button>
             </form>
           </>
-        ) : (
+        ) : onboardingStep === 'gst' ? (
           <>
             <div className="mb-7">
               <div className="mb-3 flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-[.18em] text-primary">Step 2 of 2</span>
+                <span className="text-[10px] font-bold uppercase tracking-[.18em] text-primary">Step 2 of 3</span>
                 <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[10px] font-extrabold text-primary">GST Verification</span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-[-.06em]">Do you have a GST Number?</h1>
@@ -8363,38 +9084,21 @@ function Onboarding() {
                 {hasGstin === true ? (
                   <button
                     type="button"
-                    onClick={() => void save()}
-                    disabled={saving || !supabaseConfigured || !gstin.trim() || !isGstVerified}
-                    className="btn-primary min-h-12 w-full rounded-xl text-sm font-extrabold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                    data-testid="button-finish-onboarding-with-gstin"
+                    onClick={() => setOnboardingStep('payment')}
+                    disabled={!gstin.trim() || !isGstVerified}
+                    className="btn-primary min-h-12 w-full rounded-xl text-sm font-extrabold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
+                    data-testid="button-continue-to-payment-with-gstin"
                   >
-                    {saving ? (
-                      <>
-                        <RefreshCw size={15} className="animate-spin" />
-                        <span>Setting up workspace…</span>
-                      </>
-                    ) : !isGstVerified ? (
-                      'Verify GSTIN to continue'
-                    ) : (
-                      'Save & Open Workspace'
-                    )}
+                    {!isGstVerified ? 'Verify GSTIN to continue' : 'Continue to Payment Setup'}
                   </button>
                 ) : hasGstin === false ? (
                   <button
                     type="button"
-                    onClick={() => void save()}
-                    disabled={saving || !supabaseConfigured}
-                    className="btn-primary min-h-12 w-full rounded-xl text-sm font-extrabold disabled:opacity-50 flex items-center justify-center gap-2"
-                    data-testid="button-finish-onboarding-skip-gstin"
+                    onClick={() => setOnboardingStep('payment')}
+                    className="btn-primary min-h-12 w-full rounded-xl text-sm font-extrabold flex items-center justify-center gap-2 cursor-pointer"
+                    data-testid="button-continue-to-payment-skip-gstin"
                   >
-                    {saving ? (
-                      <>
-                        <RefreshCw size={15} className="animate-spin" />
-                        <span>Setting up workspace…</span>
-                      </>
-                    ) : (
-                      'Skip & Open Workspace'
-                    )}
+                    Continue to Payment Setup
                   </button>
                 ) : (
                   <button
@@ -8414,11 +9118,132 @@ function Onboarding() {
                     setOnboardingStep('shop');
                   }}
                   disabled={saving}
-                  className="flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors"
+                  className="flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                   data-testid="button-back-to-shop-details"
                 >
                   <ArrowLeft size={14} />
                   <span>Back to shop details</span>
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Step 3: Payment & Online Catalog Setup */}
+            <div className="mb-7">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-[.18em] text-primary">Step 3 of 3</span>
+                <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[10px] font-extrabold text-primary">Payment & Catalog</span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-[-.06em]">Payment & Online Store Setup</h1>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Add your UPI ID, Bank details & custom store handle so customers can pay online and view your catalog (Optional).
+              </p>
+            </div>
+
+            {error && <div className="mb-4 rounded-xl bg-destructive/10 p-3 text-xs text-destructive">{error}</div>}
+
+            <div className="space-y-4">
+              <AppField
+                label="Online Store Catalog Handle (Store Link)"
+                value={catalogHandle}
+                onChange={setCatalogHandle}
+                placeholder="e.g. raj-store"
+              />
+
+              <div className="pt-2 border-t border-border/60">
+                <p className="text-xs font-bold text-foreground mb-3 flex items-center gap-1.5">
+                  <QrCode className="h-4 w-4 text-primary" />
+                  <span>UPI Payment Details (For Invoice Payment QR Codes)</span>
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <AppField
+                    label="UPI ID"
+                    value={upiId}
+                    onChange={setUpiId}
+                    placeholder="e.g. storename@upi or 9876543210@paytm"
+                  />
+                  <AppField
+                    label="UPI Mobile Number"
+                    value={upiNumber}
+                    onChange={setUpiNumber}
+                    placeholder="e.g. 9876543210"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-border/60">
+                <p className="text-xs font-bold text-foreground mb-3 flex items-center gap-1.5">
+                  <Landmark className="h-4 w-4 text-primary" />
+                  <span>Bank Account Details (Optional)</span>
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <AppField
+                    label="Bank Name"
+                    value={bankName}
+                    onChange={setBankName}
+                    placeholder="e.g. HDFC Bank"
+                  />
+                  <AppField
+                    label="Account Holder Name"
+                    value={accountHolder}
+                    onChange={setAccountHolder}
+                    placeholder="e.g. Store Owner Name"
+                  />
+                  <AppField
+                    label="Account Number"
+                    value={accountNumber}
+                    onChange={setAccountNumber}
+                    placeholder="e.g. 50100029348123"
+                  />
+                  <AppField
+                    label="IFSC Code"
+                    value={ifscCode}
+                    onChange={setIfscCode}
+                    placeholder="e.g. HDFC0001234"
+                  />
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="pt-3 flex flex-col gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => void save()}
+                  disabled={saving || !supabaseConfigured}
+                  className="btn-primary min-h-12 w-full rounded-xl text-sm font-extrabold disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+                  data-testid="button-finish-onboarding-payment"
+                >
+                  {saving ? (
+                    <>
+                      <RefreshCw size={15} className="animate-spin" />
+                      <span>Setting up workspace…</span>
+                    </>
+                  ) : (
+                    'Save & Open Workspace'
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void save(undefined, true)}
+                  disabled={saving}
+                  className="min-h-11 w-full rounded-xl border border-border bg-card hover:bg-muted/50 text-xs font-bold text-foreground transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  Skip Payment Setup & Open Workspace
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError('');
+                    setOnboardingStep('gst');
+                  }}
+                  disabled={saving}
+                  className="flex items-center justify-center gap-1.5 py-2 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                >
+                  <ArrowLeft size={14} />
+                  <span>Back to GST Setup</span>
                 </button>
               </div>
             </div>
@@ -8434,6 +9259,11 @@ function Home() {
   const [, setLocation] = useLocation();
   useEffect(() => {
     let active = true;
+    const impersonatedBid = getImpersonatedBusinessId();
+    if (impersonatedBid) {
+      setLocation('/dashboard');
+      return;
+    }
     void supabase.auth.getSession().then(async ({ data }) => {
       if (!active) return;
       if (!data.session) {
@@ -8467,6 +9297,31 @@ function useAppLocation(options?: any): [string, (to: string, options?: { replac
 
 function RoutedErrorBoundary({ children }: { children: ReactNode }) { const [location] = useAppLocation(); return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>; }
 function Protected({ children }: { children: ReactNode }) { return <Shell>{children}</Shell>; }
+
+function PlanCheckoutWrapper() {
+  const [business, setBusiness] = useState<Row | null>(null);
+
+  useEffect(() => {
+    async function loadBiz() {
+      try {
+        const impersonatedBid = getImpersonatedBusinessId();
+        const session = auth.session() || (await auth.getSession());
+        let bid = impersonatedBid;
+        if (!bid && session?.user?.id) {
+          const profiles = await db.list<Row>('profiles', { id: session.user.id });
+          if (profiles[0]?.business_id) bid = profiles[0].business_id;
+        }
+        if (bid) {
+          const bizes = await db.list<Row>('businesses', { id: bid });
+          if (bizes.length > 0) setBusiness(bizes[0]);
+        }
+      } catch (e) {}
+    }
+    void loadBiz();
+  }, []);
+
+  return <PlanCheckout business={business} onBack={() => window.location.href = '/plan'} />;
+}
 
 function KhataBookWrapper() {
   const params = useParams<{ id?: string }>();
@@ -8503,6 +9358,9 @@ function Router() {
     <Route path="/growth"><Protected><ForYouHub key="growth" /></Protected></Route>
     <Route path="/more"><Protected><MoreHub key="more" /></Protected></Route>
     <Route path="/reports"><Protected><Reports key="reports" /></Protected></Route>
+    <Route path="/plan/checkout"><Protected><PlanCheckoutWrapper key="checkout" /></Protected></Route>
+    <Route path="/plan"><Protected><PlanPage key="plan" /></Protected></Route>
+    <Route path="/subscription"><Protected><PlanPage key="subscription" /></Protected></Route>
     <Route path="/settings"><Protected><Settings key="settings" /></Protected></Route>
     <Route><div className="p-10">Not found</div></Route>
   </Switch></RoutedErrorBoundary>;

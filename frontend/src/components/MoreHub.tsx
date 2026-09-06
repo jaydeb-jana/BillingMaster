@@ -8,7 +8,7 @@ import {
   Sliders, MessageSquare, Send, Building2, Mail,
   Receipt, Calendar, CalendarDays, CalendarRange, TrendingUp,
   BarChart3, Layers, Users, Package, Box, Filter, LayoutTemplate,
-  FileSpreadsheet
+  FileSpreadsheet, History as HistoryIcon
 } from 'lucide-react';
 import { db, auth, getBusinessId } from '@/lib/api';
 import { useScrollReset, resetScrollRef } from '@/lib/useScrollReset';
@@ -189,6 +189,67 @@ export function MoreHub({ onNavigate }: MoreHubProps) {
   const [ratingVal, setRatingVal] = useState(5);
   const [ratingFeedback, setRatingFeedback] = useState('');
   const [ratingSubmitted, setRatingSubmitted] = useState(false);
+
+  // Billing & Subscription Payment History State
+  const [selectedProofItem, setSelectedProofItem] = useState<any | null>(null);
+  const [billingSearch, setBillingSearch] = useState('');
+  const [paymentHistory, setPaymentHistory] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('billingmaster_payment_history');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+
+  const fetchLiveBillingHistory = async () => {
+    try {
+      const bid = (await getBusinessId()) || localStorage.getItem('billingmaster_business_id') || 'biz-01';
+      const res = await fetch(`/api/billing-requests/my?business_id=${bid}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.data && Array.isArray(json.data) && json.data.length > 0) {
+          const liveItems = json.data.map((req: any) => ({
+            id: req.id,
+            planName: `${req.requested_plan} Plan Purchase`,
+            planPrice: req.price || '₹499',
+            utr: req.utr_ref,
+            notes: req.admin_response ? `Admin Note: ${req.admin_response}` : (req.utr_ref ? `Submitted UTR: ${req.utr_ref}` : 'Payment screenshot uploaded.'),
+            screenshotUrl: req.screenshot_url || '',
+            status: req.status === 'accepted' ? 'active_verified' : (req.status === 'rejected' ? 'rejected' : 'pending_verification'),
+            adminResponse: req.admin_response,
+            timestamp: new Date(req.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' }) + ' at ' + new Date(req.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+            date: new Date(req.created_at).toISOString().split('T')[0],
+            time: new Date(req.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+            paymentMethod: 'Direct UPI App',
+          }));
+          setPaymentHistory(liveItems);
+          try {
+            localStorage.setItem('billingmaster_payment_history', JSON.stringify(liveItems));
+          } catch (e) {}
+          return;
+        }
+      }
+    } catch (e) {}
+
+    try {
+      const saved = localStorage.getItem('billingmaster_payment_history');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) setPaymentHistory(parsed);
+      }
+    } catch (e) {}
+  };
+
+  useEffect(() => {
+    if (activeModal === 'billing-history') {
+      fetchLiveBillingHistory();
+      const interval = setInterval(fetchLiveBillingHistory, 4000);
+      return () => clearInterval(interval);
+    }
+  }, [activeModal]);
 
   // Printer Test State
   const [printerWidth, setPrinterWidth] = useState<'58mm' | '80mm'>('80mm');
@@ -500,6 +561,23 @@ export function MoreHub({ onNavigate }: MoreHubProps) {
               <div>
                 <h4 className="text-xs sm:text-sm font-extrabold text-foreground">Manage Staff & Roles</h4>
                 <p className="text-[11px] text-muted-foreground">Staff logins, billing operator permissions</p>
+              </div>
+            </div>
+            <ChevronRight size={18} className="text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
+          </div>
+
+          {/* Billing & Subscription History */}
+          <div
+            onClick={() => setActiveModal('billing-history')}
+            className="group flex items-center justify-between p-4 hover:bg-muted/40 transition-all cursor-pointer"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/10 text-primary">
+                <HistoryIcon size={20} />
+              </div>
+              <div>
+                <h4 className="text-xs sm:text-sm font-extrabold text-foreground">Billing & Subscription History</h4>
+                <p className="text-[11px] text-muted-foreground">View plan purchases, billing receipts & payment proof verifications</p>
               </div>
             </div>
             <ChevronRight size={18} className="text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
@@ -982,6 +1060,259 @@ export function MoreHub({ onNavigate }: MoreHubProps) {
               >
                 Save Preferences
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Billing & Subscription History */}
+      {activeModal === 'billing-history' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-xs animate-fade-in">
+          <div className="card-shell w-full max-w-2xl p-5 sm:p-6 animate-rise shadow-2xl border border-border max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3.5 border-b border-border shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary/15 text-primary shrink-0">
+                  <HistoryIcon size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-foreground">Billing & Subscription History</h3>
+                  <p className="text-[11px] text-muted-foreground">View plan purchases, billing receipts & payment proof verifications</p>
+                </div>
+              </div>
+              <button onClick={() => setActiveModal(null)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Search Bar for Billing History */}
+            <div className="pt-3 pb-2 shrink-0 border-b border-border/50">
+              <div className="relative">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Search history by Billing ID (e.g. BILL-2026-9812), plan name, date, UTR..."
+                  value={billingSearch}
+                  onChange={(e) => setBillingSearch(e.target.value)}
+                  className="input-shell w-full pl-9 pr-8 py-2 text-xs font-semibold"
+                />
+                {billingSearch && (
+                  <button
+                    onClick={() => setBillingSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 rounded"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Content List */}
+            <div className="flex-1 overflow-y-auto py-4 space-y-3.5 pr-1 min-h-[220px]">
+              {(() => {
+                const filteredHistory = paymentHistory.filter((item) => {
+                  const q = billingSearch.toLowerCase().trim();
+                  if (!q) return true;
+                  return (
+                    (item.id && item.id.toLowerCase().includes(q)) ||
+                    (item.planName && item.planName.toLowerCase().includes(q)) ||
+                    (item.utr && item.utr.toLowerCase().includes(q)) ||
+                    (item.timestamp && item.timestamp.toLowerCase().includes(q)) ||
+                    (item.paymentMethod && item.paymentMethod.toLowerCase().includes(q)) ||
+                    (item.notes && item.notes.toLowerCase().includes(q))
+                  );
+                });
+
+                if (filteredHistory.length === 0) {
+                  return (
+                    <div className="py-10 px-4 text-center text-xs text-muted-foreground">
+                      <div className="grid h-12 w-12 place-items-center rounded-2xl bg-muted/60 mx-auto mb-2.5 text-muted-foreground/50">
+                        <HistoryIcon size={24} />
+                      </div>
+                      <p className="font-bold text-foreground text-sm">No billing records found</p>
+                      <p className="mt-1 max-w-xs mx-auto text-[11px]">
+                        {billingSearch
+                          ? `No records matched "${billingSearch}". Try searching by Billing ID (e.g. BILL-2026-9812).`
+                          : 'No plan purchase history recorded yet.'}
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <>
+                    <div className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+                      <span>Billing Records ({filteredHistory.length})</span>
+                      <span className="text-[10px] font-normal text-muted-foreground normal-case">Searchable by Billing ID</span>
+                    </div>
+
+                    {filteredHistory.map((item) => {
+                      const isVerified = item.status === 'active_verified' || item.status === 'verified';
+                      const isRejected = item.status === 'rejected';
+                      return (
+                        <div key={item.id} className="rounded-2xl border border-border/80 bg-card p-4 space-y-3 shadow-2xs hover:border-primary/30 transition-all">
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-xs font-black text-primary bg-primary/10 px-2.5 py-1 rounded-lg border border-primary/20">
+                                {item.id}
+                              </span>
+                              <h4 className="text-xs sm:text-sm font-extrabold text-foreground">{item.planName || 'Business Upgrade'}</h4>
+                            </div>
+                            <span className={`rounded-full text-[10px] font-black px-2.5 py-0.5 border uppercase tracking-wider ${
+                              isVerified
+                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                                : isRejected
+                                ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/20'
+                                : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                            }`}>
+                              {isVerified ? '● Active & Verified' : isRejected ? '● Rejected by Admin' : '● Pending Verification'}
+                            </span>
+                          </div>
+
+                          {item.adminResponse && (
+                            <div className="p-3 rounded-xl bg-primary/10 border border-primary/20 text-xs text-foreground font-medium flex items-start gap-2">
+                              <MessageSquare size={14} className="text-primary shrink-0 mt-0.5" />
+                              <div>
+                                <strong className="text-primary font-extrabold uppercase text-[10px] block tracking-wider">
+                                  Admin Response Note:
+                                </strong>
+                                <span className="text-foreground">{item.adminResponse}</span>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] bg-muted/30 p-2.5 rounded-xl border border-border/50">
+                            <div>
+                              <span className="text-muted-foreground block text-[10px]">Amount Paid</span>
+                              <strong className="text-foreground font-black text-xs">{item.planPrice || item.amount || '₹499.00'}</strong>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground block text-[10px]">Date & Time</span>
+                              <strong className="text-foreground">{item.timestamp || `${item.date} ${item.time}`}</strong>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground block text-[10px]">Payment Method</span>
+                              <strong className="text-foreground">{item.paymentMethod || 'Direct UPI'}</strong>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground block text-[10px]">Billing ID</span>
+                              <strong className="font-mono text-primary font-black">{item.id}</strong>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between pt-1 flex-wrap gap-2">
+                            <p className="text-[10px] text-muted-foreground font-medium">
+                              Billing Reason: Purchased directly from BillingMaster platform
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedProofItem(item)}
+                              className="btn-outline py-1.5 px-3 rounded-xl text-xs font-extrabold flex items-center gap-1.5 cursor-pointer text-primary border-primary/30 hover:bg-primary/10"
+                            >
+                              <ExternalLink size={13} />
+                              <span>Open Payment Proof & Details</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-MODAL: Open Payment Proof & Details Viewer */}
+      {selectedProofItem && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-xs animate-fade-in">
+          <div className="card-shell w-full max-w-lg p-5 sm:p-6 animate-rise shadow-2xl border border-border max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3.5 border-b border-border shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary/15 text-primary shrink-0">
+                  <Receipt size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-foreground">Payment Proof & Receipt Details</h3>
+                  <p className="text-[11px] text-muted-foreground">Submitted payment verification record</p>
+                </div>
+              </div>
+              <button onClick={() => setSelectedProofItem(null)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto py-4 space-y-4 pr-1">
+              {/* Billing Summary Box */}
+              <div className="rounded-xl border border-border bg-muted/20 p-3.5 space-y-2 text-xs">
+                <div className="flex justify-between border-b border-border/50 pb-2">
+                  <span className="text-muted-foreground">Billing ID:</span>
+                  <span className="font-mono font-black text-primary">{selectedProofItem.id}</span>
+                </div>
+                <div className="flex justify-between border-b border-border/50 pb-2">
+                  <span className="text-muted-foreground">Purchased Plan / Reason:</span>
+                  <span className="font-extrabold text-foreground">{selectedProofItem.planName}</span>
+                </div>
+                <div className="flex justify-between border-b border-border/50 pb-2">
+                  <span className="text-muted-foreground">Amount:</span>
+                  <span className="font-black text-foreground text-sm">{selectedProofItem.planPrice || selectedProofItem.amount || '₹499.00'}</span>
+                </div>
+                <div className="flex justify-between border-b border-border/50 pb-2">
+                  <span className="text-muted-foreground">Date & Time:</span>
+                  <span className="font-semibold text-foreground">{selectedProofItem.timestamp || `${selectedProofItem.date} ${selectedProofItem.time}`}</span>
+                </div>
+                <div className="flex justify-between border-b border-border/50 pb-2">
+                  <span className="text-muted-foreground">Payment Method:</span>
+                  <span className="font-semibold text-foreground">{selectedProofItem.paymentMethod || 'Direct UPI App'}</span>
+                </div>
+                <div className="flex justify-between border-b border-border/50 pb-2">
+                  <span className="text-muted-foreground">UTR / Transaction ID:</span>
+                  <span className="font-mono font-extrabold text-foreground">{selectedProofItem.utr || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Verification Status:</span>
+                  <span className={`font-bold uppercase ${
+                    selectedProofItem.status === 'active_verified' || selectedProofItem.status === 'verified'
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-amber-600 dark:text-amber-400'
+                  }`}>
+                    {selectedProofItem.status === 'active_verified' || selectedProofItem.status === 'verified' ? 'Active & Verified' : 'Pending Review'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Submitted Screenshot Section */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-extrabold text-foreground block">Uploaded Payment Receipt Screenshot</label>
+                {selectedProofItem.screenshotUrl ? (
+                  <div className="rounded-2xl border border-border bg-black/5 p-2 text-center">
+                    <img
+                      src={selectedProofItem.screenshotUrl}
+                      alt="Payment Proof Receipt"
+                      className="max-h-60 mx-auto rounded-xl object-contain shadow-xs border border-border"
+                    />
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-border p-6 text-center bg-muted/10 space-y-2">
+                    <Receipt size={32} className="mx-auto text-muted-foreground/50" />
+                    <p className="text-xs font-bold text-muted-foreground">No Screenshot File Uploaded</p>
+                    <p className="text-[10px] text-muted-foreground max-w-xs mx-auto">This entry was recorded directly via admin verification or UPI reference string.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Submitted Text / Optional Notes */}
+              {selectedProofItem.notes && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-extrabold text-foreground block">Submitted Payment Notes & Message</label>
+                  <div className="rounded-xl border border-border bg-card p-3 text-xs text-foreground font-medium leading-relaxed">
+                    {selectedProofItem.notes}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

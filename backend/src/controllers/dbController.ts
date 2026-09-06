@@ -34,14 +34,14 @@ export async function listRecords(req: AuthRequest, res: Response) {
     const whereConditions: string[] = [];
     const values: any[] = [];
 
-    // Filter by business_id if present in user context or query
+    // Filter by business_id if present in query or user context
     if (!GLOBAL_TABLES.has(table)) {
-      if (req.user?.business_id) {
-        whereConditions.push('business_id = ?');
-        values.push(req.user.business_id);
-      } else if (query.business_id) {
+      if (query.business_id) {
         whereConditions.push('business_id = ?');
         values.push(query.business_id);
+      } else if (req.user?.business_id) {
+        whereConditions.push('business_id = ?');
+        values.push(req.user.business_id);
       }
     }
 
@@ -72,6 +72,16 @@ export async function listRecords(req: AuthRequest, res: Response) {
         values.push(val);
       }
     });
+
+    let countSql = `SELECT COUNT(*) AS total FROM \`${table}\``;
+    if (whereConditions.length > 0) {
+      countSql += ` WHERE ${whereConditions.join(' AND ')}`;
+    }
+    const [countRows]: any = await pool.query(countSql, values);
+    const totalCount = Array.isArray(countRows) && countRows.length > 0 ? Number(countRows[0].total || 0) : 0;
+
+    res.setHeader('X-Total-Count', String(totalCount));
+    res.setHeader('Access-Control-Expose-Headers', 'X-Total-Count');
 
     let sql = `SELECT * FROM \`${table}\``;
     if (whereConditions.length > 0) {

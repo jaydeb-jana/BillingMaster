@@ -24,6 +24,23 @@ export async function authenticateToken(req: AuthRequest, res: Response, next: N
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as { id: string; email: string };
     
+    // Check if user still exists in users table
+    try {
+      const [uRows]: any = await pool.query(
+        'SELECT id FROM users WHERE id = ? LIMIT 1',
+        [decoded.id]
+      );
+      if (!Array.isArray(uRows) || uRows.length === 0) {
+        // Account was deleted! Reject token authentication
+        req.user = undefined;
+        return next();
+      }
+    } catch (e) {
+      // If DB fails, reject auth
+      req.user = undefined;
+      return next();
+    }
+
     // Fetch business_id for this profile
     let business_id: string | null = null;
     try {

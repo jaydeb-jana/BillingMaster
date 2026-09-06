@@ -21,7 +21,15 @@ export function setApiBaseUrl(url: string | null) {
 export const supabaseConfigured = true; // Always enabled with Node.js backend
 
 let authToken: string | null = typeof window !== 'undefined' ? localStorage.getItem('billingmaster_auth_token') : null;
-let currentSession: any = null;
+let currentSession: any = (() => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const saved = localStorage.getItem('billingmaster_cached_session');
+    return saved ? JSON.parse(saved) : null;
+  } catch (e) {
+    return null;
+  }
+})();
 let currentBusinessId: string | null = typeof window !== 'undefined' ? localStorage.getItem('billingmaster_business_id') : null;
 
 export function setCurrentBusinessId(id: string | null) {
@@ -53,6 +61,18 @@ export async function request<T>(endpoint: string, options: RequestInit = {}): P
   const data = await response.json();
 
   if (!response.ok) {
+    if (response.status === 401 && endpoint === '/api/auth/session') {
+      authToken = null;
+      currentSession = null;
+      currentBusinessId = null;
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('billingmaster_auth_token');
+        localStorage.removeItem('billingmaster_cached_session');
+        localStorage.removeItem('billingmaster_business_id');
+        sessionStorage.removeItem('billingmaster_impersonated_tenant');
+        window.dispatchEvent(new Event('billingmaster_unauthorized'));
+      }
+    }
     const err: any = new Error(data.error || data.message || `API error (${response.status})`);
     err.status = response.status;
     err.response = data;
@@ -62,11 +82,64 @@ export async function request<T>(endpoint: string, options: RequestInit = {}): P
   return data as T;
 }
 
+export async function requestWithMeta<T>(endpoint: string, options: RequestInit = {}): Promise<{ data: T; total?: number }> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string>),
+  };
+
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+
+  const response = await fetch(`${getApiBaseUrl()}${endpoint}`, {
+    ...options,
+    headers,
+  });
+
+  const data = await response.json();
+  const totalHeader = response.headers.get('X-Total-Count');
+  const total = totalHeader !== null ? parseInt(totalHeader, 10) : undefined;
+
+  if (!response.ok) {
+    if (response.status === 401 && endpoint === '/api/auth/session') {
+      authToken = null;
+      currentSession = null;
+      currentBusinessId = null;
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('billingmaster_auth_token');
+        localStorage.removeItem('billingmaster_cached_session');
+        localStorage.removeItem('billingmaster_business_id');
+        sessionStorage.removeItem('billingmaster_impersonated_tenant');
+        window.dispatchEvent(new Event('billingmaster_unauthorized'));
+      }
+    }
+    const err: any = new Error(data.error || data.message || `API error (${response.status})`);
+    err.status = response.status;
+    err.response = data;
+    throw err;
+  }
+
+  return { data: data as T, total };
+}
+
 export const auth = {
   session() {
+    if (!currentSession && typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('billingmaster_cached_session');
+        if (saved) currentSession = JSON.parse(saved);
+      } catch (e) {}
+    }
     return currentSession;
   },
   async getSession() {
+    if (!authToken) {
+      if (typeof window !== 'undefined') {
+        const savedToken = localStorage.getItem('billingmaster_auth_token');
+        if (savedToken) authToken = savedToken;
+      }
+    }
     if (!authToken) {
       currentSession = null;
       return null;
@@ -75,10 +148,19 @@ export const auth = {
       const res: any = await request('/api/auth/session');
       if (res && res.session) {
         currentSession = res.session;
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('billingmaster_cached_session', JSON.stringify(res.session));
+        }
         return currentSession;
       }
-    } catch (e) {
-      console.warn('Failed to fetch session from backend:', e);
+    } catch (e: any) {
+      console.warn('Failed to refresh session from backend, using cached session:', e);
+    }
+    if (!currentSession && typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('billingmaster_cached_session');
+        if (saved) currentSession = JSON.parse(saved);
+      } catch (err) {}
     }
     return currentSession;
   },
@@ -92,6 +174,9 @@ export const auth = {
       authToken = res.access_token;
       localStorage.setItem('billingmaster_auth_token', res.access_token);
       currentSession = res.session;
+      if (res.session && typeof window !== 'undefined') {
+        localStorage.setItem('billingmaster_cached_session', JSON.stringify(res.session));
+      }
       currentBusinessId = null;
       localStorage.removeItem('billingmaster_business_id');
     }
@@ -117,6 +202,9 @@ export const auth = {
       authToken = res.access_token;
       localStorage.setItem('billingmaster_auth_token', res.access_token);
       currentSession = res.session;
+      if (res.session && typeof window !== 'undefined') {
+        localStorage.setItem('billingmaster_cached_session', JSON.stringify(res.session));
+      }
     }
     return res.session;
   },
@@ -132,16 +220,77 @@ export const auth = {
       body: JSON.stringify({ email, password, otp }),
     });
   },
+  async changePassword(params: { oldPassword?: string; otp?: string; newPassword: string }) {
+    return await request('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  },
+  async sendOtp(purpose: string) {
+    return await request('/api/auth/send-otp', {
+      method: 'POST',
+      body: JSON.stringify({ purpose }),
+    });
+  },
+  async deleteAccount(otp: string) {
+    return await request('/api/auth/delete-account', {
+      method: 'POST',
+      body: JSON.stringify({ otp }),
+    });
+  },
   signOut() {
-    authToken = null;
-    currentSession = null;
-    currentBusinessId = null;
-    localStorage.removeItem('billingmaster_auth_token');
-    localStorage.removeItem('billingmaster_business_id');
+    const isImpersonating = typeof window !== 'undefined' && Boolean(sessionStorage.getItem('billingmaster_impersonated_tenant'));
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('billingmaster_impersonated_tenant');
+    }
+    if (!isImpersonating) {
+      authToken = null;
+      currentSession = null;
+      currentBusinessId = null;
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('billingmaster_auth_token');
+        localStorage.removeItem('billingmaster_cached_session');
+        localStorage.removeItem('billingmaster_business_id');
+      }
+    }
   },
 };
 
+export function getImpersonatedBusinessId(): string | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    let tenantParam = urlParams.get('tenant') || urlParams.get('impersonate');
+    if (!tenantParam && window.location.hash) {
+      const hashParts = window.location.hash.split('?');
+      if (hashParts[1]) {
+        const hashParams = new URLSearchParams(hashParts[1]);
+        tenantParam = hashParams.get('tenant') || hashParams.get('impersonate');
+      }
+    }
+    if (tenantParam && tenantParam.trim()) {
+      const cleanId = tenantParam.trim();
+      sessionStorage.setItem('billingmaster_impersonated_tenant', cleanId);
+      // Clean query parameter from URL without reloading page
+      const cleanUrl = window.location.pathname + window.location.hash;
+      window.history.replaceState({}, document.title, cleanUrl);
+      return cleanId;
+    }
+  } catch (e) {}
+
+  try {
+    const stored = sessionStorage.getItem('billingmaster_impersonated_tenant');
+    if (stored && stored.trim()) return stored.trim();
+  } catch (e) {}
+
+  return null;
+}
+
 export async function getBusinessId(): Promise<string | null> {
+  const impersonatedId = getImpersonatedBusinessId();
+  if (impersonatedId) return impersonatedId;
+
   if (currentBusinessId) return currentBusinessId;
 
   const session = await auth.getSession();
@@ -354,6 +503,11 @@ export async function checkCatalogHandleAvailability(
 
 export const db = {
   async list<T extends Record<string, any>>(table: string, query: Query = {}): Promise<T[]> {
+    const res = await this.listWithMeta<T>(table, query);
+    return res.data;
+  },
+
+  async listWithMeta<T extends Record<string, any>>(table: string, query: Query = {}): Promise<{ data: T[]; total: number }> {
     const activeQuery = { ...query };
     if (!activeQuery.business_id && !NO_BUSINESS_ID_TABLES.includes(table)) {
       const bid = await getBusinessId();
@@ -366,25 +520,27 @@ export const db = {
         if (v !== undefined) params.append(k, String(v));
       });
 
-      const remoteData = await request<T[]>(`/api/db/${table}?${params.toString()}`);
-      if (remoteData && Array.isArray(remoteData)) {
+      const res = await requestWithMeta<T[]>(`/api/db/${table}?${params.toString()}`);
+      if (res.data && Array.isArray(res.data)) {
+        const totalCount = res.total !== undefined ? res.total : res.data.length;
         if (activeQuery.limit !== undefined || activeQuery.offset !== undefined || activeQuery.search || activeQuery.q) {
-          return remoteData;
+          return { data: res.data, total: totalCount };
         }
         const locals = getLocalStore<T>(table);
-        const remoteIds = new Set(remoteData.map((r: any) => r.id));
+        const remoteIds = new Set(res.data.map((r: any) => r.id));
         const missingLocals = locals.filter((l: any) => l.id && !remoteIds.has(l.id));
-        const combined = [...remoteData, ...missingLocals];
+        const combined = [...res.data, ...missingLocals];
         setLocalStore(table, combined);
-        return filterLocals(combined, activeQuery);
+        return { data: filterLocals(combined, activeQuery), total: totalCount };
       }
       const locals = getLocalStore<T>(table);
-      if (locals.length > 0) return filterLocals(locals, activeQuery);
-      return remoteData || [];
+      const filtered = locals.length > 0 ? filterLocals(locals, activeQuery) : [];
+      return { data: filtered, total: filtered.length };
     } catch (err) {
-      console.warn(`db.list fallback to local store for table "${table}":`, err);
+      console.warn(`db.listWithMeta fallback to local store for table "${table}":`, err);
       const locals = getLocalStore<T>(table);
-      return filterLocals(locals, activeQuery);
+      const filtered = filterLocals(locals, activeQuery);
+      return { data: filtered, total: filtered.length };
     }
   },
 

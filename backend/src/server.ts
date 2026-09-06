@@ -3,7 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { initDb } from './db/mysql.js';
 import { authenticateToken } from './middleware/auth.js';
-import { signup, login, getSession, updateUser, resetPassword } from './controllers/authController.js';
+import { signup, login, getSession, updateUser, resetPassword, changePassword, sendOtp, deleteAccount } from './controllers/authController.js';
 import { createBusiness, checkCatalogHandle } from './controllers/businessController.js';
 import { createInvoiceTransaction } from './controllers/invoiceController.js';
 import {
@@ -13,6 +13,29 @@ import {
   updateRecord,
   removeRecord,
 } from './controllers/dbController.js';
+import {
+  getAdminOverviewStats,
+  getAdminPlans,
+  createOrUpdateAdminPlan,
+  getAdminBusinesses,
+  updateAdminBusiness,
+  deleteAdminBusiness,
+  resetMerchantPasswordAdmin,
+  getAdminBulletins,
+  createAdminBulletin,
+  getAdminFeatureFlags,
+  toggleAdminFeatureFlag,
+  getAdminAuditLogs,
+  getAdminBillingRequests,
+  respondAdminBillingRequest,
+  createBillingRequest,
+  getMerchantBillingRequests,
+  getAdminCoupons,
+  createOrUpdateAdminCoupon,
+  deleteAdminCoupon,
+  validateCoupon,
+  getMerchantSubscriptionQueue,
+} from './controllers/adminController.js';
 
 dotenv.config();
 
@@ -36,8 +59,39 @@ app.get('/api/businesses/check-handle', checkCatalogHandle);
 app.post('/api/auth/signup', signup);
 app.post('/api/auth/login', login);
 app.post('/api/auth/reset-password', resetPassword);
+app.post('/api/auth/change-password', changePassword);
+app.post('/api/auth/send-otp', sendOtp);
+app.post('/api/auth/delete-account', deleteAccount);
 app.get('/api/auth/session', getSession);
 app.put('/api/auth/user', updateUser);
+
+// Admin Dedicated Routes
+app.get('/api/admin/stats', getAdminOverviewStats);
+app.get('/api/admin/plans', getAdminPlans);
+app.post('/api/admin/plans', createOrUpdateAdminPlan);
+app.get('/api/admin/businesses', getAdminBusinesses);
+app.put('/api/admin/businesses/:id', updateAdminBusiness);
+app.delete('/api/admin/businesses/:id', deleteAdminBusiness);
+app.post('/api/admin/businesses/reset-password', resetMerchantPasswordAdmin);
+app.get('/api/admin/bulletins', getAdminBulletins);
+app.post('/api/admin/bulletins', createAdminBulletin);
+app.get('/api/admin/feature-flags', getAdminFeatureFlags);
+app.post('/api/admin/feature-flags/toggle', toggleAdminFeatureFlag);
+app.get('/api/admin/audit-logs', getAdminAuditLogs);
+app.get('/api/admin/billing-requests', getAdminBillingRequests);
+app.post('/api/admin/billing-requests/:id/respond', respondAdminBillingRequest);
+
+// Coupon Routes
+app.get('/api/admin/coupons', getAdminCoupons);
+app.post('/api/admin/coupons', createOrUpdateAdminCoupon);
+app.delete('/api/admin/coupons/:id', deleteAdminCoupon);
+app.post('/api/coupons/validate', validateCoupon);
+
+// Merchant Billing Upgrade Request Routes
+app.post('/api/billing-requests', createBillingRequest);
+app.get('/api/billing-requests/my', getMerchantBillingRequests);
+app.get('/api/subscription-queue/my', getMerchantSubscriptionQueue);
+
 
 // RPC Routes
 app.post('/api/rpc/create_business', createBusiness);

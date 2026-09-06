@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   BookOpen, Plus, Search, Filter, ArrowUpRight, ArrowDownLeft, Phone,
   MessageCircle, Download, Trash2, Pencil, Calendar, Clock,
@@ -120,7 +120,21 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
   }, []);
 
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const filterDropdownRef = useRef<HTMLDivElement>(null);
   const [sortBy, setSortBy] = useState<'activity' | 'balance_high' | 'name'>('activity');
+
+  useEffect(() => {
+    if (!showFilterDropdown) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target as Node)) {
+        setShowFilterDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showFilterDropdown]);
 
   // Modals state
   const [showEntryModal, setShowEntryModal] = useState(false);
@@ -1607,7 +1621,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
             </div>
 
             {/* Filter Dropdown Button */}
-            <div className="relative shrink-0">
+            <div ref={filterDropdownRef} className="relative shrink-0">
               <button
                 type="button"
                 onClick={() => setShowFilterDropdown(!showFilterDropdown)}
@@ -1633,14 +1647,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
 
               {/* Dropdown Menu */}
               {showFilterDropdown && (
-                <>
-                  {/* Backdrop */}
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setShowFilterDropdown(false)}
-                  />
-
-                  <div className="absolute right-0 top-full mt-1.5 z-50 w-64 rounded-2xl border border-border bg-card p-1.5 shadow-xl animate-rise">
+                <div className="absolute right-0 top-full mt-1.5 z-50 w-64 rounded-2xl border border-border bg-card p-1.5 shadow-xl animate-rise">
                     <div className="px-3 py-2 text-[11px] font-extrabold uppercase tracking-wider text-muted-foreground border-b border-border/50">
                       Filter Customers
                     </div>
@@ -1725,8 +1732,7 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
                       </div>
                     )}
                   </div>
-                </>
-              )}
+                )}
             </div>
           </div>
 

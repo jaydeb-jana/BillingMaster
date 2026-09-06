@@ -106,3 +106,14 @@ textarea:disabled,
 .btn-secondary { background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); transition: transform .2s, filter .2s; }
 .btn-secondary:hover { filter: saturate(1.08) brightness(.98); transform: translateY(-1px); }
 .mono { font-family: var(--app-font-mono); }
+
+/* Disable scroll wheel value changes on number inputs & hide spin buttons */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}

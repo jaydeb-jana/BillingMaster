@@ -79,6 +79,87 @@ export async function initDb(): Promise<boolean> {
         await connection.query(`ALTER TABLE businesses ADD COLUMN catalog_handle VARCHAR(255);`);
       } catch (e) {}
       try {
+        await connection.query(`ALTER TABLE businesses ADD COLUMN status VARCHAR(50) NOT NULL DEFAULT 'active';`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE businesses ADD COLUMN suspend_reason TEXT DEFAULT NULL;`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE businesses ADD COLUMN logo_url LONGTEXT DEFAULT NULL;`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE businesses ADD COLUMN plan_name VARCHAR(100) NOT NULL DEFAULT 'Free';`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE plans ADD COLUMN max_customers INT NOT NULL DEFAULT 1000;`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE plans ADD COLUMN max_products INT NOT NULL DEFAULT 500;`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE plans ADD COLUMN display_features TEXT DEFAULT NULL;`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE plans ADD COLUMN badge_tag VARCHAR(50) DEFAULT NULL;`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE plans ADD COLUMN priority_order INT NOT NULL DEFAULT 0;`);
+      } catch (e) {}
+      try {
+        await connection.query(`
+          CREATE TABLE IF NOT EXISTS coupons (
+            id VARCHAR(36) PRIMARY KEY,
+            code VARCHAR(50) UNIQUE NOT NULL,
+            discount_type VARCHAR(20) NOT NULL DEFAULT 'percentage',
+            discount_value DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+            min_order_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+            max_uses INT NOT NULL DEFAULT -1,
+            max_uses_per_user INT NOT NULL DEFAULT 1,
+            uses_count INT NOT NULL DEFAULT 0,
+            valid_until DATETIME DEFAULT NULL,
+            is_active TINYINT(1) NOT NULL DEFAULT 1,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+          );
+        `);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE coupons ADD COLUMN max_uses_per_user INT NOT NULL DEFAULT 1;`);
+      } catch (e) {}
+
+      try {
+        await connection.query(`
+          CREATE TABLE IF NOT EXISTS subscription_queue (
+            id VARCHAR(36) PRIMARY KEY,
+            business_id VARCHAR(36) NOT NULL,
+            plan_name VARCHAR(100) NOT NULL,
+            priority_order INT NOT NULL DEFAULT 0,
+            duration_days INT NOT NULL DEFAULT 365,
+            remaining_days INT NOT NULL DEFAULT 365,
+            status VARCHAR(30) NOT NULL DEFAULT 'queued',
+            start_date DATETIME DEFAULT NULL,
+            expires_at DATETIME DEFAULT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_biz_status (business_id, status)
+          );
+        `);
+      } catch (e) {}
+
+      try {
+        await connection.query(`
+          CREATE TABLE IF NOT EXISTS coupon_usages (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            coupon_code VARCHAR(50) NOT NULL,
+            user_id VARCHAR(100) NOT NULL,
+            used_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_code_user (coupon_code, user_id)
+          );
+        `);
+      } catch (e) {}
+
+
+      try {
         await connection.query(`ALTER TABLE settings ADD COLUMN id VARCHAR(36);`);
       } catch (e) {}
       try {
@@ -95,6 +176,30 @@ export async function initDb(): Promise<boolean> {
       } catch (e) {}
       try {
         await connection.query(`ALTER TABLE settings ADD COLUMN store_lng DECIMAL(11,8) DEFAULT NULL;`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE settings ADD COLUMN upi_id VARCHAR(255) DEFAULT NULL;`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE settings ADD COLUMN upi_number VARCHAR(50) DEFAULT NULL;`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE settings ADD COLUMN bank_name VARCHAR(255) DEFAULT NULL;`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE settings ADD COLUMN account_holder_name VARCHAR(255) DEFAULT NULL;`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE settings ADD COLUMN account_number VARCHAR(100) DEFAULT NULL;`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE settings ADD COLUMN ifsc_code VARCHAR(50) DEFAULT NULL;`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE settings ADD COLUMN branch_name VARCHAR(255) DEFAULT NULL;`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE settings ADD COLUMN payment_instructions TEXT DEFAULT NULL;`);
       } catch (e) {}
       try {
         await connection.query(`
@@ -115,6 +220,26 @@ export async function initDb(): Promise<boolean> {
           );
         `);
       } catch (e) {}
+
+      try {
+        await connection.query(`
+          CREATE TABLE IF NOT EXISTS billing_requests (
+            id VARCHAR(36) PRIMARY KEY,
+            business_id VARCHAR(36) NOT NULL,
+            business_name VARCHAR(160) NOT NULL,
+            requested_plan VARCHAR(100) NOT NULL,
+            price VARCHAR(50) NOT NULL DEFAULT '0',
+            utr_ref VARCHAR(255),
+            screenshot_url LONGTEXT,
+            status ENUM('pending', 'accepted', 'rejected') NOT NULL DEFAULT 'pending',
+            admin_response TEXT DEFAULT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
+          );
+        `);
+      } catch (e) {}
+
 
       // Backfill missing/duplicate catalog_slug / catalog_handle for existing businesses
       try {
