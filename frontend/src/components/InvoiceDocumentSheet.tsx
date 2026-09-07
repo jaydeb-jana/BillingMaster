@@ -1,7 +1,8 @@
 import React from 'react';
 import {
   Phone, MapPin, ShieldCheck, Landmark, Check, Clock, X,
-  Building2, Crown, Cpu, Sparkles, Ticket, QrCode, FileText, CheckCircle2
+  Building2, Crown, Cpu, Sparkles, Ticket, QrCode, FileText, CheckCircle2,
+  ExternalLink
 } from 'lucide-react';
 import { InvoiceTemplateId, InvoiceTemplateSettings } from './InvoiceTemplateModal';
 
@@ -49,48 +50,97 @@ export function InvoiceDocumentSheet({
   const invNumber = invoice?.invoice_number || 'INV-0001';
   const invDate = invoice?.issue_date || 'Today';
 
+  // Public Payment Page URL encoded in the QR code
+  const paymentPageUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/pay/${invoice?.id || invNumber}`
+    : `https://billingmaster.app/pay/${invoice?.id || invNumber}`;
+
+  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(paymentPageUrl)}`;
+
+  // Interactive Online Payment QR Block
+  const renderOnlinePaymentQrBlock = () => (
+    <div className="flex items-center gap-3 bg-slate-50/90 p-2.5 rounded-lg border border-slate-200 text-xs">
+      <a
+        href={paymentPageUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="shrink-0 bg-white p-1 rounded border border-slate-300 hover:opacity-90 transition-opacity"
+        title="Scan or click to open online payment page"
+      >
+        <img src={qrImageUrl} alt="Scan to Pay Online" className="w-16 h-16 object-contain" />
+      </a>
+      <div className="space-y-0.5 min-w-0">
+        <div className="flex items-center gap-1 text-[9.5px] font-black text-slate-800 uppercase tracking-wider">
+          <QrCode size={12} className="text-orange-600" />
+          <span>ONLINE PAYMENT & BILL QR</span>
+        </div>
+        <div className="text-[10.5px] font-extrabold text-slate-900 leading-tight">
+          Scan QR Code to Pay Online or View Bill
+        </div>
+        <div className="text-[9.5px] text-slate-500 truncate">
+          Instant UPI Apps (GPay, PhonePe, Paytm) & Bank Transfer
+        </div>
+        <a
+          href={paymentPageUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[9.5px] font-extrabold text-orange-600 hover:underline flex items-center gap-0.5 mt-0.5 no-underline truncate"
+        >
+          <span className="truncate">{paymentPageUrl}</span>
+          <ExternalLink size={9} className="shrink-0" />
+        </a>
+      </div>
+    </div>
+  );
+
   // Bank & UPI block helper
   const renderBankDetails = () => (
-    Boolean(paymentInfo?.upi_id || paymentInfo?.bank_name || paymentInfo?.account_number) && (
-      <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 text-xs text-slate-700">
-        <div className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-slate-800 mb-1.5">
-          <Landmark size={12} className="text-slate-600" />
-          <span>PAYMENT DETAILS / BANK TRANSFER</span>
+    <div className="space-y-2.5">
+      {/* Online Payment QR Code Block */}
+      {renderOnlinePaymentQrBlock()}
+
+      {/* Bank Details */}
+      {Boolean(paymentInfo?.upi_id || paymentInfo?.bank_name || paymentInfo?.account_number) && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 text-xs text-slate-700">
+          <div className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-slate-800 mb-1.5">
+            <Landmark size={12} className="text-slate-600" />
+            <span>PAYMENT DETAILS / BANK TRANSFER</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
+            {paymentInfo?.upi_id && (
+              <div className="flex justify-between border-b border-slate-200/50 pb-0.5">
+                <span className="font-semibold text-slate-500">UPI ID:</span>
+                <span className="mono font-bold text-slate-900">{paymentInfo.upi_id}</span>
+              </div>
+            )}
+            {paymentInfo?.upi_number && (
+              <div className="flex justify-between border-b border-slate-200/50 pb-0.5">
+                <span className="font-semibold text-slate-500">UPI Mobile:</span>
+                <span className="mono font-bold text-slate-900">{paymentInfo.upi_number}</span>
+              </div>
+            )}
+            {paymentInfo?.bank_name && (
+              <div className="flex justify-between border-b border-slate-200/50 pb-0.5">
+                <span className="font-semibold text-slate-500">Bank Name:</span>
+                <span className="font-bold text-slate-900">{paymentInfo.bank_name}</span>
+              </div>
+            )}
+            {paymentInfo?.account_number && (
+              <div className="flex justify-between border-b border-slate-200/50 pb-0.5">
+                <span className="font-semibold text-slate-500">A/C No:</span>
+                <span className="mono font-bold text-slate-900">{paymentInfo.account_number}</span>
+              </div>
+            )}
+            {paymentInfo?.ifsc_code && (
+              <div className="flex justify-between border-b border-slate-200/50 pb-0.5">
+                <span className="font-semibold text-slate-500">IFSC Code:</span>
+                <span className="mono font-bold text-slate-900">{paymentInfo.ifsc_code}</span>
+              </div>
+            )}
+          </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-          {paymentInfo?.upi_id && (
-            <div className="flex justify-between border-b border-slate-200/50 pb-0.5">
-              <span className="font-semibold text-slate-500">UPI ID:</span>
-              <span className="mono font-bold text-slate-900">{paymentInfo.upi_id}</span>
-            </div>
-          )}
-          {paymentInfo?.upi_number && (
-            <div className="flex justify-between border-b border-slate-200/50 pb-0.5">
-              <span className="font-semibold text-slate-500">UPI Mobile:</span>
-              <span className="mono font-bold text-slate-900">{paymentInfo.upi_number}</span>
-            </div>
-          )}
-          {paymentInfo?.bank_name && (
-            <div className="flex justify-between border-b border-slate-200/50 pb-0.5">
-              <span className="font-semibold text-slate-500">Bank Name:</span>
-              <span className="font-bold text-slate-900">{paymentInfo.bank_name}</span>
-            </div>
-          )}
-          {paymentInfo?.account_number && (
-            <div className="flex justify-between border-b border-slate-200/50 pb-0.5">
-              <span className="font-semibold text-slate-500">A/C No:</span>
-              <span className="mono font-bold text-slate-900">{paymentInfo.account_number}</span>
-            </div>
-          )}
-          {paymentInfo?.ifsc_code && (
-            <div className="flex justify-between border-b border-slate-200/50 pb-0.5">
-              <span className="font-semibold text-slate-500">IFSC Code:</span>
-              <span className="mono font-bold text-slate-900">{paymentInfo.ifsc_code}</span>
-            </div>
-          )}
-        </div>
-      </div>
-    )
+      )}
+    </div>
   );
 
   // Footer seal helper
@@ -368,8 +418,9 @@ export function InvoiceDocumentSheet({
 
         {/* Summary Card */}
         <div className="flex flex-col sm:flex-row justify-between items-end gap-4 pt-3 border-t border-slate-200">
-          <div className="text-[11px] text-slate-500 max-w-xs">
-            Thank you for choosing {bizName}. Modern borderless invoice format.
+          <div className="text-[11px] text-slate-500 max-w-xs space-y-2">
+            <div>Thank you for choosing {bizName}. Modern borderless invoice format.</div>
+            {renderOnlinePaymentQrBlock()}
           </div>
           <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl text-right min-w-[200px]">
             <div className="text-[10px] font-black uppercase tracking-wider text-blue-600">GRAND TOTAL</div>
@@ -417,6 +468,12 @@ export function InvoiceDocumentSheet({
             <span>Payment Mode:</span>
             <span>{invoice?.payment_method || 'CASH / UPI'}</span>
           </div>
+        </div>
+
+        {/* QR Block for POS */}
+        <div className="bg-slate-100 p-2 rounded text-center border border-slate-300 space-y-1">
+          <img src={qrImageUrl} alt="Scan to Pay" className="w-16 h-16 object-contain mx-auto" />
+          <div className="text-[9px] font-bold">SCAN TO PAY ONLINE</div>
         </div>
 
         {/* Thermal Barcode Footer */}
@@ -489,9 +546,9 @@ export function InvoiceDocumentSheet({
           <span className="mono text-xl text-amber-900">₹{subtotal.toFixed(2)}</span>
         </div>
 
-        {/* Signatures */}
-        <div className="flex items-end justify-between pt-4 text-xs font-sans text-slate-600">
-          <div className="italic">Computer Generated Executive Record.</div>
+        {/* Signatures & Payment QR */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end font-sans">
+          {renderOnlinePaymentQrBlock()}
           {renderSignatureSeal('Official Digital Seal')}
         </div>
       </div>
@@ -566,9 +623,9 @@ export function InvoiceDocumentSheet({
           <span className="mono text-2xl text-amber-900">₹{subtotal.toFixed(2)}</span>
         </div>
 
-        {/* Signature */}
-        <div className="flex items-end justify-between pt-3 font-sans text-xs text-slate-500">
-          <div>Royalty Gold Certified Invoice. Thank you for your luxury purchase.</div>
+        {/* Signature & Payment QR */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end font-sans">
+          {renderBankDetails()}
           {renderSignatureSeal('Royalty Gold Signatory')}
         </div>
       </div>
@@ -643,9 +700,12 @@ export function InvoiceDocumentSheet({
           <span className="text-xl">₹{subtotal.toFixed(2)}</span>
         </div>
 
-        <div className="flex justify-between items-center text-[10px] text-slate-500 pt-2 border-t border-slate-800">
-          <div>[STATUS_LOG: TRANSACTION_COMPLETE_OK]</div>
-          <div>AUTH_SIGN: CYBER_SEAL</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+          {renderOnlinePaymentQrBlock()}
+          <div className="text-right text-[10px] text-slate-500">
+            <div>[STATUS_LOG: TRANSACTION_COMPLETE_OK]</div>
+            <div>AUTH_SIGN: CYBER_SEAL</div>
+          </div>
         </div>
       </div>
     );
@@ -719,8 +779,8 @@ export function InvoiceDocumentSheet({
           <span className="mono text-2xl text-rose-900">₹{subtotal.toFixed(2)}</span>
         </div>
 
-        <div className="flex justify-between items-end text-xs text-rose-800 pt-2 border-t border-rose-200">
-          <div>Thank you for shopping at {bizName}!</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+          {renderBankDetails()}
           {renderSignatureSeal('Boutique Manager Signatory')}
         </div>
       </div>
@@ -788,9 +848,12 @@ export function InvoiceDocumentSheet({
           <span className="mono text-lg font-black text-teal-800">₹{subtotal.toFixed(2)}</span>
         </div>
 
-        <div className="flex justify-between items-end text-[10px] text-slate-500 pt-2 border-t border-teal-200">
-          <div>Dispatch Voucher Copy</div>
-          <div>Receiver Sign: _______________</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+          {renderOnlinePaymentQrBlock()}
+          <div className="text-right text-[10px] text-slate-500">
+            <div>Dispatch Voucher Copy</div>
+            <div>Receiver Sign: _______________</div>
+          </div>
         </div>
       </div>
     );
