@@ -3,10 +3,10 @@ import { useParams, Link } from 'wouter';
 import {
   ShieldCheck, Landmark, Phone, MapPin, CheckCircle2, Clock,
   ArrowLeft, Copy, Check, QrCode, Smartphone, Building2,
-  FileText, ExternalLink, AlertCircle, Sparkles, RefreshCw, CreditCard
+  FileText, ExternalLink, AlertCircle, Sparkles, RefreshCw, CreditCard, Ban, X
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { db, auth, supabase } from '@/lib/api';
+import { db, auth } from '@/lib/api';
 
 type Row = Record<string, any>;
 
@@ -140,15 +140,27 @@ export function PublicInvoicePay() {
           <AlertCircle size={40} className="text-destructive mx-auto" />
           <h2 className="text-lg font-black text-white">{error || 'Invoice Not Found'}</h2>
           <p className="text-xs text-slate-400">Please verify the link or QR code scanned.</p>
-          <Link href="/" className="btn-primary inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-extrabold no-underline">
-            <ArrowLeft size={14} /> Back to Home
-          </Link>
         </div>
       </div>
     );
   }
 
-  const isPaid = invoice.status === 'paid' || invoice.status === 'complete' || paymentMarked;
+  // Invoice Status Evaluation
+  // Paid or Khata Book entry -> Payment completed / settled
+  const isPaidOrKhata =
+    invoice.status === 'paid' ||
+    invoice.status === 'complete' ||
+    invoice.status === 'khata' ||
+    invoice.status === 'pay_later' ||
+    invoice.status === 'settled' ||
+    paymentMarked;
+
+  // Cancelled -> Merchant cancelled or voided the invoice
+  const isCancelled = invoice.status === 'cancelled';
+
+  // Only Pending status allows active payment QR & UPI gateway
+  const isPending = !isPaidOrKhata && !isCancelled;
+
   const bizName = business?.name || paymentInfo?.business_name || 'BillingMaster Merchant';
   const bizPhone = business?.phone || paymentInfo?.phone || paymentInfo?.upi_number || '';
   const bizGstin = business?.gstin || paymentInfo?.gstin || '';
@@ -222,10 +234,14 @@ export function PublicInvoicePay() {
               {customer?.phone && <div className="text-xs text-slate-400 mt-0.5">{customer.phone}</div>}
             </div>
             <div className="text-right">
-              <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-0.5">PAYMENT STATUS</span>
-              {isPaid ? (
+              <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-0.5">INVOICE STATUS</span>
+              {isPaidOrKhata ? (
                 <span className="inline-flex items-center gap-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 px-3 py-0.5 rounded-full text-xs font-black">
-                  <CheckCircle2 size={12} /> PAID IN FULL
+                  <CheckCircle2 size={12} /> {invoice.status === 'khata' || invoice.status === 'pay_later' ? 'KHATA BOOK SETTLED' : 'PAID IN FULL'}
+                </span>
+              ) : isCancelled ? (
+                <span className="inline-flex items-center gap-1 bg-destructive/20 text-destructive border border-destructive/40 px-3 py-0.5 rounded-full text-xs font-black">
+                  <X size={12} className="stroke-[3]" /> CANCELLED
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 bg-amber-500/20 text-amber-400 border border-amber-500/40 px-3 py-0.5 rounded-full text-xs font-black">
@@ -254,7 +270,7 @@ export function PublicInvoicePay() {
           {/* Total Highlight */}
           <div className="bg-gradient-to-r from-orange-500/15 via-amber-500/10 to-orange-500/15 border border-orange-500/30 p-4 rounded-2xl flex justify-between items-center">
             <div>
-              <span className="text-[10px] font-black text-orange-400 uppercase tracking-wider block">TOTAL PAYABLE AMOUNT</span>
+              <span className="text-[10px] font-black text-orange-400 uppercase tracking-wider block">TOTAL AMOUNT</span>
               <div className="text-xs text-slate-300">Includes all applicable taxes & charges</div>
             </div>
             <div className="mono text-2xl font-black text-orange-400">
@@ -263,18 +279,35 @@ export function PublicInvoicePay() {
           </div>
         </div>
 
-        {/* Payment Gateways Section */}
-        {isPaid ? (
+        {/* Dynamic Display based on Invoice Status */}
+        {isPaidOrKhata ? (
+          /* STATE 1: PAID OR ADDED TO KHATA BOOK */
           <div className="bg-emerald-950/60 border border-emerald-500/40 rounded-3xl p-6 text-center space-y-3 shadow-xl">
             <div className="grid h-14 w-14 place-items-center rounded-full bg-emerald-500/20 text-emerald-400 mx-auto border border-emerald-500/40">
               <CheckCircle2 size={32} />
             </div>
-            <h2 className="text-lg font-black text-emerald-300">Payment Successfully Completed!</h2>
+            <h2 className="text-lg font-black text-emerald-300">
+              {invoice.status === 'khata' || invoice.status === 'pay_later'
+                ? 'Invoice Recorded in Khata Book!'
+                : 'Payment Successfully Completed!'}
+            </h2>
             <p className="text-xs text-slate-300 max-w-sm mx-auto">
-              This invoice of <strong className="text-white mono font-bold">₹{totalAmount.toFixed(2)}</strong> has been settled. Thank you for doing business with {bizName}!
+              This invoice of <strong className="text-white mono font-bold">₹{totalAmount.toFixed(2)}</strong> has been settled / recorded. No further payment is required. Thank you for doing business with {bizName}!
+            </p>
+          </div>
+        ) : isCancelled ? (
+          /* STATE 2: INVOICE CANCELLED BY MERCHANT */
+          <div className="bg-rose-950/60 border border-rose-500/40 rounded-3xl p-6 text-center space-y-3 shadow-xl">
+            <div className="grid h-14 w-14 place-items-center rounded-full bg-rose-500/20 text-rose-400 mx-auto border border-rose-500/40">
+              <Ban size={32} />
+            </div>
+            <h2 className="text-lg font-black text-rose-300">This Invoice Has Been Cancelled</h2>
+            <p className="text-xs text-slate-300 max-w-sm mx-auto">
+              This invoice or order of <strong className="text-white mono font-bold">₹{totalAmount.toFixed(2)}</strong> was cancelled or voided by {bizName}. Online payment is disabled for this invoice.
             </p>
           </div>
         ) : (
+          /* STATE 3: PENDING STATE (ONLY ACTIVE GATEWAY HERE) */
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl space-y-5">
             <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
               <QrCode size={20} className="text-primary" />
