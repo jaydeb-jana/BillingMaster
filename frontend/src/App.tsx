@@ -31,6 +31,7 @@ import { Expenses } from '@/components/Expenses';
 import { GSTVerificationInput } from '@/components/GSTVerificationInput';
 import { ForYouHub } from '@/components/ForYouHub';
 import { PublicCatalog } from '@/components/PublicCatalog';
+import { PublicInvoicePay } from '@/components/PublicInvoicePay';
 import { MoreHub } from '@/components/MoreHub';
 import { HelpCenterModal } from '@/components/HelpCenterModal';
 import { PlanPage } from '@/components/PlanPage';
@@ -9768,6 +9769,9 @@ function Router() {
     <Route path="/onboarding" component={Onboarding} />
     <Route path="/catalog/:id" component={PublicCatalog} />
     <Route path="/catalog" component={PublicCatalog} />
+    <Route path="/pay/:id" component={PublicInvoicePay} />
+    <Route path="/pay" component={PublicInvoicePay} />
+    <Route path="/invoice/pay/:id" component={PublicInvoicePay} />
     <Route path="/dashboard"><Protected><Dashboard key="dashboard" /></Protected></Route>
     <Route path="/invoices/new"><Protected><InvoiceNew key="invoice-new" /></Protected></Route>
     <Route path="/invoices/:id"><Protected><InvoiceDetail key="invoice-detail" /></Protected></Route>
