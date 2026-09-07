@@ -106,6 +106,18 @@ export async function initDb(): Promise<boolean> {
         await connection.query(`ALTER TABLE plans ADD COLUMN priority_order INT NOT NULL DEFAULT 0;`);
       } catch (e) {}
       try {
+        await connection.query(`ALTER TABLE plans ADD COLUMN price_3months DECIMAL(10,2) DEFAULT NULL;`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE plans ADD COLUMN price_6months DECIMAL(10,2) DEFAULT NULL;`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE plans ADD COLUMN price_2years DECIMAL(10,2) DEFAULT NULL;`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE plans ADD COLUMN price_3years DECIMAL(10,2) DEFAULT NULL;`);
+      } catch (e) {}
+      try {
         await connection.query(`
           CREATE TABLE IF NOT EXISTS coupons (
             id VARCHAR(36) PRIMARY KEY,
@@ -157,10 +169,17 @@ export async function initDb(): Promise<boolean> {
           );
         `);
       } catch (e) {}
+      try {
+        await connection.query(`DELETE FROM billing_requests WHERE id = 'REQ-2026-1001';`);
+        await connection.query(`UPDATE billing_requests SET utr_ref = '' WHERE utr_ref LIKE 'UTR-%';`);
+      } catch (e) {}
 
 
       try {
         await connection.query(`ALTER TABLE settings ADD COLUMN id VARCHAR(36);`);
+      } catch (e) {}
+      try {
+        await connection.query(`ALTER TABLE settings ADD COLUMN is_catalog_enabled BOOLEAN DEFAULT TRUE;`);
       } catch (e) {}
       try {
         await connection.query(`ALTER TABLE settings ADD COLUMN show_sales_rate BOOLEAN DEFAULT TRUE;`);

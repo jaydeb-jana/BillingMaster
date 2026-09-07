@@ -13,9 +13,10 @@ interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   systemHealth: string;
+  pendingRequestsCount?: number;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, systemHealth }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, systemHealth, pendingRequestsCount = 0 }) => {
   const menuItems = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'plans', label: 'Plan & Pricing Studio', icon: CreditCard },
@@ -58,14 +59,22 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, syste
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-xs transition-all duration-150 cursor-pointer ${
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-medium text-xs transition-all duration-150 cursor-pointer ${
                   isActive
                     ? 'bg-orange-500/10 text-orange-400 border border-orange-500/30 font-semibold shadow-xs'
                     : 'text-neutral-300 hover:text-white hover:bg-neutral-900 border border-transparent'
                 }`}
               >
-                <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-orange-400' : 'text-neutral-400'}`} />
-                <span className="whitespace-nowrap">{item.label}</span>
+                <div className="flex items-center gap-3 min-w-0">
+                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-orange-400' : 'text-neutral-400'}`} />
+                  <span className="whitespace-nowrap truncate">{item.label}</span>
+                </div>
+
+                {item.id === 'plans' && pendingRequestsCount > 0 && (
+                  <span className="shrink-0 flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-orange-500 text-white font-black text-[10px] shadow-sm shadow-orange-500/40 animate-pulse">
+                    {pendingRequestsCount}
+                  </span>
+                )}
               </button>
             );
           })}

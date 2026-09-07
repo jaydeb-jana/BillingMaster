@@ -1,5 +1,41 @@
 // BillingMaster Frontend API Service (Node.js + MySQL REST Client)
 
+export function safeLocalStorageSet(key: string, value: string): boolean {
+  if (typeof window === 'undefined' || !window.localStorage) return false;
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (err) {
+    console.warn(`[Storage] Quota exceeded while setting '${key}'. Cleaning up non-essential cached store keys...`, err);
+    const nonEssentialKeys = [
+      'lms_recycle_bin_items',
+      'lms_read_notifications',
+      'lms_dismissed_notifications',
+      'billingmaster_payment_history',
+      'arventa_store_invoices',
+      'arventa_store_products',
+      'arventa_store_customers',
+      'arventa_store_expenses',
+      'arventa_store_khata_entries',
+      'arventa_store_stock_transactions',
+      'arventa_store_payments',
+      'arventa_store_purchases',
+    ];
+    for (const k of nonEssentialKeys) {
+      try {
+        localStorage.removeItem(k);
+      } catch (e) {}
+    }
+    try {
+      localStorage.setItem(key, value);
+      return true;
+    } catch (retryErr) {
+      console.error(`[Storage] Retry setting '${key}' failed after cleanup:`, retryErr);
+      return false;
+    }
+  }
+}
+
 export function getApiBaseUrl(): string {
   if (typeof window !== 'undefined') {
     const saved = localStorage.getItem('billingmaster_api_url');
@@ -11,7 +47,7 @@ export function getApiBaseUrl(): string {
 export function setApiBaseUrl(url: string | null) {
   if (typeof window !== 'undefined') {
     if (url && url.trim()) {
-      localStorage.setItem('billingmaster_api_url', url.trim());
+      safeLocalStorageSet('billingmaster_api_url', url.trim());
     } else {
       localStorage.removeItem('billingmaster_api_url');
     }
@@ -36,7 +72,7 @@ export function setCurrentBusinessId(id: string | null) {
   currentBusinessId = id;
   if (typeof window !== 'undefined') {
     if (id) {
-      localStorage.setItem('billingmaster_business_id', id);
+      safeLocalStorageSet('billingmaster_business_id', id);
     } else {
       localStorage.removeItem('billingmaster_business_id');
     }
@@ -149,7 +185,7 @@ export const auth = {
       if (res && res.session) {
         currentSession = res.session;
         if (typeof window !== 'undefined') {
-          localStorage.setItem('billingmaster_cached_session', JSON.stringify(res.session));
+          safeLocalStorageSet('billingmaster_cached_session', JSON.stringify(res.session));
         }
         return currentSession;
       }
@@ -172,10 +208,10 @@ export const auth = {
 
     if (res.access_token) {
       authToken = res.access_token;
-      localStorage.setItem('billingmaster_auth_token', res.access_token);
+      safeLocalStorageSet('billingmaster_auth_token', res.access_token);
       currentSession = res.session;
       if (res.session && typeof window !== 'undefined') {
-        localStorage.setItem('billingmaster_cached_session', JSON.stringify(res.session));
+        safeLocalStorageSet('billingmaster_cached_session', JSON.stringify(res.session));
       }
       currentBusinessId = null;
       localStorage.removeItem('billingmaster_business_id');
@@ -200,10 +236,10 @@ export const auth = {
 
     if (res.access_token) {
       authToken = res.access_token;
-      localStorage.setItem('billingmaster_auth_token', res.access_token);
+      safeLocalStorageSet('billingmaster_auth_token', res.access_token);
       currentSession = res.session;
       if (res.session && typeof window !== 'undefined') {
-        localStorage.setItem('billingmaster_cached_session', JSON.stringify(res.session));
+        safeLocalStorageSet('billingmaster_cached_session', JSON.stringify(res.session));
       }
     }
     return res.session;
@@ -301,7 +337,7 @@ export async function getBusinessId(): Promise<string | null> {
     if (Array.isArray(profiles) && profiles.length > 0 && profiles[0].business_id) {
       currentBusinessId = profiles[0].business_id;
       if (currentBusinessId) {
-        localStorage.setItem('billingmaster_business_id', currentBusinessId);
+        safeLocalStorageSet('billingmaster_business_id', currentBusinessId);
       }
       return currentBusinessId;
     }
@@ -322,9 +358,7 @@ function getLocalStore<T>(table: string): T[] {
 }
 
 function setLocalStore<T>(table: string, items: T[]) {
-  try {
-    localStorage.setItem(`arventa_store_${table}`, JSON.stringify(items));
-  } catch (e) {}
+  safeLocalStorageSet(`arventa_store_${table}`, JSON.stringify(items));
 }
 
 const NO_BUSINESS_ID_TABLES = ['businesses', 'profiles', 'settings', 'invoice_items', 'purchase_items'];

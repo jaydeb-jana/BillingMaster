@@ -5,13 +5,15 @@ import {
   ExternalLink, Copy, Check, Clock, ShieldCheck, DollarSign,
   TrendingUp, RefreshCw, X, MessageSquare, Phone, Percent,
   Building2, Briefcase, Plus, FileSpreadsheet, AlertCircle,
-  QrCode, Printer, Smartphone, ChevronRight, ChevronDown, CheckCheck, Mail, Search, Pencil, Sliders, Barcode, MapPin, Navigation, Globe, Trash2
+  QrCode, Printer, Smartphone, ChevronRight, ChevronDown, CheckCheck, Mail, Search, Pencil, Sliders, Barcode, MapPin, Navigation, Globe, Trash2,
+  Eye, EyeOff, Server, Key, Loader2, AlertTriangle, BadgeCheck, Settings, Shuffle, RotateCcw
 } from 'lucide-react';
 import { db, auth, request, getBusinessCatalogHandle, checkCatalogHandleAvailability, getBusinessId } from '@/lib/api';
-import { useScrollReset, resetScrollRef } from '@/lib/useScrollReset';
+import { useScrollReset, resetScrollRef, useBodyScrollLock } from '@/lib/useScrollReset';
 import { toast } from 'sonner';
 import { Link, useLocation } from 'wouter';
 import jsPDF from 'jspdf';
+import { CatalogQrModal } from '@/components/CatalogQrModal';
 
 interface ForYouHubProps {
   onNavigate?: (path: string) => void;
@@ -389,6 +391,92 @@ function LocationMapPickerModal({
   );
 }
 
+export interface EmailTemplateConfig {
+  id: string;
+  name: string;
+  shortName?: string;
+  category: 'Billing & Sales' | 'Customer Care' | 'Reminders';
+  subject: string;
+  headerTitle: string;
+  bodyText: string;
+  ctaText: string;
+  accentColor: string;
+  isCustomized?: boolean;
+}
+
+const DEFAULT_EMAIL_TEMPLATES: EmailTemplateConfig[] = [
+  {
+    id: 'invoice_created',
+    name: 'Invoice Created (Tax Invoice)',
+    shortName: 'Invoice Created',
+    category: 'Billing & Sales',
+    subject: 'Tax Invoice #{invoice_number} from {store_name}',
+    headerTitle: 'Tax Invoice & Bill Summary',
+    bodyText: 'Dear {customer_name},\n\nThank you for shopping with {store_name}! Your tax invoice #{invoice_number} for total amount ₹{grand_total} has been issued.\n\nPlease find your bill summary below. You can view or download your detailed invoice anytime using the button below.\n\nThank you for your business!',
+    ctaText: 'View & Download Invoice',
+    accentColor: '#f97316',
+  },
+  {
+    id: 'payment_receipt',
+    name: 'Payment Receipt Confirmation',
+    shortName: 'Payment Receipt',
+    category: 'Billing & Sales',
+    subject: 'Payment Received for Invoice #{invoice_number} - {store_name}',
+    headerTitle: 'Payment Receipt & Confirmation',
+    bodyText: 'Dear {customer_name},\n\nWe have successfully received your payment of ₹{grand_total} for invoice #{invoice_number}.\n\nYour account balance is now updated. Thank you for your prompt payment and continued partnership!',
+    ctaText: 'View Receipt Details',
+    accentColor: '#16a34a',
+  },
+  {
+    id: 'payment_reminder',
+    name: 'Payment Due Notice',
+    shortName: 'Payment Due',
+    category: 'Reminders',
+    subject: 'Reminder: Invoice #{invoice_number} Payment Due - {store_name}',
+    headerTitle: 'Payment Due Reminder',
+    bodyText: 'Dear {customer_name},\n\nThis is a friendly reminder that invoice #{invoice_number} for ₹{grand_total} is due on {due_date}.\n\nPlease clear your balance at your earliest convenience to maintain active services and uninterrupted support.',
+    ctaText: 'Pay / Clear Balance',
+    accentColor: '#dc2626',
+  },
+  {
+    id: 'welcome_customer',
+    name: 'Welcome New Customer',
+    shortName: 'Welcome Customer',
+    category: 'Customer Care',
+    subject: 'Welcome to {store_name}!',
+    headerTitle: 'Welcome to Our Store!',
+    bodyText: 'Dear {customer_name},\n\nWelcome to {store_name}! We are thrilled to have you onboard as a valued customer.\n\nShould you need any assistance, product quotes, or billing support, our team is always ready to support you.',
+    ctaText: 'Explore Catalog & Offers',
+    accentColor: '#2563eb',
+  },
+  {
+    id: 'retarget_customer',
+    name: 'Customer Retargeting',
+    shortName: 'Customer Retargeting',
+    category: 'Customer Care',
+    subject: 'We Miss You at {store_name}! Is Everything Okay?',
+    headerTitle: 'Customer Care & Satisfaction Check',
+    bodyText: 'Dear {customer_name},\n\nWe noticed it has been a while since your last purchase at {store_name}! We hope everything is going well.\n\nWas there any issue or concern with your previous order? Your satisfaction is our top priority! If you experienced any inconvenience, need product support, or have feedback for us, please let us know by replying to this email.\n\nWe would love to welcome you back with our latest arrivals and exclusive member benefits!',
+    ctaText: 'Visit Store & View Offers',
+    accentColor: '#8b5cf6',
+  },
+];
+
+const renderSampleText = (text: string, storeName?: string) => {
+  if (!text) return '';
+  const actualStore = storeName || 'BillingMaster Store';
+  return text
+    .replace(/{store_name}/g, actualStore)
+    .replace(/{customer_name}/g, 'Rahul Banerjee')
+    .replace(/{invoice_number}/g, 'INV-2026-0842')
+    .replace(/{grand_total}/g, '14,850.00')
+    .replace(/{amount_paid}/g, '14,850.00')
+    .replace(/{due_date}/g, '15 Sep 2026')
+    .replace(/{quote_number}/g, 'QT-2026-0034')
+    .replace(/{valid_until}/g, '20 Sep 2026')
+    .replace(/{payment_link}/g, '#');
+};
+
 export function ForYouHub({ onNavigate }: ForYouHubProps) {
   const [, setLocation] = useLocation();
   const [activeModal, setActiveModal] = useState<string | null>(null);
@@ -417,6 +505,7 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
   const [catalogStockFilter, setCatalogStockFilter] = useState<'all' | 'instock' | 'outstock' | 'lowstock'>('all');
 
   // Store Catalog Preferences & Geofencing State
+  const [isStoreEnabled, setIsStoreEnabled] = useState<boolean>(true);
   const [showSalesRate, setShowSalesRate] = useState<boolean>(true);
   const [showBarcodes, setShowBarcodes] = useState<boolean>(true);
   const [locationRadiusKm, setLocationRadiusKm] = useState<string>('');
@@ -428,12 +517,14 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
 
   // Initial / Saved State for dirty tracking
   const [savedSettings, setSavedSettings] = useState<{
+    isStoreEnabled: boolean;
     showSalesRate: boolean;
     showBarcodes: boolean;
     locationRadiusKm: string;
     storeLat: number | null;
     storeLng: number | null;
   }>({
+    isStoreEnabled: true,
     showSalesRate: true,
     showBarcodes: true,
     locationRadiusKm: '',
@@ -442,13 +533,14 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
   });
 
   const isSettingsDirty = useMemo(() => {
+    if (isStoreEnabled !== savedSettings.isStoreEnabled) return true;
     if (showSalesRate !== savedSettings.showSalesRate) return true;
     if (showBarcodes !== savedSettings.showBarcodes) return true;
     if (locationRadiusKm !== savedSettings.locationRadiusKm) return true;
     if (storeLat !== savedSettings.storeLat) return true;
     if (storeLng !== savedSettings.storeLng) return true;
     return false;
-  }, [showSalesRate, showBarcodes, locationRadiusKm, storeLat, storeLng, savedSettings]);
+  }, [isStoreEnabled, showSalesRate, showBarcodes, locationRadiusKm, storeLat, storeLng, savedSettings]);
 
   const handleSetRadiusValue = (val: string) => {
     const numVal = Number(val);
@@ -487,12 +579,14 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
           }
           if (settingsList && settingsList.length > 0) {
             const s = settingsList.find((st: any) => activeBid && String(st.business_id) === String(activeBid)) || settingsList[0];
+            const initStoreEnabled = s.is_catalog_enabled !== undefined && s.is_catalog_enabled !== null ? Boolean(Number(s.is_catalog_enabled)) : true;
             const initSales = s.show_sales_rate !== undefined && s.show_sales_rate !== null ? Boolean(Number(s.show_sales_rate)) : true;
             const initBarcodes = s.show_barcodes !== undefined && s.show_barcodes !== null ? Boolean(Number(s.show_barcodes)) : true;
             const initRadius = s.location_radius_km !== undefined && s.location_radius_km !== null ? String(s.location_radius_km) : '';
             const initLat = s.store_lat !== undefined && s.store_lat !== null ? Number(s.store_lat) : null;
             const initLng = s.store_lng !== undefined && s.store_lng !== null ? Number(s.store_lng) : null;
 
+            setIsStoreEnabled(initStoreEnabled);
             setShowSalesRate(initSales);
             setShowBarcodes(initBarcodes);
             setLocationRadiusKm(initRadius);
@@ -500,6 +594,7 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
             setStoreLng(initLng);
 
             setSavedSettings({
+              isStoreEnabled: initStoreEnabled,
               showSalesRate: initSales,
               showBarcodes: initBarcodes,
               locationRadiusKm: initRadius,
@@ -524,6 +619,7 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
       const activeBid = business?.id || (await getBusinessId());
       if (!activeBid) return;
 
+      const targetStoreEnabled = overrideUpdates?.is_catalog_enabled !== undefined ? Boolean(overrideUpdates.is_catalog_enabled) : isStoreEnabled;
       const targetSalesRate = overrideUpdates?.show_sales_rate !== undefined ? Boolean(overrideUpdates.show_sales_rate) : showSalesRate;
       const targetBarcodes = overrideUpdates?.show_barcodes !== undefined ? Boolean(overrideUpdates.show_barcodes) : showBarcodes;
       const targetRadiusStr = overrideUpdates?.location_radius_km !== undefined 
@@ -535,6 +631,7 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
       const numRadius = targetRadiusStr.trim() === '' || Number(targetRadiusStr) <= 0 ? null : Number(targetRadiusStr);
       const payload = {
         business_id: activeBid,
+        is_catalog_enabled: targetStoreEnabled ? 1 : 0,
         show_sales_rate: targetSalesRate ? 1 : 0,
         show_barcodes: targetBarcodes ? 1 : 0,
         location_radius_km: numRadius,
@@ -545,6 +642,7 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
       await db.upsert('settings', payload);
 
       setSavedSettings({
+        isStoreEnabled: targetStoreEnabled,
         showSalesRate: targetSalesRate,
         showBarcodes: targetBarcodes,
         locationRadiusKm: targetRadiusStr,
@@ -564,6 +662,8 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
   const businessName = business?.name || 'BillingMaster';
   const businessPhone = business?.phone || '+91 98765 43210';
   const businessGstin = business?.gstin || '';
+  const currentCatalogHandle = getBusinessCatalogHandle(business);
+  const storeUrl = typeof window !== 'undefined' ? `${window.location.origin}/catalog/${currentCatalogHandle}` : `/catalog/${currentCatalogHandle}`;
 
   // Smart Calculator State
   const [calcMode, setCalcMode] = useState<'gst' | 'margin' | 'reverse'>('gst');
@@ -600,13 +700,615 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
   );
   const [targetCustomer, setTargetCustomer] = useState<string>('all');
 
-  // Email Marketing State
+  // Email Marketing & Nodemailer SMTP State
+  const [emailSubTab, setEmailSubTab] = useState<'setup' | 'campaign'>('setup');
   const [selectedEmailCampaign, setSelectedEmailCampaign] = useState<string>('offers');
   const [emailSubject, setEmailSubject] = useState<string>(`✨ Special Offer & New Arrivals from ${businessName}`);
   const [emailBody, setEmailBody] = useState<string>(
     `Dear Valued Customer,\n\nWe are delighted to share our latest product arrivals and exclusive promotions at ${businessName}.\n\nVisit our store or contact us directly to explore our curated catalog with exclusive seasonal savings!\n\nBest regards,\n${businessName}\nPhone: ${businessPhone}`
   );
   const [emailCopied, setEmailCopied] = useState<boolean>(false);
+
+  // Multiple Gmail Accounts State & Persistence
+  const [gmailAccounts, setGmailAccounts] = useState<GmailAccountConfig[]>(() => {
+    try {
+      const raw = localStorage.getItem('billingmaster_gmail_accounts');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to parse billingmaster_gmail_accounts', e);
+    }
+
+    // Migration from single legacy account
+    const legacyUser = localStorage.getItem('billingmaster_smtp_user');
+    const legacyPass = localStorage.getItem('billingmaster_smtp_pass');
+    const legacySender = localStorage.getItem('billingmaster_smtp_sender_name');
+    const legacyVerified = localStorage.getItem('billingmaster_smtp_verified') === 'true';
+
+    if (legacyUser && legacyPass) {
+      const migrated: GmailAccountConfig[] = [{
+        id: 'gmail_' + Date.now(),
+        senderName: legacySender || businessName || '',
+        user: legacyUser,
+        pass: legacyPass,
+        host: 'smtp.gmail.com',
+        port: 465,
+        secure: true,
+        isDefault: true,
+        isVerified: legacyVerified,
+      }];
+      localStorage.setItem('billingmaster_gmail_accounts', JSON.stringify(migrated));
+      return migrated;
+    }
+    return [];
+  });
+
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
+  const [isAddingEmail, setIsAddingEmail] = useState<boolean>(false);
+  const [testRecipients, setTestRecipients] = useState<Record<string, string>>({});
+  const [testingAccId, setTestingAccId] = useState<string | null>(null);
+
+  // Form Fields State
+  const [smtpSenderName, setSmtpSenderName] = useState<string>('');
+  const [smtpUser, setSmtpUser] = useState<string>('');
+  const [smtpPass, setSmtpPass] = useState<string>('');
+  const [smtpHost, setSmtpHost] = useState<string>('smtp.gmail.com');
+  const [smtpPort, setSmtpPort] = useState<number>(465);
+  const [smtpSecure, setSmtpSecure] = useState<boolean>(true);
+  const [smtpVerified, setSmtpVerified] = useState<boolean>(false);
+  const [isTestingConnection, setIsTestingConnection] = useState<boolean>(false);
+  const [showSmtpPass, setShowSmtpPass] = useState<boolean>(false);
+
+  // Reset Gmail Studio add/edit form state whenever modal is dismissed
+  useEffect(() => {
+    if (activeModal !== 'email-marketing') {
+      setIsAddingEmail(false);
+      setEditingAccountId(null);
+      setSmtpSenderName('');
+      setSmtpUser('');
+      setSmtpPass('');
+      setShowSmtpPass(false);
+    }
+  }, [activeModal]);
+
+  // Dispatch Strategy & Per-Account Limit States
+  const [selectedDispatchAccountIds, setSelectedDispatchAccountIds] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('billingmaster_selected_gmail_account_ids');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return [];
+  });
+
+  // Automatically initialize all connected accounts if selection is empty
+  useEffect(() => {
+    if (gmailAccounts.length > 0 && selectedDispatchAccountIds.length === 0) {
+      const initialIds = gmailAccounts.map(a => a.id);
+      setSelectedDispatchAccountIds(initialIds);
+      localStorage.setItem('billingmaster_selected_gmail_account_ids', JSON.stringify(initialIds));
+    }
+  }, [gmailAccounts]);
+
+  const [dailyMessageLimit, setDailyMessageLimit] = useState<number>(() => {
+    const raw = localStorage.getItem('billingmaster_email_daily_limit_per_acc');
+    const val = raw ? parseInt(raw, 10) || 400 : 400;
+    return Math.min(450, val);
+  });
+
+  const [showDispatchSettingsModal, setShowDispatchSettingsModal] = useState<boolean>(false);
+  const [showCatalogQrModal, setShowCatalogQrModal] = useState<boolean>(false);
+
+  // Email Template Manager States & Persistence
+  const [showTemplateManagerModal, setShowTemplateManagerModal] = useState<boolean>(false);
+  const isAnyModalOpen = Boolean(activeModal || showDispatchSettingsModal || showTemplateManagerModal || showLocationMapModal || showCatalogQrModal);
+  useBodyScrollLock(isAnyModalOpen);
+  const [emailTemplates, setEmailTemplates] = useState<EmailTemplateConfig[]>(() => {
+    try {
+      const raw = localStorage.getItem('billingmaster_email_templates');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return DEFAULT_EMAIL_TEMPLATES.map(def => {
+            const found = parsed.find((p: any) => p.id === def.id);
+            return found ? { ...def, ...found, isCustomized: true } : def;
+          });
+        }
+      }
+    } catch (e) {}
+    return DEFAULT_EMAIL_TEMPLATES;
+  });
+
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('invoice_created');
+  const [templateTabMode, setTemplateTabMode] = useState<'preview' | 'edit'>('preview');
+
+  const activeTemplate = useMemo(() => {
+    return emailTemplates.find(t => t.id === selectedTemplateId) || emailTemplates[0];
+  }, [emailTemplates, selectedTemplateId]);
+
+  const [editSubject, setEditSubject] = useState<string>('');
+  const [editHeaderTitle, setEditHeaderTitle] = useState<string>('');
+  const [editBodyText, setEditBodyText] = useState<string>('');
+  const [editCtaText, setEditCtaText] = useState<string>('');
+  const [editAccentColor, setEditAccentColor] = useState<string>('#f97316');
+
+  // Sync edit form fields whenever active template changes or modal opens
+  useEffect(() => {
+    if (activeTemplate) {
+      setEditSubject(activeTemplate.subject);
+      setEditHeaderTitle(activeTemplate.headerTitle);
+      setEditBodyText(activeTemplate.bodyText);
+      setEditCtaText(activeTemplate.ctaText);
+      setEditAccentColor(activeTemplate.accentColor);
+    }
+  }, [selectedTemplateId, showTemplateManagerModal]);
+
+  const handleInsertTag = (tag: string, targetField: 'subject' | 'body' | 'header' | 'cta') => {
+    if (targetField === 'subject') setEditSubject(prev => prev + ' ' + tag);
+    if (targetField === 'header') setEditHeaderTitle(prev => prev + ' ' + tag);
+    if (targetField === 'body') setEditBodyText(prev => prev + ' ' + tag);
+    if (targetField === 'cta') setEditCtaText(prev => prev + ' ' + tag);
+  };
+
+  const handleSaveActiveTemplate = () => {
+    const updated = emailTemplates.map(t => {
+      if (t.id === selectedTemplateId) {
+        return {
+          ...t,
+          subject: editSubject,
+          headerTitle: editHeaderTitle,
+          bodyText: editBodyText,
+          ctaText: editCtaText,
+          accentColor: editAccentColor,
+          isCustomized: true,
+        };
+      }
+      return t;
+    });
+    setEmailTemplates(updated);
+    localStorage.setItem('billingmaster_email_templates', JSON.stringify(updated));
+    setShowTemplateManagerModal(false);
+    setActiveModal(null);
+    toast.success('Template Saved Successfully!', {
+      description: `Customized settings saved for "${activeTemplate.name}".`,
+    });
+  };
+
+  const handleResetActiveTemplate = () => {
+    const defaultTpl = DEFAULT_EMAIL_TEMPLATES.find(t => t.id === selectedTemplateId);
+    if (!defaultTpl) return;
+
+    setEditSubject(defaultTpl.subject);
+    setEditHeaderTitle(defaultTpl.headerTitle);
+    setEditBodyText(defaultTpl.bodyText);
+    setEditCtaText(defaultTpl.ctaText);
+    setEditAccentColor(defaultTpl.accentColor);
+
+    const updated = emailTemplates.map(t => {
+      if (t.id === selectedTemplateId) {
+        return { ...defaultTpl, isCustomized: false };
+      }
+      return t;
+    });
+    setEmailTemplates(updated);
+    localStorage.setItem('billingmaster_email_templates', JSON.stringify(updated));
+    toast.info('Reset to System Default', {
+      description: `Restored standard email layout for "${defaultTpl.name}".`,
+    });
+  };
+
+  // Toggle account selection with minimum 1 account protection
+  const toggleAccountSelection = (accId: string, shouldCheck: boolean) => {
+    if (shouldCheck) {
+      const updated = Array.from(new Set([...selectedDispatchAccountIds, accId]));
+      setSelectedDispatchAccountIds(updated);
+      localStorage.setItem('billingmaster_selected_gmail_account_ids', JSON.stringify(updated));
+    } else {
+      if (selectedDispatchAccountIds.length <= 1 && selectedDispatchAccountIds.includes(accId)) {
+        toast.warning('At least 1 Gmail account must remain selected for sending emails.');
+        return;
+      }
+      const updated = selectedDispatchAccountIds.filter(id => id !== accId);
+      setSelectedDispatchAccountIds(updated);
+      localStorage.setItem('billingmaster_selected_gmail_account_ids', JSON.stringify(updated));
+    }
+  };
+
+  // Close or Back Handler for Gmail Studio Modal
+  const handleCloseGmailStudio = () => {
+    if (isAddingEmail) {
+      setIsAddingEmail(false);
+      setEditingAccountId(null);
+      setSmtpSenderName('');
+      setSmtpUser('');
+      setSmtpPass('');
+      setShowSmtpPass(false);
+    } else {
+      setActiveModal(null);
+    }
+  };
+
+  // Open Form to Add New Gmail Account
+  const handleOpenAddAccount = () => {
+    if (gmailAccounts.length >= 20) {
+      toast.warning('Maximum Limit Reached', {
+        description: 'You can store up to a maximum of 20 Gmail accounts.',
+      });
+      return;
+    }
+    setEditingAccountId(null);
+    setSmtpSenderName(businessName || '');
+    setSmtpUser('');
+    setSmtpPass('');
+    setSmtpHost('smtp.gmail.com');
+    setSmtpPort(465);
+    setSmtpSecure(true);
+    setSmtpVerified(false);
+    setIsAddingEmail(true);
+  };
+
+  // Open Form to Edit Existing Gmail Account
+  const handleOpenEditAccount = (acc: GmailAccountConfig) => {
+    setEditingAccountId(acc.id);
+    setSmtpSenderName(acc.senderName || businessName || '');
+    setSmtpUser(acc.user);
+    setSmtpPass(acc.pass);
+    setSmtpHost(acc.host || 'smtp.gmail.com');
+    setSmtpPort(acc.port || 465);
+    setSmtpSecure(acc.secure !== false);
+    setSmtpVerified(acc.isVerified);
+    setIsAddingEmail(true);
+  };
+
+  // Save & Test Gmail Account Handler
+  const handleTestAndSaveAccount = async () => {
+    if (!smtpUser.trim() || !smtpPass.trim()) {
+      toast.warning('Please enter both your Gmail address and Google App Password.');
+      return;
+    }
+    if (!smtpUser.includes('@')) {
+      toast.warning('Please enter a valid Gmail address (e.g. name@gmail.com).');
+      return;
+    }
+
+    setIsTestingConnection(true);
+    try {
+      const res = await request('/api/email/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          host: smtpHost.trim(),
+          port: smtpPort,
+          secure: smtpSecure,
+          user: smtpUser.trim(),
+          pass: smtpPass.trim(),
+        }),
+      });
+
+      if (res?.success) {
+        const cleanUser = smtpUser.trim();
+        const cleanPass = smtpPass.trim();
+        const cleanSender = smtpSenderName.trim() || businessName;
+
+        let updatedList: GmailAccountConfig[] = [...gmailAccounts];
+
+        if (editingAccountId) {
+          // Updating existing account
+          updatedList = updatedList.map((a) => {
+            if (a.id === editingAccountId) {
+              return {
+                ...a,
+                senderName: cleanSender,
+                user: cleanUser,
+                pass: cleanPass,
+                host: smtpHost.trim(),
+                port: smtpPort,
+                secure: smtpSecure,
+                isVerified: true,
+              };
+            }
+            return a;
+          });
+        } else {
+          // Check if email already exists
+          const existingIdx = updatedList.findIndex((a) => a.user.toLowerCase() === cleanUser.toLowerCase());
+          if (existingIdx >= 0) {
+            updatedList[existingIdx] = {
+              ...updatedList[existingIdx],
+              senderName: cleanSender,
+              pass: cleanPass,
+              host: smtpHost.trim(),
+              port: smtpPort,
+              secure: smtpSecure,
+              isVerified: true,
+            };
+          } else {
+            if (updatedList.length >= 20) {
+              toast.warning('Maximum Limit Reached', {
+                description: 'You can store up to a maximum of 20 Gmail accounts.',
+              });
+              setIsTestingConnection(false);
+              return;
+            }
+            // Adding brand new account
+            const isFirst = updatedList.length === 0;
+            const newAcc: GmailAccountConfig = {
+              id: 'gmail_' + Date.now(),
+              senderName: cleanSender,
+              user: cleanUser,
+              pass: cleanPass,
+              host: smtpHost.trim(),
+              port: smtpPort,
+              secure: smtpSecure,
+              isDefault: isFirst,
+              isVerified: true,
+            };
+            updatedList.push(newAcc);
+
+            // Auto-select newly added account for dispatching
+            const newSelectedIds = [...selectedDispatchAccountIds, newAcc.id];
+            setSelectedDispatchAccountIds(newSelectedIds);
+            localStorage.setItem('billingmaster_selected_gmail_account_ids', JSON.stringify(newSelectedIds));
+          }
+        }
+
+        setGmailAccounts(updatedList);
+        localStorage.setItem('billingmaster_gmail_accounts', JSON.stringify(updatedList));
+
+        // Sync primary for legacy fallback
+        const primary = updatedList[0];
+        if (primary) {
+          localStorage.setItem('billingmaster_smtp_sender_name', primary.senderName);
+          localStorage.setItem('billingmaster_smtp_user', primary.user);
+          localStorage.setItem('billingmaster_smtp_pass', primary.pass);
+          localStorage.setItem('billingmaster_smtp_verified', 'true');
+        }
+
+        setIsAddingEmail(false);
+        setEditingAccountId(null);
+        toast.success('Gmail Account Saved & Connected!', {
+          description: `Successfully verified and saved ${cleanUser}.`,
+        });
+      } else {
+        toast.error('Connection Failed', {
+          description: res?.error || 'Could not verify Gmail SMTP credentials.',
+        });
+      }
+    } catch (err: any) {
+      console.error('SMTP connection test error:', err);
+      toast.error('Connection Failed', {
+        description: err?.message || 'Invalid Gmail App Password or SMTP configuration.',
+      });
+    } finally {
+      setIsTestingConnection(false);
+    }
+  };
+
+  // Delete Gmail Account Handler
+  const handleDeleteAccount = (accId: string) => {
+    const accToDelete = gmailAccounts.find((a) => a.id === accId);
+    if (!accToDelete) return;
+
+    const updated = gmailAccounts.filter((a) => a.id !== accId);
+    setGmailAccounts(updated);
+    localStorage.setItem('billingmaster_gmail_accounts', JSON.stringify(updated));
+
+    const updatedSelectedIds = selectedDispatchAccountIds.filter(id => id !== accId);
+    setSelectedDispatchAccountIds(updatedSelectedIds);
+    localStorage.setItem('billingmaster_selected_gmail_account_ids', JSON.stringify(updatedSelectedIds));
+
+    const primary = updated[0];
+    if (primary) {
+      localStorage.setItem('billingmaster_smtp_sender_name', primary.senderName);
+      localStorage.setItem('billingmaster_smtp_user', primary.user);
+      localStorage.setItem('billingmaster_smtp_pass', primary.pass);
+      localStorage.setItem('billingmaster_smtp_verified', 'true');
+    } else {
+      localStorage.removeItem('billingmaster_smtp_user');
+      localStorage.removeItem('billingmaster_smtp_pass');
+      localStorage.removeItem('billingmaster_smtp_verified');
+    }
+
+    toast.success(`Removed ${accToDelete.user}`);
+  };
+
+  // Save Settings Handler
+  const handleSaveDispatchSettings = () => {
+    const safeLimit = Math.min(450, Math.max(1, dailyMessageLimit));
+    if (dailyMessageLimit > 450) {
+      setDailyMessageLimit(450);
+    }
+    localStorage.setItem('billingmaster_selected_gmail_account_ids', JSON.stringify(selectedDispatchAccountIds));
+    localStorage.setItem('billingmaster_email_daily_limit_per_acc', safeLimit.toString());
+    setShowDispatchSettingsModal(false);
+    toast.success('Dispatch Settings Saved!', {
+      description: `Active Accounts: ${selectedDispatchAccountIds.length > 0 ? selectedDispatchAccountIds.length : 'All'} • Daily Limit: ${safeLimit} msgs/account`,
+    });
+  };
+
+  // Send Test Email for a specific Account
+  const handleSendTestForAccount = async (acc: GmailAccountConfig) => {
+    const customRecipient = testRecipients[acc.id]?.trim();
+    const recipient = customRecipient || acc.user;
+
+    if (!recipient || !recipient.includes('@')) {
+      toast.warning('Please enter a valid recipient email address.');
+      return;
+    }
+
+    setTestingAccId(acc.id);
+    try {
+      const res = await request('/api/email/send-campaign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          host: acc.host || 'smtp.gmail.com',
+          port: acc.port || 465,
+          secure: acc.secure !== false,
+          user: acc.user,
+          pass: acc.pass,
+          fromName: acc.senderName || businessName,
+          recipients: [recipient],
+          subject: `⚡ BillingMaster Test Email — ${acc.user}`,
+          body: `Hello,\n\nThis is a test email sent from BillingMaster Gmail Studio via Gmail SMTP.\n\nAccount: ${acc.user}\nTime: ${new Date().toLocaleString('en-IN')}\n\nYour Gmail connection is working properly!`,
+        }),
+      });
+
+      if (res?.success && res.totalSent > 0) {
+        toast.success(`Test Email Sent to ${recipient}!`, {
+          description: `Delivered via ${acc.user}. Check inbox/spam folder.`,
+        });
+      } else {
+        toast.error('Test Delivery Failed', {
+          description: res?.error || res?.results?.[0]?.error || 'Failed to send test email.',
+        });
+      }
+    } catch (err: any) {
+      console.error('Test email send error:', err);
+      toast.error('Test Delivery Failed', {
+        description: err?.message || 'Server error delivering test email.',
+      });
+    } finally {
+      setTestingAccId(null);
+    }
+  };
+
+  // Send Quick Test Email Handler
+  const handleSendTestEmail = async () => {
+    const recipient = testEmailRecipient.trim() || smtpUser.trim();
+    if (!recipient || !recipient.includes('@')) {
+      toast.warning('Please enter a valid email address to receive the test message.');
+      return;
+    }
+    if (!smtpUser.trim() || !smtpPass.trim()) {
+      toast.warning('Please configure your Gmail account and App Password first.');
+      return;
+    }
+
+    setIsSendingTestEmail(true);
+    try {
+      const res = await request('/api/email/send-campaign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          host: smtpHost.trim(),
+          port: smtpPort,
+          secure: smtpSecure,
+          user: smtpUser.trim(),
+          pass: smtpPass.trim(),
+          fromName: smtpSenderName.trim() || businessName,
+          recipients: [recipient],
+          subject: `⚡ BillingMaster Gmail Test — Connection Successful!`,
+          body: `Hello,\n\nThis is a test email sent from BillingMaster Email Marketing Studio via Gmail SMTP.\n\nConnection Details:\n- Sender Name: ${smtpSenderName.trim() || businessName}\n- Gmail User: ${smtpUser.trim()}\n- SMTP Host: ${smtpHost.trim()}:${smtpPort}\n- Time: ${new Date().toLocaleString('en-IN')}\n\nYour Gmail SMTP is fully functional and ready to deliver email campaigns!`,
+        }),
+      });
+
+      if (res?.success && res.totalSent > 0) {
+        toast.success(`Test Email Delivered to ${recipient}!`, {
+          description: 'Check your inbox/spam folder to confirm email delivery.',
+        });
+      } else {
+        toast.error('Failed to Send Test Email', {
+          description: res?.error || res?.results?.[0]?.error || 'Failed to deliver test email.',
+        });
+      }
+    } catch (err: any) {
+      console.error('Test email send error:', err);
+      toast.error('Failed to Send Test Email', {
+        description: err?.message || 'Server error while sending test email.',
+      });
+    } finally {
+      setIsSendingTestEmail(false);
+    }
+  };
+
+  // Send Bulk Email Campaign Handler
+  const handleSendCampaignNodemailer = async () => {
+    if (gmailAccounts.length === 0) {
+      toast.warning('Please add and connect at least one Gmail account first.');
+      setEmailSubTab('setup');
+      return;
+    }
+
+    const activeAccounts = gmailAccounts.filter(a => selectedDispatchAccountIds.length === 0 || selectedDispatchAccountIds.includes(a.id));
+    const accountsToUse = activeAccounts.length > 0 ? activeAccounts : gmailAccounts;
+
+    const availableEmailContacts = customers.filter(c => c.email && c.email.includes('@')).map(c => c.email);
+    const recipientsToSend = selectedRecipients.length > 0
+      ? selectedRecipients
+      : availableEmailContacts;
+
+    if (recipientsToSend.length === 0) {
+      toast.warning('No valid recipient email addresses found. Please select at least one customer with a valid email address.');
+      return;
+    }
+
+    if (!emailSubject.trim()) {
+      toast.warning('Please enter an email subject line.');
+      return;
+    }
+
+    if (!emailBody.trim()) {
+      toast.warning('Please enter email body text.');
+      return;
+    }
+
+    setIsSendingCampaign(true);
+
+    const isMultiAccount = accountsToUse.length > 1;
+    const dispatchMode = isMultiAccount ? 'random' : 'specific';
+    const modeLabel = isMultiAccount ? `Randomized (${accountsToUse.length} Accounts)` : `Single Sender (${accountsToUse[0]?.user || ''})`;
+    const toastId = toast.loading(`Sending campaign via ${modeLabel} to ${recipientsToSend.length} recipient(s)...`);
+
+    const primarySender = accountsToUse[0] || gmailAccounts[0];
+
+    try {
+      const res = await request('/api/email/send-campaign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          host: primarySender?.host || 'smtp.gmail.com',
+          port: primarySender?.port || 465,
+          secure: primarySender?.secure !== false,
+          user: primarySender?.user,
+          pass: primarySender?.pass,
+          fromName: primarySender?.senderName || businessName,
+          accounts: accountsToUse,
+          dispatchMode: dispatchMode,
+          dailyLimitPerAccount: dailyMessageLimit,
+          recipients: recipientsToSend,
+          subject: emailSubject.trim(),
+          body: emailBody.trim(),
+        }),
+      });
+
+      toast.dismiss(toastId);
+
+      if (res?.success) {
+        toast.success(`Email Campaign Executed!`, {
+          description: `Successfully delivered ${res.totalSent} of ${recipientsToSend.length} email(s) via ${modeLabel}.`,
+        });
+      } else {
+        toast.error('Campaign Execution Issues', {
+          description: res?.error || `Delivered: ${res?.totalSent || 0}, Failed: ${res?.totalFailed || 0}`,
+        });
+      }
+    } catch (err: any) {
+      console.error('Campaign send error:', err);
+      toast.dismiss(toastId);
+      toast.error('Campaign Failed', {
+        description: err?.message || 'Failed to dispatch email campaign.',
+      });
+    } finally {
+      setIsSendingCampaign(false);
+    }
+  };
 
   // Reward Points State
   const [pointsPer100, setPointsPer100] = useState<number>(5);
@@ -950,9 +1652,9 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
                     </div>
                   </div>
 
-                  {/* Tool 2: Email Marketing */}
+                  {/* Tool 2: Gmail Studio */}
                   <div
-                    onClick={() => toast.info('Coming Soon!', { description: 'Email Marketing will be available in an upcoming update.' })}
+                    onClick={() => setActiveModal('email-marketing')}
                     className="group relative cursor-pointer rounded-3xl border border-border/80 bg-card p-5 shadow-2xs transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:shadow-lg flex flex-col justify-between overflow-hidden"
                   >
                     <div>
@@ -960,19 +1662,23 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
                         <div className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-500/15 text-blue-600 dark:text-blue-400 group-hover:scale-105 transition-transform border border-blue-500/20 shadow-xs">
                           <Mail size={24} />
                         </div>
-                        <span className="rounded-full bg-blue-500/10 px-2.5 py-0.5 text-[10px] font-extrabold text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                          Coming Soon
+                        <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-extrabold border ${
+                          smtpVerified 
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' 
+                            : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20'
+                        }`}>
+                          {smtpVerified ? 'Gmail Connected' : 'Gmail SMTP'}
                         </span>
                       </div>
                       <h3 className="text-sm font-black text-foreground group-hover:text-primary transition-colors">
-                        Email Marketing Studio
+                        Gmail Studio
                       </h3>
                       <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                        Automated customer offer templates, promo codes, and seasonal email newsletters.
+                        Add &amp; manage your store&apos;s Gmail account credentials &amp; SMTP configuration.
                       </p>
                     </div>
                     <div className="mt-4 flex items-center justify-between pt-3 border-t border-border/60 text-xs font-bold text-primary">
-                      <span>Email Studio</span>
+                      <span>{smtpVerified ? 'Open Gmail Studio' : 'Add Gmail Account'}</span>
                       <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" />
                     </div>
                   </div>
@@ -1424,166 +2130,832 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
         </div>
       )}
 
-      {/* MODAL 2.5: Email Marketing Studio */}
+      {/* MODAL 2.5: Gmail Studio */}
       {activeModal === 'email-marketing' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-xs animate-fade-in">
-          <div className="card-shell w-full max-w-xl p-6 animate-rise shadow-2xl border border-border max-h-[90vh] overflow-y-auto">
+          <div className="card-shell w-full max-w-2xl p-6 animate-rise shadow-2xl border border-border max-h-[90vh] overflow-y-auto">
+            {/* Header */}
             <div className="flex items-center justify-between pb-4 border-b border-border">
               <div className="flex items-center gap-2.5">
-                <div className="grid h-9 w-9 place-items-center rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-400">
-                  <Mail size={20} />
+                <div className="grid h-10 w-10 place-items-center rounded-2xl bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/20 shadow-xs">
+                  <Mail size={22} />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-foreground">Email Marketing Studio</h3>
-                  <p className="text-[11px] text-muted-foreground">Reach clients with newsletters, promotions & announcements</p>
+                  <h3 className="text-base font-black text-foreground">Gmail Studio</h3>
+                  <p className="text-[11px] text-muted-foreground">Add &amp; manage your store&apos;s Gmail account credentials for automated system emails</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setShowTemplateManagerModal(true)}
+                  title="Email Templates Manager"
+                  className="px-2.5 py-1.5 text-xs font-extrabold rounded-xl border border-border bg-card hover:bg-muted text-foreground flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+                >
+                  <FileText size={15} className="text-primary" />
+                  <span>Templates</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDispatchSettingsModal(true)}
+                  title="Dispatch &amp; Limit Settings"
+                  className="rounded-xl p-2 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer transition-colors"
+                >
+                  <Settings size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCloseGmailStudio}
+                  className="rounded-xl p-2 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Gmail Studio Content */}
+            <div className="mt-5 space-y-4 animate-fade-in">
+              {/* Header Action Bar */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="text-xs font-black text-foreground uppercase tracking-wider">Gmail Accounts</h4>
+                    <span className="px-2 py-0.5 text-[10px] font-extrabold rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                      {gmailAccounts.length}/20
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowDispatchSettingsModal(true)}
+                      className="px-2 py-0.5 text-[10px] font-extrabold rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1 cursor-pointer hover:bg-amber-500/20 transition-colors"
+                    >
+                      <Settings size={10} />
+                      <span>
+                        {selectedDispatchAccountIds.length > 1 || (selectedDispatchAccountIds.length === 0 && gmailAccounts.length > 1)
+                          ? `Randomized (${selectedDispatchAccountIds.length || gmailAccounts.length} Active)`
+                          : `Single Sender (${selectedDispatchAccountIds.length || (gmailAccounts.length ? 1 : 0)} Active)`}
+                      </span>
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">Store &amp; verify Gmail SMTP credentials (Max 20 accounts)</p>
+                </div>
+
+                {!isAddingEmail && (
+                  <button
+                    type="button"
+                    onClick={handleOpenAddAccount}
+                    className="px-3.5 py-2 text-xs font-extrabold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
+                  >
+                    <Plus size={16} />
+                    <span>Add Gmail</span>
+                  </button>
+                )}
+              </div>
+
+              {/* VIEW MODE: Saved Gmail Account Cards OR Empty State */}
+              {!isAddingEmail && (
+                <div className="space-y-4">
+                  {gmailAccounts.length > 0 ? (
+                    <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+                      {gmailAccounts.map((acc) => {
+                        const isDispatchActive = selectedDispatchAccountIds.includes(acc.id);
+                        return (
+                          <div
+                            key={acc.id}
+                            className={`p-4 rounded-2xl border ${
+                              isDispatchActive
+                                ? 'border-emerald-500/40 bg-emerald-500/5'
+                                : 'border-border bg-card'
+                            } space-y-3.5 shadow-2xs transition-all`}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div
+                                  className={`grid h-10 w-10 shrink-0 place-items-center rounded-2xl ${
+                                    isDispatchActive
+                                      ? 'bg-emerald-500/15 text-emerald-600 border border-emerald-500/20'
+                                      : 'bg-primary/10 text-primary border border-primary/20'
+                                  } font-black shadow-xs`}
+                                >
+                                  <Mail size={20} />
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <h5 className="text-xs sm:text-sm font-black text-foreground truncate">
+                                      {acc.senderName || businessName}
+                                    </h5>
+                                    {isDispatchActive && (
+                                      <span className="px-2 py-0.5 text-[9px] font-extrabold rounded-full bg-emerald-600 text-white shrink-0 shadow-2xs">
+                                        ACTIVE SENDER
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs font-mono font-bold text-muted-foreground truncate mt-0.5">
+                                    {acc.user}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <span className="hidden sm:inline-flex px-2.5 py-1 text-[10px] font-black rounded-lg bg-emerald-600/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 items-center gap-1 shrink-0">
+                                <BadgeCheck size={13} /> Connected
+                              </span>
+                            </div>
+
+                            {/* Quick Test Email Bar per Account */}
+                            <div className="p-2.5 rounded-xl border border-border/70 bg-muted/20 space-y-1.5">
+                              <label className="block text-[10px] font-bold text-muted-foreground">
+                                Send Quick Test Email
+                              </label>
+                              <div className="flex gap-2">
+                                <input
+                                  type="email"
+                                  value={testRecipients[acc.id] || ''}
+                                  onChange={(e) =>
+                                    setTestRecipients({ ...testRecipients, [acc.id]: e.target.value })
+                                  }
+                                  placeholder={`Recipient (default: ${acc.user})`}
+                                  className="input-shell flex-1 text-xs font-medium p-2"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleSendTestForAccount(acc)}
+                                  disabled={testingAccId === acc.id}
+                                  className="px-3 py-1.5 text-xs font-extrabold rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50 shrink-0 shadow-2xs"
+                                >
+                                  {testingAccId === acc.id ? (
+                                    <Loader2 size={12} className="animate-spin" />
+                                  ) : (
+                                    <Send size={12} />
+                                  )}
+                                  <span>Send Test</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="pt-2 border-t border-border/60 flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <label className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedDispatchAccountIds.includes(acc.id)}
+                                    onChange={(e) => toggleAccountSelection(acc.id, e.target.checked)}
+                                    className="h-3.5 w-3.5 rounded border-border text-primary focus:ring-primary cursor-pointer accent-primary"
+                                  />
+                                  <span>Include in Dispatch</span>
+                                </label>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditAccount(acc)}
+                                  className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-border bg-card hover:bg-muted text-foreground flex items-center gap-1 cursor-pointer transition-colors"
+                                >
+                                  <Pencil size={12} />
+                                  <span>Edit</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteAccount(acc.id)}
+                                  className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-destructive/30 text-destructive hover:bg-destructive/10 flex items-center gap-1 cursor-pointer transition-colors"
+                                >
+                                  <Trash2 size={12} />
+                                  <span>Delete</span>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    /* Empty State Card with Add Gmail Button */
+                    <div className="p-6 sm:p-8 rounded-2xl border-2 border-dashed border-border text-center space-y-3.5 bg-muted/20">
+                      <div className="grid h-12 w-12 place-items-center rounded-2xl bg-primary/10 text-primary mx-auto border border-primary/20 shadow-xs">
+                        <Mail size={24} />
+                      </div>
+                      <div>
+                        <h5 className="text-sm font-black text-foreground">No Gmail Account Added Yet</h5>
+                        <p className="text-xs text-muted-foreground max-w-md mx-auto mt-1 leading-relaxed">
+                          Click <strong>Add Gmail</strong> below to enter your Gmail address and 16-character Google App Password for system email delivery.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleOpenAddAccount}
+                        className="btn-primary inline-flex items-center gap-2 rounded-xl px-5 py-3 text-xs sm:text-sm font-extrabold shadow-md cursor-pointer hover:scale-102 transition-transform"
+                      >
+                        <Plus size={18} />
+                        <span>Add Gmail</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* FORM EDIT MODE: Add/Configure Gmail Account */}
+              {isAddingEmail && (
+                <div className="space-y-4 p-4.5 rounded-2xl border border-border bg-card shadow-xs animate-rise">
+                  <div className="flex items-center justify-between pb-3 border-b border-border">
+                    <div className="flex items-center gap-2">
+                      <div className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary font-bold">
+                        <Plus size={16} />
+                      </div>
+                      <h5 className="text-xs font-black text-foreground">
+                        {editingAccountId ? 'Edit Gmail Account Credentials' : 'Add Gmail Account Credentials'}
+                      </h5>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingEmail(false)}
+                      className="text-xs font-bold text-muted-foreground hover:text-foreground cursor-pointer px-2 py-1 rounded-lg hover:bg-muted"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+
+                  {/* Form Fields */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <label className="block text-xs font-bold text-foreground">
+                        Sender Name (Display Name on Outgoing Emails)
+                      </label>
+                      <input
+                        type="text"
+                        value={smtpSenderName}
+                        onChange={(e) => setSmtpSenderName(e.target.value)}
+                        placeholder="e.g. My Business Name / Jaydeb Jana"
+                        className="input-shell w-full text-xs font-semibold p-3"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <label className="block text-xs font-bold text-foreground">
+                        Gmail Address <span className="text-destructive">*</span>
+                      </label>
+                      <input
+                        type="email"
+                        value={smtpUser}
+                        onChange={(e) => {
+                          setSmtpUser(e.target.value);
+                          setSmtpVerified(false);
+                        }}
+                        placeholder="e.g. yourstore@gmail.com"
+                        className="input-shell w-full text-xs font-semibold p-3"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-bold text-foreground">
+                          Google App Password (16-Digit) <span className="text-destructive">*</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setShowSmtpPass(!showSmtpPass)}
+                          className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          {showSmtpPass ? <EyeOff size={13} /> : <Eye size={13} />}
+                          <span>{showSmtpPass ? 'Hide Code' : 'Show Code'}</span>
+                        </button>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type={showSmtpPass ? 'text' : 'password'}
+                          value={smtpPass}
+                          onChange={(e) => {
+                            setSmtpPass(e.target.value);
+                            setSmtpVerified(false);
+                          }}
+                          placeholder="e.g. abcd efgh ijkl mnop (16 letters)"
+                          className="input-shell w-full text-xs font-mono font-bold p-3 pr-10 tracking-wider"
+                        />
+                        <Key size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        Do NOT use your personal Gmail login password. Use a 16-character <strong>Google App Password</strong>.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Primary Save & Connect Button */}
+                  <div className="pt-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleTestAndSaveAccount}
+                      disabled={isTestingConnection}
+                      className="btn-primary w-full py-3 text-xs sm:text-sm font-extrabold rounded-xl flex items-center justify-center gap-2 shadow-md cursor-pointer disabled:opacity-50"
+                    >
+                      {isTestingConnection ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" />
+                          <span>Verifying &amp; Saving Gmail Connection...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check size={16} />
+                          <span>Save &amp; Connect Gmail Account</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Step-by-Step Google App Password Guide */}
+                  <div className="p-3.5 rounded-xl border border-blue-500/20 bg-blue-500/5 text-foreground space-y-1.5">
+                    <p className="text-xs font-black text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                      <ShieldCheck size={15} />
+                      <span>How to Get Your 16-Digit Google App Password:</span>
+                    </p>
+                    <ol className="text-xs space-y-1 pl-5 list-decimal text-muted-foreground leading-relaxed">
+                      <li>Open Google Account settings (<a href="https://myaccount.google.com/security" target="_blank" rel="noopener noreferrer" className="text-primary underline font-bold">myaccount.google.com/security</a>).</li>
+                      <li>Ensure <strong>2-Step Verification</strong> is ON under <em>How you sign in to Google</em>.</li>
+                      <li>Type <strong>App Passwords</strong> in the top search bar (or Security &gt; App Passwords).</li>
+                      <li>Create an App Password for &quot;Mail&quot; and copy the 16-character code.</li>
+                      <li>Paste it into the password field above and click <strong>Save &amp; Connect Gmail Account</strong>.</li>
+                    </ol>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Bottom Actions */}
+            <div className="mt-5 pt-4 border-t border-border flex items-center justify-between">
+              <button
+                type="button"
+                onClick={handleCloseGmailStudio}
+                className="rounded-xl px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted cursor-pointer transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SEPARATE MODAL: Gmail Dispatch & Limit Settings */}
+      {showDispatchSettingsModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-xs animate-fade-in">
+          <div className="card-shell w-full max-w-lg p-6 animate-rise shadow-2xl border border-border max-h-[90vh] overflow-y-auto space-y-5">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-border">
+              <div className="flex items-center gap-2.5">
+                <div className="grid h-10 w-10 place-items-center rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20 shadow-xs">
+                  <Settings size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-foreground">Gmail Dispatch &amp; Limit Settings</h3>
+                  <p className="text-[11px] text-muted-foreground">Select active Gmail accounts &amp; set daily message limits</p>
                 </div>
               </div>
               <button
-                onClick={() => setActiveModal(null)}
-                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                type="button"
+                onClick={() => setShowDispatchSettingsModal(false)}
+                className="rounded-xl p-2 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer transition-colors"
               >
                 <X size={18} />
               </button>
             </div>
 
-            {/* Campaign Preset Tabs */}
-            <div className="mt-4 space-y-3">
-              <label className="block text-xs font-bold text-foreground">Select Campaign Template</label>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  {
-                    id: 'offers',
-                    label: 'Special Offer',
-                    desc: 'Exclusive discount code',
-                    subject: `🔥 Special Customer Discount: Up to 20% OFF at ${businessName}`,
-                    body: `Dear Valued Customer,\n\nAs a token of our appreciation for your continued trust in ${businessName}, we are excited to offer you an exclusive discount on your next purchase.\n\nUse offer code "EXCLUSIVE20" or show this email during checkout to receive your discount!\n\n📍 Visit us or reply to this email for instant inquiries.\n\nBest regards,\n${businessName}\nPhone: ${businessPhone}`
-                  },
-                  {
-                    id: 'new_arrivals',
-                    label: 'New Collection',
-                    desc: 'Fresh catalog & stock',
-                    subject: `✨ Fresh Stock & New Arrivals Now in Store — ${businessName}`,
-                    body: `Dear Customer,\n\nWe are excited to inform you that new arrivals have just landed at ${businessName}! Explore our latest collection designed to provide top quality and unbeatable value.\n\nCheck out the fresh products today before stocks run out.\n\nContact us directly for bookings or questions.\n\nWarm regards,\n${businessName}\nPhone: ${businessPhone}`
-                  },
-                  {
-                    id: 'announcement',
-                    label: 'Announcement',
-                    desc: 'Store updates & news',
-                    subject: `📢 Important Business Update from ${businessName}`,
-                    body: `Dear Customer,\n\nWe have exciting updates to share with you from ${businessName}! We have expanded our product inventory and enhanced our customer service to serve you even better.\n\nThank you for being a valued part of our journey.\n\nSincerely,\n${businessName}\nPhone: ${businessPhone}`
-                  },
-                ].map((camp) => (
-                  <button
-                    key={camp.id}
-                    onClick={() => {
-                      setSelectedEmailCampaign(camp.id);
-                      setEmailSubject(camp.subject);
-                      setEmailBody(camp.body);
-                    }}
-                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                      selectedEmailCampaign === camp.id
-                        ? 'border-primary bg-primary/10 text-primary font-bold'
-                        : 'border-border bg-card text-muted-foreground hover:bg-muted'
-                    }`}
-                  >
-                    <p className="text-xs font-extrabold text-foreground">{camp.label}</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">{camp.desc}</p>
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* Content Body */}
+            <div className="space-y-4">
+              {/* Account Selection Section */}
+              <div className="space-y-2.5">
+                <div>
+                  <label className="text-xs font-black text-foreground uppercase tracking-wider">
+                    Select Active Dispatch Accounts
+                  </label>
+                </div>
 
-            {/* Subject line */}
-            <div className="mt-4 space-y-1.5">
-              <label className="block text-xs font-bold text-foreground">Email Subject</label>
-              <input
-                type="text"
-                value={emailSubject}
-                onChange={(e) => setEmailSubject(e.target.value)}
-                placeholder="Enter email subject line..."
-                className="input-shell w-full text-xs font-bold p-3"
-              />
-            </div>
+                <div className="p-3 rounded-2xl border border-border bg-card space-y-2 max-h-[220px] overflow-y-auto">
+                  {gmailAccounts.length > 0 ? (
+                    gmailAccounts.map((acc) => {
+                      const isChecked = selectedDispatchAccountIds.includes(acc.id);
+                      return (
+                        <label
+                          key={acc.id}
+                          className={`flex items-center justify-between p-2.5 rounded-xl border cursor-pointer transition-all ${
+                            isChecked
+                              ? 'border-primary/40 bg-primary/5 text-foreground'
+                              : 'border-border/60 bg-muted/20 opacity-60 text-muted-foreground'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => toggleAccountSelection(acc.id, e.target.checked)}
+                              className="h-4 w-4 rounded-md border-border text-primary focus:ring-primary cursor-pointer accent-primary"
+                            />
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-foreground truncate">
+                                {acc.senderName || businessName}
+                              </p>
+                              <p className="text-[11px] font-mono text-muted-foreground truncate">
+                                {acc.user}
+                              </p>
+                            </div>
+                          </div>
+                          {isChecked && (
+                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0">
+                              ACTIVE
+                            </span>
+                          )}
+                        </label>
+                      );
+                    })
+                  ) : (
+                    <p className="text-xs text-muted-foreground text-center py-4">No Gmail accounts added yet.</p>
+                  )}
+                </div>
 
-            {/* Email Body Editor */}
-            <div className="mt-4 space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="block text-xs font-bold text-foreground">Email Body</label>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(`Subject: ${emailSubject}\n\n${emailBody}`);
-                    setEmailCopied(true);
-                    toast.success('Email subject and body copied to clipboard!');
-                    setTimeout(() => setEmailCopied(false), 2000);
-                  }}
-                  className="inline-flex items-center gap-1 text-[11px] font-bold text-primary hover:underline cursor-pointer"
-                >
-                  {emailCopied ? <Check size={12} /> : <Copy size={12} />}
-                  <span>{emailCopied ? 'Copied' : 'Copy Full Email'}</span>
-                </button>
-              </div>
-              <textarea
-                rows={6}
-                value={emailBody}
-                onChange={(e) => setEmailBody(e.target.value)}
-                className="input-shell w-full text-xs font-medium leading-relaxed p-3"
-              />
-            </div>
-
-            {/* Send to Customer with Email */}
-            <div className="mt-4 space-y-2">
-              <label className="block text-xs font-bold text-foreground">
-                Customer Email Recipients ({customers.filter((c) => c.email).length} of {customers.length} Contacts Have Email)
-              </label>
-              <div className="max-h-40 overflow-y-auto rounded-xl border border-border/60 divide-y divide-border/40">
-                {customers.length === 0 ? (
-                  <div className="p-4 text-center text-xs text-muted-foreground">
-                    No customer contacts found. Add customers in the Customers tab.
+                {/* Automatic Mode Indicator */}
+                {selectedDispatchAccountIds.length > 1 ? (
+                  <div className="p-3 rounded-xl border border-amber-500/25 bg-amber-500/10 text-amber-900 dark:text-amber-200 flex items-center gap-2.5 text-xs">
+                    <Shuffle size={16} className="shrink-0 text-amber-600 dark:text-amber-400" />
+                    <div>
+                      <span className="font-extrabold">Automatic Randomized Dispatch Active</span>
+                      <p className="text-[11px] opacity-90">Outgoing emails will automatically rotate &amp; randomize across all {selectedDispatchAccountIds.length} selected accounts.</p>
+                    </div>
+                  </div>
+                ) : selectedDispatchAccountIds.length === 1 ? (
+                  <div className="p-3 rounded-xl border border-blue-500/25 bg-blue-500/10 text-blue-900 dark:text-blue-200 flex items-center gap-2.5 text-xs">
+                    <Mail size={16} className="shrink-0 text-blue-600 dark:text-blue-400" />
+                    <div>
+                      <span className="font-extrabold">Single Sender Active</span>
+                      <p className="text-[11px] opacity-90">All emails will be delivered using {gmailAccounts.find(a => a.id === selectedDispatchAccountIds[0])?.user || 'the selected account'}.</p>
+                    </div>
                   </div>
                 ) : (
-                  customers.map((c) => (
-                    <div key={c.id} className="p-2.5 flex items-center justify-between hover:bg-muted/40 transition-colors">
-                      <div className="min-w-0 flex-1 mr-2">
-                        <p className="text-xs font-bold text-foreground truncate">{c.name || c.full_name}</p>
-                        <p className="text-[10px] text-muted-foreground truncate">{c.email || 'No email registered'}</p>
-                      </div>
-                      {c.email ? (
-                        <a
-                          href={`mailto:${encodeURIComponent(c.email)}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 text-[10px] font-bold shadow-2xs cursor-pointer shrink-0"
-                        >
-                          <Send size={11} />
-                          <span>Send Email</span>
-                        </a>
-                      ) : (
-                        <span className="text-[10px] font-semibold text-muted-foreground/60 shrink-0">
-                          Email missing
-                        </span>
-                      )}
-                    </div>
-                  ))
+                  <div className="p-3 rounded-xl border border-destructive/30 bg-destructive/10 text-destructive flex items-center gap-2.5 text-xs">
+                    <AlertTriangle size={16} className="shrink-0" />
+                    <span>No account selected! Please tick at least one Gmail account to send emails.</span>
+                  </div>
                 )}
+              </div>
+
+              {/* Daily Max Message Limit Section */}
+              <div className="space-y-2 pt-2 border-t border-border">
+                <label className="block text-xs font-black text-foreground uppercase tracking-wider">
+                  Per-Account Daily Max Message Limit
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min={1}
+                    max={450}
+                    value={dailyMessageLimit}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value) || 1;
+                      if (val > 450) {
+                        toast.warning('Maximum Safety Limit (450 msgs/day)', {
+                          description: 'Setting a limit above 450 messages/day per account can harm or suspend your Google account.',
+                        });
+                        setDailyMessageLimit(450);
+                      } else {
+                        setDailyMessageLimit(Math.max(1, val));
+                      }
+                    }}
+                    className="input-shell w-full text-sm font-extrabold p-3 pr-28"
+                    placeholder="400"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground pointer-events-none">
+                    msgs / account
+                  </span>
+                </div>
+                <p className="text-[11px] font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1.5 mt-1">
+                  <AlertTriangle size={13} className="shrink-0" />
+                  <span>Maximum limit is capped at 450 msgs/day per account to protect your Google account from suspension.</span>
+                </p>
+                <div className="p-2.5 rounded-xl bg-muted/40 text-[11px] text-muted-foreground flex justify-between items-center">
+                  <span>Combined Daily Capacity:</span>
+                  <span className="font-mono font-bold text-foreground">
+                    {(selectedDispatchAccountIds.length || gmailAccounts.length)} accounts × {dailyMessageLimit} = {((selectedDispatchAccountIds.length || gmailAccounts.length) * dailyMessageLimit).toLocaleString()} emails/day
+                  </span>
+                </div>
               </div>
             </div>
 
-            {/* General Actions */}
-            <div className="mt-6 pt-4 border-t border-border flex items-center justify-between">
+            {/* Footer Action */}
+            <div className="pt-3 border-t border-border flex items-center justify-end gap-2">
               <button
-                onClick={() => setActiveModal(null)}
-                className="rounded-xl px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted cursor-pointer"
+                type="button"
+                onClick={() => setShowDispatchSettingsModal(false)}
+                className="px-4 py-2.5 text-xs font-bold rounded-xl border border-border bg-card hover:bg-muted text-foreground cursor-pointer"
               >
-                Close
+                Cancel
               </button>
-              <a
-                href={`mailto:?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`}
-                className="btn-primary flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold cursor-pointer"
+              <button
+                type="button"
+                onClick={handleSaveDispatchSettings}
+                className="btn-primary px-5 py-2.5 text-xs font-extrabold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-md"
               >
-                <Mail size={14} />
-                <span>Open in Email App</span>
-              </a>
+                <Check size={16} />
+                <span>Save Settings</span>
+              </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* SEPARATE MODAL: Gmail Studio Email Template Manager */}
+      {showTemplateManagerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-background/80 backdrop-blur-xs animate-fade-in">
+          <div className="card-shell w-full max-w-5xl p-4 sm:p-5 animate-rise shadow-2xl border border-border max-h-[95vh] h-[90vh] flex flex-col">
+            
+            {/* Modal Top Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-border shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="grid h-10 w-10 place-items-center rounded-2xl bg-orange-500/15 text-orange-600 dark:text-orange-400 border border-orange-500/20 shadow-xs">
+                  <FileText size={22} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black text-foreground">Email Template Manager</h3>
+                    <span className="px-2 py-0.5 text-[10px] font-extrabold rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20">
+                      {emailTemplates.length} Presets Available
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">Select a template to edit fields on the left and see live HTML preview update on the right.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTemplateManagerModal(false)}
+                className="rounded-xl p-2 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer transition-colors"
+                title="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Template Selector Pills / Sub-Header Bar */}
+            <div className="mt-3 pb-3 border-b border-border flex items-center justify-between gap-2 shrink-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {emailTemplates.map((tpl) => {
+                  const isSelected = tpl.id === selectedTemplateId;
+                  return (
+                    <button
+                      key={tpl.id}
+                      type="button"
+                      onClick={() => setSelectedTemplateId(tpl.id)}
+                      className={`px-2.5 py-1 text-[11px] font-extrabold rounded-xl border transition-all cursor-pointer flex items-center gap-1.5 ${
+                        isSelected
+                          ? 'border-primary bg-primary/10 text-primary shadow-xs scale-[1.02]'
+                          : 'border-border bg-card hover:bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: tpl.accentColor }} />
+                      <span>{tpl.shortName || tpl.name}</span>
+                      {tpl.isCustomized && (
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" title="Customized" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="hidden md:flex items-center gap-1.5 shrink-0 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[10px] font-extrabold">
+                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Live Preview Syncing</span>
+              </div>
+            </div>
+
+            {/* Main Split Body Layout: Left Column = Edit Fields | Right Column = Live HTML Preview */}
+            <div className="py-3 flex-1 min-h-0 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
+              
+              {/* LEFT COLUMN: EDIT TEMPLATE FORM */}
+              <div className="lg:col-span-6 space-y-3 overflow-y-auto pr-1">
+                <div className="p-3 rounded-xl border border-primary/20 bg-primary/5 text-foreground space-y-1">
+                  <p className="text-xs font-black text-primary flex items-center gap-1.5">
+                    <Pencil size={14} />
+                    <span>Edit Template ({activeTemplate.name})</span>
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Changes made here instantly update the live preview on the right. Click quick tags to insert dynamic placeholders.
+                  </p>
+                </div>
+
+                {/* Field 1: Subject Line */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-foreground uppercase tracking-wider">
+                      Subject Line
+                    </label>
+                  </div>
+                  <input
+                    type="text"
+                    value={editSubject}
+                    onChange={(e) => setEditSubject(e.target.value)}
+                    className="input-shell w-full text-xs font-bold p-2.5"
+                    placeholder="Tax Invoice #{invoice_number} from {store_name}"
+                  />
+                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                    <span className="text-[10px] font-extrabold text-muted-foreground uppercase">Insert Tag:</span>
+                    {['{invoice_number}', '{store_name}', '{customer_name}', '{grand_total}'].map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => handleInsertTag(tag, 'subject')}
+                        className="px-2 py-0.5 text-[10px] font-mono font-bold rounded-lg border border-border bg-muted/60 hover:bg-muted text-foreground cursor-pointer"
+                      >
+                        + {tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Field 2: Header Banner Title */}
+                <div className="space-y-1">
+                  <label className="block text-xs font-bold text-foreground uppercase tracking-wider">
+                    Header Banner Title
+                  </label>
+                  <input
+                    type="text"
+                    value={editHeaderTitle}
+                    onChange={(e) => setEditHeaderTitle(e.target.value)}
+                    className="input-shell w-full text-xs font-bold p-2.5"
+                    placeholder="Tax Invoice & Bill Summary"
+                  />
+                </div>
+
+                {/* Field 3: Email Body Text */}
+                <div className="space-y-1">
+                  <label className="block text-xs font-bold text-foreground uppercase tracking-wider">
+                    Email Body Text
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={editBodyText}
+                    onChange={(e) => setEditBodyText(e.target.value)}
+                    className="input-shell w-full text-xs font-medium p-2.5 resize-y leading-relaxed font-sans"
+                    placeholder="Dear {customer_name}, thank you for your purchase..."
+                  />
+                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                    <span className="text-[10px] font-extrabold text-muted-foreground uppercase">Insert Tag:</span>
+                    {['{customer_name}', '{store_name}', '{invoice_number}', '{grand_total}', '{due_date}'].map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => handleInsertTag(tag, 'body')}
+                        className="px-2 py-0.5 text-[10px] font-mono font-bold rounded-lg border border-border bg-muted/60 hover:bg-muted text-foreground cursor-pointer"
+                      >
+                        + {tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Field 4: CTA Button Label & Color Theme */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-foreground uppercase tracking-wider">
+                      CTA Button Label
+                    </label>
+                    <input
+                      type="text"
+                      value={editCtaText}
+                      onChange={(e) => setEditCtaText(e.target.value)}
+                      className="input-shell w-full text-xs font-bold p-2.5"
+                      placeholder="View & Download Invoice"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-foreground uppercase tracking-wider">
+                      Color Theme
+                    </label>
+                    <div className="flex items-center gap-2 pt-1">
+                      {['#f97316', '#16a34a', '#2563eb', '#dc2626', '#8b5cf6', '#0f172a'].map((hex) => (
+                        <button
+                          key={hex}
+                          type="button"
+                          onClick={() => setEditAccentColor(hex)}
+                          className={`h-7 w-7 rounded-xl transition-all cursor-pointer border-2 ${
+                            editAccentColor === hex ? 'border-foreground scale-110 shadow-xs' : 'border-transparent opacity-80 hover:opacity-100'
+                          }`}
+                          style={{ backgroundColor: hex }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* RIGHT COLUMN: LIVE HTML PREVIEW */}
+              <div className="lg:col-span-6 bg-slate-100 dark:bg-slate-950 p-3 sm:p-4 rounded-2xl border border-border flex flex-col space-y-3 overflow-hidden font-sans min-h-0">
+                {/* Email Subject Header Bar */}
+                <div className="bg-card border border-border rounded-xl p-2.5 shadow-xs flex items-center justify-between text-xs gap-2 shrink-0">
+                  <div className="flex items-center gap-2 text-muted-foreground truncate">
+                    <Mail size={14} className="shrink-0 text-primary" />
+                    <span className="font-semibold text-foreground shrink-0">Subject:</span>
+                    <span className="font-bold text-foreground truncate">
+                      {renderSampleText(editSubject, businessName)}
+                    </span>
+                  </div>
+                  <span className="px-2 py-0.5 text-[9px] font-extrabold rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
+                    Live HTML
+                  </span>
+                </div>
+
+                {/* Scrollable HTML Email Mockup Canvas Card */}
+                <div className="w-full bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-lg overflow-y-auto flex-1 text-slate-800 dark:text-slate-100 scrollbar-thin">
+                  <div className="flex flex-col justify-between min-h-full">
+                    <div>
+                      {/* Header Banner */}
+                      <div
+                        className="p-4 sm:p-5 text-white text-center transition-colors relative shrink-0"
+                        style={{ backgroundColor: editAccentColor }}
+                      >
+                        <div className="inline-flex items-center justify-center h-10 w-10 rounded-xl bg-white/20 backdrop-blur-xs mb-1.5">
+                          <FileText size={20} />
+                        </div>
+                        <h3 className="text-base sm:text-lg font-black tracking-tight">{renderSampleText(editHeaderTitle, businessName)}</h3>
+                        <p className="text-[10px] font-semibold opacity-90 mt-0.5">BillingMaster Automated Email</p>
+                      </div>
+
+                      {/* Body Text */}
+                      <div className="p-4 sm:p-5 space-y-3 text-xs leading-relaxed">
+                        <div className="whitespace-pre-line text-slate-700 dark:text-slate-200 font-medium">
+                          {renderSampleText(editBodyText, businessName)}
+                        </div>
+
+                        {/* Mock Invoice Items Table for Billing Templates */}
+                        {(selectedTemplateId === 'invoice_created' || selectedTemplateId === 'payment_receipt' || selectedTemplateId === 'payment_reminder') && (
+                          <div className="my-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 space-y-2.5">
+                            <div className="flex justify-between items-center text-[11px] pb-1.5 border-b border-slate-200 dark:border-slate-700">
+                              <div>
+                                <p className="font-extrabold text-slate-900 dark:text-white">Invoice #INV-2026-0842</p>
+                                <p className="text-[10px] text-slate-500 dark:text-slate-400">Date: 07 Sep 2026</p>
+                              </div>
+                              <span className="px-2 py-0.5 text-[10px] font-black rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20">
+                                Tax Invoice
+                              </span>
+                            </div>
+
+                            <table className="w-full text-[11px] text-left">
+                              <thead>
+                                <tr className="text-[9px] uppercase font-bold text-slate-400 border-b border-slate-200 dark:border-slate-700">
+                                  <th className="py-1">Description</th>
+                                  <th className="py-1 text-center">Qty</th>
+                                  <th className="py-1 text-right">Amount</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-600 dark:text-slate-300">
+                                <tr>
+                                  <td className="py-1 font-medium">Premium Billing POS Suite</td>
+                                  <td className="py-1 text-center">1</td>
+                                  <td className="py-1 text-right font-mono">₹12,500.00</td>
+                                </tr>
+                                <tr>
+                                  <td className="py-1 font-medium">GST &amp; Setup Services</td>
+                                  <td className="py-1 text-center">1</td>
+                                  <td className="py-1 text-right font-mono">₹2,350.00</td>
+                                </tr>
+                              </tbody>
+                            </table>
+
+                            <div className="pt-1.5 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                              <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Total Amount:</span>
+                              <span className="text-sm font-black text-slate-900 dark:text-white font-mono">₹14,850.00</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* CTA Button */}
+                        <div className="py-2 text-center">
+                          <a
+                            href="#"
+                            onClick={(e) => e.preventDefault()}
+                            className="inline-flex items-center justify-center px-6 py-3 text-xs font-extrabold text-white rounded-xl shadow-md transition-transform hover:scale-[1.02] active:scale-95 cursor-pointer"
+                            style={{ backgroundColor: editAccentColor }}
+                          >
+                            {renderSampleText(editCtaText, businessName)}
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="p-3.5 bg-slate-50 dark:bg-slate-800/40 border-t border-slate-200 dark:border-slate-800 text-center text-[10px] text-slate-400 dark:text-slate-500 space-y-0.5 shrink-0">
+                      <p className="font-bold text-slate-600 dark:text-slate-400">{businessName} • Automated Notification</p>
+                      <p>123 Commerce Way, Salt Lake Sector 5, Kolkata, WB 700091</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Bottom Footer Action Bar */}
+            <div className="pt-3 border-t border-border flex items-center justify-end gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={handleSaveActiveTemplate}
+                className="btn-primary px-6 py-2.5 text-xs font-extrabold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-md"
+              >
+                <Check size={16} />
+                <span>Save Template</span>
+              </button>
+            </div>
+
           </div>
         </div>
       )}
@@ -2083,9 +3455,6 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
           return true;
         });
 
-        const currentCatalogHandle = getBusinessCatalogHandle(business);
-        const storeUrl = `${window.location.origin}/catalog/${currentCatalogHandle}`;
-
         const cleanCurrentInput = catalogHandleInput.toLowerCase().trim().replace(/[^a-z0-9_-]/g, '');
         const isCurrentlyAvailable = handleAvailabilityState === 'available' && checkedHandleText === cleanCurrentInput && cleanCurrentInput.length >= 3;
 
@@ -2235,10 +3604,20 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
                       <button
                         type="button"
                         onClick={() => copyToClipboard(storeUrl)}
-                        className="rounded-xl bg-card border border-border/80 px-3.5 py-2 text-xs font-bold text-foreground hover:bg-muted transition-colors flex items-center justify-center gap-1.5 shadow-2xs"
+                        className="rounded-xl bg-card border border-border/80 px-3.5 py-2 text-xs font-bold text-foreground hover:bg-muted transition-colors flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
                       >
                         {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
                         <span>{copied ? 'Link Copied!' : 'Copy Link'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowCatalogQrModal(true)}
+                        className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 px-3.5 py-2 text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                        title="Generate & Customize Store Catalog QR Code"
+                      >
+                        <QrCode size={14} />
+                        <span>QR Code</span>
                       </button>
                     </div>
                   </div>
@@ -2386,6 +3765,60 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
                     <div className="flex items-center gap-2">
                       <Sliders size={16} className="text-primary" />
                       <h4 className="text-xs font-black text-foreground uppercase tracking-wider">Catalog Preferences & Restrictions</h4>
+                    </div>
+                  </div>
+
+                  {/* Main Toggle Switch: Online Store Status (Active / Disabled) */}
+                  <div className={`p-4 rounded-xl border transition-all ${
+                    isStoreEnabled 
+                      ? 'bg-emerald-500/5 border-emerald-500/30' 
+                      : 'bg-rose-500/5 border-rose-500/30'
+                  }`}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className={`grid h-9 w-9 place-items-center rounded-xl border shrink-0 ${
+                          isStoreEnabled 
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30' 
+                            : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30'
+                        }`}>
+                          <Store size={18} />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h5 className="text-xs font-black text-foreground">Online Store Status</h5>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                              isStoreEnabled 
+                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30' 
+                                : 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30'
+                            }`}>
+                              {isStoreEnabled ? '● Live / Online' : '○ Store Closed'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground font-medium mt-0.5">
+                            {isStoreEnabled 
+                              ? 'Your digital catalog is LIVE. Anyone with the store link can view products.' 
+                              : 'Your digital catalog is CLOSED. Visitors opening your store link will see a Store Closed message.'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Toggle Switch Button */}
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={isStoreEnabled}
+                        onClick={() => setIsStoreEnabled(!isStoreEnabled)}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          isStoreEnabled ? 'bg-emerald-600' : 'bg-muted-foreground/40'
+                        }`}
+                        title={isStoreEnabled ? 'Disable / Turn Off Online Store Catalog' : 'Enable / Turn On Online Store Catalog'}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                            isStoreEnabled ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
                     </div>
                   </div>
 
@@ -2808,6 +4241,18 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
                   }}
                 />
               )}
+
+              {/* Catalog QR Code Studio Modal */}
+              <CatalogQrModal
+                isOpen={showCatalogQrModal}
+                onClose={() => setShowCatalogQrModal(false)}
+                storeUrl={storeUrl}
+                storeHandle={currentCatalogHandle}
+                businessName={businessName}
+                businessPhone={businessPhone}
+                businessAddress={business?.address}
+                businessGstin={businessGstin}
+              />
             </div>
           </div>
         );
@@ -2875,6 +4320,18 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
           </div>
         </div>
       )}
+
+      {/* Catalog QR Code Studio Modal */}
+      <CatalogQrModal
+        isOpen={showCatalogQrModal}
+        onClose={() => setShowCatalogQrModal(false)}
+        storeUrl={storeUrl}
+        storeHandle={currentCatalogHandle}
+        businessName={businessName}
+        businessPhone={businessPhone}
+        businessAddress={business?.address}
+        businessGstin={businessGstin}
+      />
     </div>
   );
 }

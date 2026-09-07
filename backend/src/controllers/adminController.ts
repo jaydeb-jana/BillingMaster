@@ -4,13 +4,41 @@ import { pool } from '../db/mysql.js';
 import crypto from 'node:crypto';
 
 // In-memory fallback stores when DB is offline or mock environment
-let mockPlans = [
+export interface AdminPlan {
+  id: string;
+  name: string;
+  code: string;
+  price_monthly: number;
+  price_3months?: number | null;
+  price_6months?: number | null;
+  price_yearly: number;
+  price_2years?: number | null;
+  price_3years?: number | null;
+  max_users: number;
+  max_invoices_per_month: number;
+  max_customers: number;
+  max_products: number;
+  allow_khatabook: number;
+  allow_ai_assistant: number;
+  allow_custom_branding: number;
+  display_features: string;
+  badge_tag: string;
+  priority_order: number;
+  is_active: number;
+  created_at: string;
+}
+
+let mockPlans: AdminPlan[] = [
   {
     id: 'plan-free',
     name: 'Free Tier',
     code: 'FREE',
     price_monthly: 0,
+    price_3months: 0,
+    price_6months: 0,
     price_yearly: 0,
+    price_2years: 0,
+    price_3years: 0,
     max_users: 1,
     max_invoices_per_month: 50,
     max_customers: 200,
@@ -29,7 +57,11 @@ let mockPlans = [
     name: 'Starter Business',
     code: 'STARTER',
     price_monthly: 499,
+    price_3months: 1422,
+    price_6months: 2495,
     price_yearly: 4990,
+    price_2years: 8982,
+    price_3years: 12475,
     max_users: 3,
     max_invoices_per_month: 500,
     max_customers: 2000,
@@ -48,7 +80,11 @@ let mockPlans = [
     name: 'Pro Enterprise',
     code: 'PRO',
     price_monthly: 1499,
+    price_3months: 4272,
+    price_6months: 7495,
     price_yearly: 14990,
+    price_2years: 26982,
+    price_3years: 37475,
     max_users: 10,
     max_invoices_per_month: 5000,
     max_customers: 20000,
@@ -169,6 +205,7 @@ export async function getAdminOverviewStats(_req: Request, res: Response) {
     let totalInvoices = 0;
     let totalCustomers = 0;
     let totalRevenue = 0;
+    let activePlansCount = mockPlans.length;
 
     try {
       const [bizRows]: any = await pool.query('SELECT COUNT(*) as cnt FROM businesses');
@@ -183,6 +220,11 @@ export async function getAdminOverviewStats(_req: Request, res: Response) {
       const [invRows]: any = await pool.query('SELECT COUNT(*), COALESCE(SUM(total), 0) as rev FROM invoices');
       totalInvoices = invRows[0]?.['COUNT(*)'] || 0;
       totalRevenue = Number(invRows[0]?.rev || 0);
+
+      const [pCntRows]: any = await pool.query('SELECT COUNT(*) as cnt FROM plans WHERE is_active = 1');
+      if (pCntRows && pCntRows[0]?.cnt !== undefined) {
+        activePlansCount = Number(pCntRows[0].cnt) || 0;
+      }
     } catch (e) {
       // Fallback stats if DB query fails or empty
       totalBusinesses = 5;
@@ -200,7 +242,7 @@ export async function getAdminOverviewStats(_req: Request, res: Response) {
         totalCustomers,
         totalInvoices,
         totalRevenue,
-        activePlansCount: mockPlans.length,
+        activePlansCount,
         planBreakdownText: 'Free (1) • Starter (2) • Pro (2)',
         systemHealth: 'OPERATIONAL',
         uptimeSeconds: Math.floor(process.uptime()),
@@ -217,11 +259,15 @@ export async function getAdminPlans(_req: Request, res: Response) {
   try {
     try {
       const [rows]: any = await pool.query('SELECT * FROM plans ORDER BY priority_order ASC, price_monthly ASC');
-      if (Array.isArray(rows) && rows.length > 0) {
+      if (Array.isArray(rows)) {
         const mappedRows = rows.map((r: any) => ({
           ...r,
           price_monthly: Number(r.price_monthly) || 0,
+          price_3months: r.price_3months !== undefined && r.price_3months !== null ? Number(r.price_3months) : null,
+          price_6months: r.price_6months !== undefined && r.price_6months !== null ? Number(r.price_6months) : null,
           price_yearly: Number(r.price_yearly) || 0,
+          price_2years: r.price_2years !== undefined && r.price_2years !== null ? Number(r.price_2years) : null,
+          price_3years: r.price_3years !== undefined && r.price_3years !== null ? Number(r.price_3years) : null,
           max_users: r.max_users !== undefined && r.max_users !== null ? Number(r.max_users) : 1,
           max_invoices_per_month: r.max_invoices_per_month !== undefined && r.max_invoices_per_month !== null ? Number(r.max_invoices_per_month) : 100,
           max_customers: r.max_customers !== undefined && r.max_customers !== null ? Number(r.max_customers) : 1000,
@@ -247,7 +293,13 @@ export async function getAdminPlans(_req: Request, res: Response) {
 
 export async function createOrUpdateAdminPlan(req: Request, res: Response) {
   try {
-    const { id, name, code, price_monthly, price_yearly, max_users, max_invoices_per_month, max_customers, max_products, allow_khatabook, allow_ai_assistant, allow_custom_branding, display_features, badge_tag, priority_order, is_active } = req.body;
+    const {
+      id, name, code,
+      price_monthly, price_3months, price_6months, price_yearly, price_2years, price_3years,
+      max_users, max_invoices_per_month, max_customers, max_products,
+      allow_khatabook, allow_ai_assistant, allow_custom_branding,
+      display_features, badge_tag, priority_order, is_active
+    } = req.body;
     
     if (!name || !code) {
       return res.status(400).json({ error: 'Plan name and code are required' });
@@ -257,11 +309,13 @@ export async function createOrUpdateAdminPlan(req: Request, res: Response) {
     const targetPriority = Math.max(0, Math.floor(Number(priority_order) || 0));
 
     // Unique priority order validation check in MySQL database
+    let dbChecked = false;
     try {
       const [existingRows]: any = await pool.query(
         'SELECT id, name FROM plans WHERE priority_order = ? AND id != ? LIMIT 1',
         [targetPriority, planId]
       );
+      dbChecked = true;
       if (Array.isArray(existingRows) && existingRows.length > 0) {
         return res.status(400).json({
           error: `Priority #${targetPriority} is already assigned to plan "${existingRows[0].name}". Priority ranks must be unique across all plans.`,
@@ -269,20 +323,29 @@ export async function createOrUpdateAdminPlan(req: Request, res: Response) {
       }
     } catch (e) {}
 
-    // Unique priority order validation check in mock fallback
-    const mockConflict = mockPlans.find(p => Number(p.priority_order ?? 0) === targetPriority && p.id !== planId);
-    if (mockConflict) {
-      return res.status(400).json({
-        error: `Priority #${targetPriority} is already assigned to plan "${mockConflict.name}". Priority ranks must be unique across all plans.`,
-      });
+    // Unique priority order validation check in mock fallback (only if DB is offline)
+    if (!dbChecked) {
+      const mockConflict = mockPlans.find(p => Number(p.priority_order ?? 0) === targetPriority && p.id !== planId);
+      if (mockConflict) {
+        return res.status(400).json({
+          error: `Priority #${targetPriority} is already assigned to plan "${mockConflict.name}". Priority ranks must be unique across all plans.`,
+        });
+      }
     }
+
+    const pMonthly = Number(price_monthly) || 0;
+    const pYearly = Number(price_yearly) || 0;
 
     const planObj = {
       id: planId,
       name,
       code: String(code).toUpperCase(),
-      price_monthly: Number(price_monthly) || 0,
-      price_yearly: Number(price_yearly) || 0,
+      price_monthly: pMonthly,
+      price_3months: price_3months !== undefined && price_3months !== null && price_3months !== '' ? Number(price_3months) : null,
+      price_6months: price_6months !== undefined && price_6months !== null && price_6months !== '' ? Number(price_6months) : null,
+      price_yearly: pYearly,
+      price_2years: price_2years !== undefined && price_2years !== null && price_2years !== '' ? Number(price_2years) : null,
+      price_3years: price_3years !== undefined && price_3years !== null && price_3years !== '' ? Number(price_3years) : null,
       max_users: max_users !== undefined && max_users !== null ? Number(max_users) : 1,
       max_invoices_per_month: max_invoices_per_month !== undefined && max_invoices_per_month !== null ? Number(max_invoices_per_month) : 100,
       max_customers: max_customers !== undefined && max_customers !== null ? Number(max_customers) : 1000,
@@ -306,10 +369,16 @@ export async function createOrUpdateAdminPlan(req: Request, res: Response) {
 
     try {
       await pool.query(
-        `INSERT INTO plans (id, name, code, price_monthly, price_yearly, max_users, max_invoices_per_month, max_customers, max_products, allow_khatabook, allow_ai_assistant, allow_custom_branding, display_features, badge_tag, priority_order, is_active)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE name=VALUES(name), code=VALUES(code), price_monthly=VALUES(price_monthly), price_yearly=VALUES(price_yearly), max_users=VALUES(max_users), max_invoices_per_month=VALUES(max_invoices_per_month), max_customers=VALUES(max_customers), max_products=VALUES(max_products), allow_khatabook=VALUES(allow_khatabook), allow_ai_assistant=VALUES(allow_ai_assistant), allow_custom_branding=VALUES(allow_custom_branding), display_features=VALUES(display_features), badge_tag=VALUES(badge_tag), priority_order=VALUES(priority_order), is_active=VALUES(is_active)`,
-        [planId, name, planObj.code, planObj.price_monthly, planObj.price_yearly, planObj.max_users, planObj.max_invoices_per_month, planObj.max_customers, planObj.max_products, planObj.allow_khatabook, planObj.allow_ai_assistant, planObj.allow_custom_branding, planObj.display_features, planObj.badge_tag, planObj.priority_order, planObj.is_active]
+        `INSERT INTO plans (id, name, code, price_monthly, price_3months, price_6months, price_yearly, price_2years, price_3years, max_users, max_invoices_per_month, max_customers, max_products, allow_khatabook, allow_ai_assistant, allow_custom_branding, display_features, badge_tag, priority_order, is_active)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE name=VALUES(name), code=VALUES(code), price_monthly=VALUES(price_monthly), price_3months=VALUES(price_3months), price_6months=VALUES(price_6months), price_yearly=VALUES(price_yearly), price_2years=VALUES(price_2years), price_3years=VALUES(price_3years), max_users=VALUES(max_users), max_invoices_per_month=VALUES(max_invoices_per_month), max_customers=VALUES(max_customers), max_products=VALUES(max_products), allow_khatabook=VALUES(allow_khatabook), allow_ai_assistant=VALUES(allow_ai_assistant), allow_custom_branding=VALUES(allow_custom_branding), display_features=VALUES(display_features), badge_tag=VALUES(badge_tag), priority_order=VALUES(priority_order), is_active=VALUES(is_active)`,
+        [
+          planId, name, planObj.code,
+          planObj.price_monthly, planObj.price_3months, planObj.price_6months, planObj.price_yearly, planObj.price_2years, planObj.price_3years,
+          planObj.max_users, planObj.max_invoices_per_month, planObj.max_customers, planObj.max_products,
+          planObj.allow_khatabook, planObj.allow_ai_assistant, planObj.allow_custom_branding,
+          planObj.display_features, planObj.badge_tag, planObj.priority_order, planObj.is_active
+        ]
       );
     } catch (e) {
       console.error('[MySQL Error] createOrUpdateAdminPlan failed:', e);
@@ -318,6 +387,36 @@ export async function createOrUpdateAdminPlan(req: Request, res: Response) {
     await recordAuditLog('UPSERT_PLAN', 'Subscription Plan', `Updated subscription tier: ${name} (${planObj.code}) with Priority #${targetPriority}`);
 
     res.json({ status: 'success', data: planObj });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+export async function deleteAdminPlan(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: 'Plan ID is required' });
+    }
+
+    try {
+      await pool.query('DELETE FROM plans WHERE id = ? OR name = ? OR code = ?', [id, id, id]);
+    } catch (e) {
+      console.error('[Admin] MySQL delete plan error:', e);
+    }
+
+    const idx = mockPlans.findIndex((p) => p.id === id || p.name === id || p.code === id);
+    if (idx >= 0) {
+      mockPlans.splice(idx, 1);
+    }
+
+    await recordAuditLog(
+      'DELETE_SUBSCRIPTION_PLAN',
+      'Subscription Plan',
+      `Permanently deleted subscription plan record (${id})`
+    );
+
+    res.json({ status: 'success', message: 'Subscription plan deleted successfully' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -388,9 +487,14 @@ export async function updateAdminBusiness(req: Request, res: Response) {
         );
       }
 
+      let activePlanResult: any = null;
       if (plan_name !== undefined) {
-        await activateSubscriptionPlanWithPriority(id, plan_name);
+        activePlanResult = await activateSubscriptionPlanWithPriority(id, plan_name);
       }
+
+      // Fetch active plan name from businesses table after priority activation
+      const [currentBizRows]: any = await pool.query('SELECT plan_name FROM businesses WHERE id = ? LIMIT 1', [id]);
+      const activeOrCurrentPlanName = currentBizRows[0]?.plan_name || null;
 
       await pool.query(
         `UPDATE businesses 
@@ -413,7 +517,7 @@ export async function updateAdminBusiness(req: Request, res: Response) {
           currency || null,
           turnover || null,
           employees || null,
-          plan_name || null,
+          activeOrCurrentPlanName,
           id,
           id,
           email || id,
@@ -491,7 +595,7 @@ export async function getAdminBulletins(_req: Request, res: Response) {
   try {
     try {
       const [rows]: any = await pool.query('SELECT * FROM system_bulletins ORDER BY is_pinned DESC, published_at DESC');
-      if (Array.isArray(rows) && rows.length > 0) {
+      if (Array.isArray(rows)) {
         return res.json({ status: 'success', data: rows });
       }
     } catch (e) {}
@@ -573,7 +677,7 @@ export async function getAdminAuditLogs(_req: Request, res: Response) {
   try {
     try {
       const [rows]: any = await pool.query('SELECT * FROM admin_audit_logs ORDER BY created_at DESC LIMIT 100');
-      if (Array.isArray(rows) && rows.length > 0) {
+      if (Array.isArray(rows)) {
         return res.json({ status: 'success', data: rows });
       }
     } catch (e) {}
@@ -664,27 +768,13 @@ export async function deleteAdminBusiness(req: Request, res: Response) {
   }
 }
 
-let mockBillingRequests: any[] = [
-  {
-    id: 'REQ-2026-1001',
-    business_id: 'biz-01',
-    business_name: 'BillingMaster Retail Store',
-    requested_plan: 'Starter Business',
-    price: '₹499',
-    utr_ref: 'UTR98124019284',
-    screenshot_url: '',
-    status: 'pending',
-    admin_response: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-];
+let mockBillingRequests: any[] = [];
 
 export async function getAdminBillingRequests(_req: Request, res: Response) {
   try {
     try {
       const [rows]: any = await pool.query('SELECT * FROM billing_requests ORDER BY created_at DESC');
-      if (Array.isArray(rows) && rows.length > 0) {
+      if (Array.isArray(rows)) {
         return res.json({ status: 'success', data: rows });
       }
     } catch (e) {}
@@ -757,13 +847,13 @@ export async function respondAdminBillingRequest(req: Request, res: Response) {
 
 export async function createBillingRequest(req: Request, res: Response) {
   try {
-    const { business_id, business_name, requested_plan, price, utr_ref, screenshot_url, coupon_code } = req.body;
+    const { id, business_id, business_name, requested_plan, price, utr_ref, screenshot_url, coupon_code } = req.body;
 
     if (!business_id || !requested_plan) {
       return res.status(400).json({ error: 'Business ID and requested plan are required' });
     }
 
-    const reqId = `REQ-${Date.now()}`;
+    const reqId = id || `REQ-${Date.now()}`;
     const newReq = {
       id: reqId,
       business_id,
@@ -778,12 +868,25 @@ export async function createBillingRequest(req: Request, res: Response) {
       updated_at: new Date().toISOString(),
     };
 
-    mockBillingRequests.unshift(newReq);
+    const existingIdx = mockBillingRequests.findIndex(r => r.id === reqId);
+    if (existingIdx >= 0) {
+      mockBillingRequests[existingIdx] = newReq;
+    } else {
+      mockBillingRequests.unshift(newReq);
+    }
 
     try {
       await pool.query(
         `INSERT INTO billing_requests (id, business_id, business_name, requested_plan, price, utr_ref, screenshot_url, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           business_id = VALUES(business_id),
+           business_name = VALUES(business_name),
+           requested_plan = VALUES(requested_plan),
+           price = VALUES(price),
+           utr_ref = VALUES(utr_ref),
+           screenshot_url = VALUES(screenshot_url),
+           status = 'pending'`,
         [newReq.id, newReq.business_id, newReq.business_name, newReq.requested_plan, newReq.price, newReq.utr_ref, newReq.screenshot_url, 'pending']
       );
     } catch (e) {
@@ -1089,46 +1192,271 @@ export async function validateCoupon(req: Request, res: Response) {
 // SUBSCRIPTION PRIORITY QUEUE ENGINE
 // ----------------------------------------------------
 
-export async function activateSubscriptionPlanWithPriority(
+export async function syncBusinessSubscriptionState(businessId: string) {
+  try {
+    const now = new Date();
+
+    // 1. Fetch active subscription for this business from subscription_queue
+    const [activeRows]: any = await pool.query(
+      `SELECT * FROM subscription_queue WHERE business_id = ? AND status = 'active' ORDER BY priority_order DESC, created_at ASC LIMIT 1`,
+      [businessId]
+    );
+
+    let activeSub = Array.isArray(activeRows) && activeRows.length > 0 ? activeRows[0] : null;
+
+    let activeSubExpiredNaturally = false;
+
+    // 2. Check if active sub has expired
+    if (activeSub && activeSub.expires_at) {
+      const expiresAt = new Date(activeSub.expires_at);
+      if (expiresAt <= now) {
+        await pool.query(
+          `UPDATE subscription_queue SET status = 'expired', remaining_days = 0 WHERE id = ?`,
+          [activeSub.id]
+        );
+        activeSub = null;
+        activeSubExpiredNaturally = true;
+      } else {
+        // Dynamic remaining days calculation
+        const remainingDaysLeft = Math.max(0, Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+        await pool.query(
+          `UPDATE subscription_queue SET remaining_days = ? WHERE id = ?`,
+          [remainingDaysLeft, activeSub.id]
+        );
+        activeSub.remaining_days = remainingDaysLeft;
+      }
+    }
+
+    // 3. If no active sub (or active sub just expired/cancelled), auto-promote highest priority queued plan
+    if (!activeSub) {
+      const [queuedRows]: any = await pool.query(
+        `SELECT * FROM subscription_queue WHERE business_id = ? AND status = 'queued' ORDER BY priority_order DESC, created_at ASC LIMIT 1`,
+        [businessId]
+      );
+
+      if (Array.isArray(queuedRows) && queuedRows.length > 0) {
+        const nextSub = queuedRows[0];
+        const startDate = now;
+        const remainingDaysNum = nextSub.remaining_days !== null && nextSub.remaining_days !== undefined ? Number(nextSub.remaining_days) : 0;
+        const durationDays = remainingDaysNum > 0 ? remainingDaysNum : (Number(nextSub.duration_days) || 365);
+        const expiresAt = new Date(startDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
+
+        await pool.query(
+          `UPDATE subscription_queue SET status = 'active', start_date = ?, expires_at = ?, remaining_days = ? WHERE id = ?`,
+          [startDate, expiresAt, durationDays, nextSub.id]
+        );
+
+        activeSub = { ...nextSub, status: 'active', start_date: startDate, expires_at: expiresAt, remaining_days: durationDays };
+      }
+    }
+
+    // 4. Sync `businesses.plan_name` with current active plan or Free Tier
+    const activePlanName = activeSub ? activeSub.plan_name : 'Free Tier';
+    await pool.query('UPDATE businesses SET plan_name = ? WHERE id = ?', [activePlanName, businessId]);
+    try {
+      await pool.query('UPDATE profiles SET plan_tier = ? WHERE business_id = ?', [activePlanName, businessId]);
+    } catch (e) {}
+
+    return activeSub;
+  } catch (e) {
+    console.error('[Subscription Sync Error]:', e);
+    return null;
+  }
+}
+
+export async function syncAllBusinessesSubscriptionState() {
+  try {
+    const [bizRows]: any = await pool.query('SELECT DISTINCT business_id FROM subscription_queue');
+    if (Array.isArray(bizRows) && bizRows.length > 0) {
+      for (const b of bizRows) {
+        if (b.business_id) {
+          await syncBusinessSubscriptionState(b.business_id);
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[Global Subscription Sync Error]:', e);
+  }
+}
+
+export function parseDurationDaysFromPlanName(planNameInput: string): number {
+  if (!planNameInput) return 36500;
+
+  const lower = planNameInput.toLowerCase().trim();
+
+  // Free Tier / Lifetime matching
+  if (lower === 'free' || lower === 'free tier' || lower.includes('free tier') || lower.includes('lifetime') || lower === 'free plan') {
+    return 36500; // Lifetime Access (100 Years)
+  }
+
+  // Explicit Day matching e.g. "(90 Days)", "14-Day Trial"
+  const daysMatch = lower.match(/(\d+)\s*-\s*day|(\d+)\s*days?/i);
+  if (daysMatch) {
+    const num = parseInt(daysMatch[1] || daysMatch[2], 10);
+    if (!isNaN(num) && num > 0) return num;
+  }
+
+  // Month matching e.g. "3 Months", "6 Month", "1 Month"
+  const monthMatch = lower.match(/(\d+)\s*months?/i);
+  if (monthMatch) {
+    const num = parseInt(monthMatch[1], 10);
+    if (!isNaN(num) && num > 0) return num * 30;
+  }
+
+  // Year matching e.g. "2 Years", "3 Year", "1 Year"
+  const yearMatch = lower.match(/(\d+)\s*years?/i);
+  if (yearMatch) {
+    const num = parseInt(yearMatch[1], 10);
+    if (!isNaN(num) && num > 0) return num * 365;
+  }
+
+  // Fallbacks for single word keywords
+  if (lower.includes('year')) return 365;
+  if (lower.includes('month')) return 30;
+
+  return 365;
+}
+
+export async function getPlanPriorityAndCleanName(planNameInput: string) {
+  if (!planNameInput) return { basePlanName: 'Free Tier', priorityOrder: 0, isZeroPrice: true };
+
+  const cleaned = planNameInput
+    .replace(/\s*\[Coupon:[^\]]+\]/gi, '')
+    .replace(/\s*\[Saved[^\]]+\]/gi, '')
+    .trim();
+
+  const baseName = cleaned
+    .replace(/\s*\([^)]*\)/g, '')
+    .trim();
+
+  const targetName = baseName || cleaned;
+
+  try {
+    const [exactRows]: any = await pool.query(
+      'SELECT name, code, priority_order, price_monthly, price_3months, price_6months, price_yearly, price_2years, price_3years FROM plans WHERE LOWER(name) = LOWER(?) OR LOWER(code) = LOWER(?) LIMIT 1',
+      [targetName, targetName]
+    );
+    if (Array.isArray(exactRows) && exactRows.length > 0) {
+      const p = exactRows[0];
+      const priority = Number(p.priority_order) || 0;
+      const allPricesZero = (Number(p.price_monthly) || 0) === 0 &&
+                            (Number(p.price_3months) || 0) === 0 &&
+                            (Number(p.price_6months) || 0) === 0 &&
+                            (Number(p.price_yearly) || 0) === 0 &&
+                            (Number(p.price_2years) || 0) === 0 &&
+                            (Number(p.price_3years) || 0) === 0;
+      return {
+        basePlanName: p.name,
+        priorityOrder: priority,
+        isZeroPrice: priority === 0 && allPricesZero,
+      };
+    }
+
+    const [allPlans]: any = await pool.query('SELECT name, code, priority_order, price_monthly, price_3months, price_6months, price_yearly, price_2years, price_3years FROM plans ORDER BY CHAR_LENGTH(name) DESC');
+    if (Array.isArray(allPlans) && allPlans.length > 0) {
+      for (const p of allPlans) {
+        const pName = (p.name || '').toLowerCase().trim();
+        const pCode = (p.code || '').toLowerCase().trim();
+        const tLower = targetName.toLowerCase();
+        if (pName && (tLower.includes(pName) || pName.includes(tLower))) {
+          const priority = Number(p.priority_order) || 0;
+          const allPricesZero = (Number(p.price_monthly) || 0) === 0 &&
+                                (Number(p.price_3months) || 0) === 0 &&
+                                (Number(p.price_6months) || 0) === 0 &&
+                                (Number(p.price_yearly) || 0) === 0 &&
+                                (Number(p.price_2years) || 0) === 0 &&
+                                (Number(p.price_3years) || 0) === 0;
+          return { basePlanName: p.name, priorityOrder: priority, isZeroPrice: priority === 0 && allPricesZero };
+        }
+        if (pCode && (tLower.includes(pCode) || pCode.includes(tLower))) {
+          const priority = Number(p.priority_order) || 0;
+          const allPricesZero = (Number(p.price_monthly) || 0) === 0 &&
+                                (Number(p.price_3months) || 0) === 0 &&
+                                (Number(p.price_6months) || 0) === 0 &&
+                                (Number(p.price_yearly) || 0) === 0 &&
+                                (Number(p.price_2years) || 0) === 0 &&
+                                (Number(p.price_3years) || 0) === 0;
+          return { basePlanName: p.name, priorityOrder: priority, isZeroPrice: priority === 0 && allPricesZero };
+        }
+      }
+    }
+  } catch (e) {}
+
+  const tLower = targetName.toLowerCase();
+  let fallbackPriority = 0;
+  if (tLower.includes('pro') || tLower.includes('r3f') || tLower.includes('enterprise')) {
+    fallbackPriority = 2;
+  } else if (tLower.includes('starter') || tLower.includes('sd') || tLower.includes('business')) {
+    fallbackPriority = 1;
+  }
+
+  const isFreeName = tLower === 'free' || tLower === 'free tier' || tLower.includes('free tier');
+
+  return {
+    basePlanName: targetName,
+    priorityOrder: fallbackPriority,
+    isZeroPrice: fallbackPriority === 0 && isFreeName,
+  };
+}
+
+export const activateSubscriptionPlanWithPriority = processSubscriptionQueue;
+
+export async function processSubscriptionQueue(
   businessId: string,
   planName: string,
   customDurationDays?: number
 ) {
   try {
     const cleanPlan = planName.replace(/\s*\[Coupon:[^\]]+\]/gi, '').replace(/\s*\[Saved[^\]]+\]/gi, '').trim();
-    const durationDays = customDurationDays || (cleanPlan.toLowerCase().includes('year') ? 365 : cleanPlan.toLowerCase().includes('month') ? 30 : 365);
+    await syncBusinessSubscriptionState(businessId);
 
-    // 1. Fetch priority order of new plan
-    let newPriority = 0;
-    try {
-      const [pRows]: any = await pool.query('SELECT priority_order FROM plans WHERE name = ? OR code = ? LIMIT 1', [cleanPlan, cleanPlan]);
-      if (Array.isArray(pRows) && pRows.length > 0) {
-        newPriority = Number(pRows[0].priority_order) || 0;
-      } else if (cleanPlan.toLowerCase().includes('pro')) {
-        newPriority = 2;
-      } else if (cleanPlan.toLowerCase().includes('starter')) {
-        newPriority = 1;
-      }
-    } catch (e) {}
+    const [activeRows]: any = await pool.query(
+      `SELECT * FROM subscription_queue WHERE business_id = ? AND status = 'active' ORDER BY priority_order DESC, created_at ASC LIMIT 1`,
+      [businessId]
+    );
 
-    // 2. Fetch current business active plan details
-    const [bRows]: any = await pool.query('SELECT plan_name FROM businesses WHERE id = ? LIMIT 1', [businessId]);
-    const currentPlanName = bRows[0]?.plan_name || 'Free Tier';
-    const currentPlanClean = currentPlanName.replace(/\s*\[Coupon:[^\]]+\]/gi, '').trim();
+    const activeSub = Array.isArray(activeRows) && activeRows.length > 0 ? activeRows[0] : null;
 
-    let currentPriority = 0;
-    try {
-      const [cpRows]: any = await pool.query('SELECT priority_order FROM plans WHERE name = ? OR code = ? LIMIT 1', [currentPlanClean, currentPlanClean]);
-      if (Array.isArray(cpRows) && cpRows.length > 0) {
-        currentPriority = Number(cpRows[0].priority_order) || 0;
-      } else if (currentPlanClean.toLowerCase().includes('pro')) {
-        currentPriority = 2;
-      } else if (currentPlanClean.toLowerCase().includes('starter')) {
-        currentPriority = 1;
-      }
-    } catch (e) {}
+    // 1. Fetch priority and base plan name of NEW plan
+    const newPlanInfo = await getPlanPriorityAndCleanName(cleanPlan);
+    const newPriority = newPlanInfo.priorityOrder;
+    const isZeroPrice = newPlanInfo.isZeroPrice || newPriority === 0 || cleanPlan.toLowerCase().includes('free') || cleanPlan.toLowerCase().includes('trial');
 
-    const isCurrentFree = !currentPlanClean || ['free', 'free tier'].includes(currentPlanClean.toLowerCase());
+    const durationDays = customDurationDays || (isZeroPrice ? 36500 : parseDurationDaysFromPlanName(cleanPlan));
+
+    // Handle cancellation / downgrade request (Cancel Active Plan)
+    if (isZeroPrice) {
+      await pool.query(
+        `UPDATE subscription_queue SET status = 'expired', remaining_days = 0 WHERE business_id = ? AND status = 'active'`,
+        [businessId]
+      );
+
+      // Resync subscription state: If there is a queued plan, promote it to active immediately!
+      const promotedSub = await syncBusinessSubscriptionState(businessId);
+      const activePlanName = promotedSub ? promotedSub.plan_name : cleanPlan;
+
+      return {
+        status: 'cancelled',
+        message: promotedSub
+          ? `Active plan cancelled. Promoted next queued plan "${promotedSub.plan_name}" immediately.`
+          : `Active plan cancelled. Downgraded store to ${cleanPlan}.`,
+        activePlan: activePlanName,
+      };
+    }
+
+    // 2. Fetch priority and base plan name of CURRENT ACTIVE plan
+    let currentPlanNameStr = 'Free Tier';
+    if (activeSub) {
+      currentPlanNameStr = activeSub.plan_name;
+    } else {
+      const [bRows]: any = await pool.query('SELECT plan_name FROM businesses WHERE id = ? LIMIT 1', [businessId]);
+      currentPlanNameStr = bRows[0]?.plan_name || 'Free Tier';
+    }
+
+    const currentPlanInfo = await getPlanPriorityAndCleanName(currentPlanNameStr);
+    const currentPriority = currentPlanInfo.priorityOrder;
+
+    const isCurrentFree = !activeSub || currentPlanNameStr.toLowerCase().includes('free') || currentPlanNameStr.toLowerCase().includes('trial');
 
     // SCENARIO 1: No active paid plan or current is Free Tier -> Activate Immediately
     if (isCurrentFree) {
@@ -1150,22 +1478,24 @@ export async function activateSubscriptionPlanWithPriority(
       return { status: 'activated', message: `Plan "${cleanPlan}" activated immediately.` };
     }
 
-    // SCENARIO 2: Same Priority Plan -> Extend Expiration & Validity Date!
-    if (newPriority === currentPriority) {
+    const isSameBasePlan = newPlanInfo.basePlanName.toLowerCase().trim() === currentPlanInfo.basePlanName.toLowerCase().trim();
+
+    // SCENARIO 2: Same Priority & Same Base Plan Tier -> Extend Expiration & Validity Date!
+    if (newPriority === currentPriority && isSameBasePlan) {
       const [activeSubRows]: any = await pool.query(
         `SELECT * FROM subscription_queue WHERE business_id = ? AND status = 'active' ORDER BY expires_at DESC LIMIT 1`,
         [businessId]
       );
 
       if (Array.isArray(activeSubRows) && activeSubRows.length > 0) {
-        const activeSub = activeSubRows[0];
-        const currentExpiresAt = activeSub.expires_at ? new Date(activeSub.expires_at) : new Date();
+        const curSub = activeSubRows[0];
+        const currentExpiresAt = curSub.expires_at ? new Date(curSub.expires_at) : new Date();
         const newExpiresAt = new Date(currentExpiresAt.getTime() + durationDays * 24 * 60 * 60 * 1000);
-        const newRemaining = activeSub.remaining_days + durationDays;
+        const newRemaining = Number(curSub.remaining_days || 0) + durationDays;
 
         await pool.query(
-          `UPDATE subscription_queue SET expires_at = ?, remaining_days = ?, duration_days = duration_days + ? WHERE id = ?`,
-          [newExpiresAt, newRemaining, durationDays, activeSub.id]
+          `UPDATE subscription_queue SET plan_name = ?, expires_at = ?, remaining_days = ?, duration_days = duration_days + ? WHERE id = ?`,
+          [cleanPlan, newExpiresAt, newRemaining, durationDays, curSub.id]
         );
       } else {
         const startDate = new Date();
@@ -1183,24 +1513,44 @@ export async function activateSubscriptionPlanWithPriority(
       return { status: 'extended', message: `Extended validity for plan "${cleanPlan}" by ${durationDays} days.` };
     }
 
-    // SCENARIO 3: Lower Priority Plan -> Place in Subscription Queue (`qu`)
-    if (newPriority < currentPriority) {
-      const queueId = `sub-${crypto.randomUUID().slice(0, 8)}`;
-      await pool.query(
-        `INSERT INTO subscription_queue (id, business_id, plan_name, priority_order, duration_days, remaining_days, status)
-         VALUES (?, ?, ?, ?, ?, ?, 'queued')`,
-        [queueId, businessId, cleanPlan, newPriority, durationDays, durationDays]
-      );
+    // SCENARIO 3: Lower Priority Plan OR Different Plan of Same Priority -> Queue behind active higher plan!
+    if (newPriority < currentPriority || (newPriority === currentPriority && !isSameBasePlan)) {
+      if (!isZeroPrice) {
+        const queueId = `sub-${crypto.randomUUID().slice(0, 8)}`;
+        await pool.query(
+          `INSERT INTO subscription_queue (id, business_id, plan_name, priority_order, duration_days, remaining_days, status)
+           VALUES (?, ?, ?, ?, ?, ?, 'queued')`,
+          [queueId, businessId, cleanPlan, newPriority, durationDays, durationDays]
+        );
+      }
 
       return { status: 'queued', message: `Plan "${cleanPlan}" (Priority #${newPriority}) queued behind active higher priority plan.` };
     }
 
-    // SCENARIO 4: Higher Priority Plan -> Immediately Activate & Move Current Active Plan into Subscription Queue (`qu`)
+    // SCENARIO 4: Higher Priority Plan -> Immediately Activate & Move Current Active Plan into Subscription Queue (if paid)
     if (newPriority > currentPriority) {
-      await pool.query(
-        `UPDATE subscription_queue SET status = 'queued' WHERE business_id = ? AND status = 'active'`,
-        [businessId]
-      );
+      if (activeSub) {
+        const isCurrentActiveFree = (activeSub.plan_name || '').toLowerCase().includes('free') || (activeSub.plan_name || '').toLowerCase().includes('trial');
+        if (isCurrentActiveFree) {
+          await pool.query(
+            `UPDATE subscription_queue SET status = 'expired', remaining_days = 0 WHERE id = ?`,
+            [activeSub.id]
+          );
+        } else {
+          const now = new Date();
+          const curExp = activeSub.expires_at ? new Date(activeSub.expires_at) : now;
+          const remDays = Math.max(0, Math.ceil((curExp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+          await pool.query(
+            `UPDATE subscription_queue SET status = 'queued', remaining_days = ?, expires_at = NULL WHERE id = ?`,
+            [remDays, activeSub.id]
+          );
+        }
+      } else {
+        await pool.query(
+          `UPDATE subscription_queue SET status = 'expired' WHERE business_id = ? AND status = 'active' AND (LOWER(plan_name) LIKE '%free%' OR LOWER(plan_name) LIKE '%trial%')`,
+          [businessId]
+        );
+      }
 
       const startDate = new Date();
       const expiresAt = new Date(startDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
@@ -1217,7 +1567,7 @@ export async function activateSubscriptionPlanWithPriority(
         await pool.query('UPDATE profiles SET plan_tier = ? WHERE business_id = ?', [cleanPlan, businessId]);
       } catch (e) {}
 
-      return { status: 'preempted_upgraded', message: `Upgraded to higher priority plan "${cleanPlan}" (Priority #${newPriority}). Previous active plan moved to Subscription Queue.` };
+      return { status: 'preempted_upgraded', message: `Upgraded to higher priority plan "${cleanPlan}" (Priority #${newPriority}).` };
     }
   } catch (err: any) {
     console.error('[Subscription Priority Engine Error]:', err);
@@ -1232,9 +1582,14 @@ export async function getMerchantSubscriptionQueue(req: Request, res: Response) 
     }
 
     try {
+      // Auto-sync subscription state to handle expirations & queue promotions
+      await syncBusinessSubscriptionState(bizId);
+
       const [rows]: any = await pool.query(
         `SELECT * FROM subscription_queue 
          WHERE business_id = ? 
+           AND LOWER(plan_name) NOT LIKE '%free%' 
+           AND LOWER(plan_name) NOT LIKE '%trial%'
          ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END ASC, priority_order DESC, created_at ASC`,
         [bizId]
       );
@@ -1243,10 +1598,115 @@ export async function getMerchantSubscriptionQueue(req: Request, res: Response) 
       }
     } catch (e) {}
 
-    res.json({ status: 'success', data: [] });
+      res.json({ status: 'success', data: [] });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 }
 
+export async function cancelQueuedSubscriptionItem(req: Request, res: Response) {
+  try {
+    const { queueId } = req.params;
+    if (!queueId) {
+      return res.status(400).json({ error: 'Queue item ID is required' });
+    }
 
+    const [rows]: any = await pool.query('SELECT business_id, status FROM subscription_queue WHERE id = ? LIMIT 1', [queueId]);
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(404).json({ error: 'Subscription queue item not found' });
+    }
+
+    const item = rows[0];
+    await pool.query("UPDATE subscription_queue SET status = 'expired', remaining_days = 0 WHERE id = ?", [queueId]);
+
+    // Resync subscription state in case an active plan was cancelled or queue shifted
+    const activeSub = await syncBusinessSubscriptionState(item.business_id);
+
+    return res.json({
+      status: 'success',
+      message: 'Subscription queue item cancelled successfully',
+      activePlan: activeSub ? activeSub.plan_name : 'Free Tier',
+    });
+  } catch (err: any) {
+    console.error('[Cancel Queue Item Error]:', err);
+    res.status(500).json({ error: err.message || 'Failed to cancel queued subscription item' });
+  }
+}
+
+let systemUpiSettings = {
+  upi_id: 'billingmaster@upi',
+  upi_name: 'BillingMaster Studio',
+};
+
+export async function getAdminUpiSettings(_req: Request, res: Response) {
+  try {
+    const [rows]: any = await pool.query("SELECT upi_id, account_holder_name FROM settings WHERE business_id = 'system_admin' ORDER BY id DESC LIMIT 1");
+    if (Array.isArray(rows) && rows.length > 0 && rows[0].upi_id) {
+      systemUpiSettings = {
+        upi_id: rows[0].upi_id,
+        upi_name: rows[0].account_holder_name || 'BillingMaster Studio',
+      };
+    } else {
+      const [fallbackRows]: any = await pool.query("SELECT upi_id, account_holder_name FROM settings WHERE upi_id IS NOT NULL ORDER BY id DESC LIMIT 1");
+      if (Array.isArray(fallbackRows) && fallbackRows.length > 0 && fallbackRows[0].upi_id) {
+        systemUpiSettings = {
+          upi_id: fallbackRows[0].upi_id,
+          upi_name: fallbackRows[0].account_holder_name || 'BillingMaster Studio',
+        };
+      }
+    }
+  } catch (e) {}
+
+  res.json({
+    status: 'success',
+    data: {
+      upi_id: systemUpiSettings.upi_id,
+      upi_name: systemUpiSettings.upi_name,
+      account_holder_name: systemUpiSettings.upi_name,
+    }
+  });
+}
+
+export async function updateAdminUpiSettings(req: Request, res: Response) {
+  try {
+    const { upi_id, upi_name } = req.body;
+    if (!upi_id) {
+      return res.status(400).json({ error: 'UPI ID is required' });
+    }
+
+    const cleanUpiId = String(upi_id).trim();
+    const cleanUpiName = String(upi_name || 'BillingMaster Studio').trim();
+
+    systemUpiSettings = {
+      upi_id: cleanUpiId,
+      upi_name: cleanUpiName,
+    };
+
+    try {
+      const [result]: any = await pool.query(
+        "UPDATE settings SET upi_id = ?, account_holder_name = ? WHERE business_id = 'system_admin'",
+        [cleanUpiId, cleanUpiName]
+      );
+      if (!result || result.affectedRows === 0) {
+        await pool.query(
+          "INSERT INTO settings (business_id, upi_id, account_holder_name) VALUES ('system_admin', ?, ?)",
+          [cleanUpiId, cleanUpiName]
+        );
+      }
+    } catch (e) {
+      console.error('[MySQL Error] updateAdminUpiSettings failed:', e);
+    }
+
+    res.json({
+      status: 'success',
+      message: 'UPI settings saved successfully',
+      data: {
+        upi_id: cleanUpiId,
+        upi_name: cleanUpiName,
+        account_holder_name: cleanUpiName,
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}

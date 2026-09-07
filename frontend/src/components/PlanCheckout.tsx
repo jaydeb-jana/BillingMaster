@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { 
   ShieldCheck, Check, ArrowLeft, QrCode, Copy, Upload, ImagePlus, 
   AlertTriangle, Clock, CheckCircle2, Lock, Sparkles, X, CheckCheck,
@@ -29,13 +29,28 @@ export const BILLING_CYCLES: BillingCycleConfig[] = [
   { id: '3y', label: '3 Years (3-Year Plan)', shortLabel: '3 Years', durationName: '3 Years Plan', periodText: '3 Years', badge: '30% OFF 🔥', savingsBadge: '30% OFF', months: 36 },
 ];
 
-export function getPriceDetailsForCycle(baseMonthly: number, baseYearly: number, cycle: BillingCycle) {
+export function getPriceDetailsForCycle(
+  baseMonthly: number,
+  baseYearly: number,
+  cycle: BillingCycle,
+  customPrices?: {
+    p3m?: number | null;
+    p6m?: number | null;
+    p2y?: number | null;
+    p3y?: number | null;
+  }
+) {
+  const cycleObj = BILLING_CYCLES.find(c => c.id === cycle) || BILLING_CYCLES[3];
+
   if (baseMonthly === 0 && baseYearly === 0) {
     return {
       priceNum: 0,
       priceStr: '₹0',
       periodText: 'Forever free',
-      cycleObj: BILLING_CYCLES.find(c => c.id === cycle) || BILLING_CYCLES[3],
+      badge: 'Free',
+      savingsBadge: 'Free',
+      discountPct: 100,
+      cycleObj,
     };
   }
 
@@ -48,28 +63,48 @@ export function getPriceDetailsForCycle(baseMonthly: number, baseYearly: number,
       priceNum = baseMonthlyPrice;
       break;
     case '3m':
-      priceNum = Math.round(baseMonthlyPrice * 3 * 0.95);
+      priceNum = customPrices?.p3m && customPrices.p3m > 0 ? customPrices.p3m : Math.round(baseMonthlyPrice * 3 * 0.95);
       break;
     case '6m':
-      priceNum = Math.round(baseMonthlyPrice * 5); // 1 Month Free
+      priceNum = customPrices?.p6m && customPrices.p6m > 0 ? customPrices.p6m : Math.round(baseMonthlyPrice * 5); // 1 Month Free
       break;
     case '1y':
       priceNum = baseYearlyPrice; // 2 Months Free
       break;
     case '2y':
-      priceNum = Math.round(baseMonthlyPrice * 18); // 6 Months Free
+      priceNum = customPrices?.p2y && customPrices.p2y > 0 ? customPrices.p2y : Math.round(baseMonthlyPrice * 18); // 6 Months Free
       break;
     case '3y':
-      priceNum = Math.round(baseMonthlyPrice * 25); // 11 Months Free
+      priceNum = customPrices?.p3y && customPrices.p3y > 0 ? customPrices.p3y : Math.round(baseMonthlyPrice * 25); // 11 Months Free
       break;
   }
 
-  const cycleObj = BILLING_CYCLES.find(c => c.id === cycle) || BILLING_CYCLES[3];
+  // Dynamic Discount Percentage Calculation based on actual price vs base monthly x months
+  const months = cycleObj.months || 1;
+  const fullUnDiscountedPrice = baseMonthlyPrice * months;
+  let dynamicBadge = cycle === '1m' ? 'Standard' : '';
+  let dynamicSavingsBadge = '';
+  let discountPct = 0;
+
+  if (months > 1 && fullUnDiscountedPrice > 0 && priceNum < fullUnDiscountedPrice) {
+    discountPct = Math.round(((fullUnDiscountedPrice - priceNum) / fullUnDiscountedPrice) * 100);
+    if (discountPct > 0) {
+      dynamicSavingsBadge = `${discountPct}% OFF`;
+      dynamicBadge = `${discountPct}% OFF${cycle === '1y' ? ' ⭐' : cycle === '3y' ? ' 🔥' : ''}`;
+    }
+  }
+
+  if (!dynamicBadge) {
+    dynamicBadge = cycleObj.badge || 'Standard';
+  }
 
   return {
     priceNum,
     priceStr: `₹${priceNum.toLocaleString()}`,
     periodText: cycleObj.periodText,
+    badge: dynamicBadge,
+    savingsBadge: dynamicSavingsBadge,
+    discountPct,
     cycleObj,
   };
 }
@@ -80,9 +115,10 @@ interface PlanCheckoutProps {
   initialCycle?: BillingCycle;
   onBack?: () => void;
   business?: any;
+  plan?: any;
 }
 
-export function PlanCheckout({ planName = 'Starter Business', planPrice = '₹499', initialCycle = '1y', onBack, business }: PlanCheckoutProps) {
+export function PlanCheckout({ planName = 'Starter Business', planPrice = '₹499', initialCycle = '1y', onBack, business, plan }: PlanCheckoutProps) {
   const [utr, setUtr] = useState('');
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
   const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
@@ -95,18 +131,49 @@ export function PlanCheckout({ planName = 'Starter Business', planPrice = '₹49
   const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
   const [verifyingCoupon, setVerifyingCoupon] = useState(false);
 
-  const upiId = 'billingmaster@upi';
+  const [upiSettings, setUpiSettings] = useState({
+    upi_id: 'billingmaster@upi',
+    account_holder_name: 'BillingMaster'
+  });
+
+  useEffect(() => {
+    fetch('/api/upi-settings')
+      .then(res => res.json())
+      .then(resJson => {
+        const payload = resJson?.data || resJson;
+        if (payload && payload.upi_id) {
+          setUpiSettings({
+            upi_id: payload.upi_id,
+            account_holder_name: payload.upi_name || payload.account_holder_name || 'BillingMaster'
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Base price calculation
   const baseMonthlyPriceNum = (() => {
+    if (plan?.price_monthly !== undefined && plan?.price_monthly !== null) {
+      return Number(plan.price_monthly) || 0;
+    }
     const raw = (planPrice || '₹499').replace(/[^0-9.]/g, '');
     const parsed = parseFloat(raw);
-    return isNaN(parsed) || parsed === 0 ? 499 : parsed;
+    return isNaN(parsed) ? 499 : parsed;
   })();
 
-  const baseYearlyPriceNum = baseMonthlyPriceNum * 10;
+  const baseYearlyPriceNum = (() => {
+    if (plan?.price_yearly !== undefined && plan?.price_yearly !== null) {
+      return Number(plan.price_yearly) || 0;
+    }
+    return baseMonthlyPriceNum * 10;
+  })();
   
-  const currentDetails = getPriceDetailsForCycle(baseMonthlyPriceNum, baseYearlyPriceNum, billingCycle);
+  const currentDetails = getPriceDetailsForCycle(baseMonthlyPriceNum, baseYearlyPriceNum, billingCycle, {
+    p3m: plan?.price_3months,
+    p6m: plan?.price_6months,
+    p2y: plan?.price_2years,
+    p3y: plan?.price_3years,
+  });
   const currentPriceNum = currentDetails.priceNum;
   const currentPriceStr = currentDetails.priceStr;
   const currentCycleLabel = currentDetails.cycleObj.label;
@@ -126,6 +193,10 @@ export function PlanCheckout({ planName = 'Starter Business', planPrice = '₹49
   }
 
   const finalPriceStr = `₹${finalPriceNum.toLocaleString()}`;
+
+  // Dynamic UPI payment URI encoding the exact amount, upi_id, and payee name
+  const upiPaymentUri = `upi://pay?pa=${encodeURIComponent(upiSettings.upi_id)}&pn=${encodeURIComponent(upiSettings.account_holder_name)}&am=${finalPriceNum}&cu=INR&tn=${encodeURIComponent(planName + ' ' + currentCycleLabel + ' Upgrade')}`;
+  const dynamicQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(upiPaymentUri)}`;
 
   const handleApplyCoupon = async () => {
     if (!couponInput.trim()) {
@@ -166,42 +237,27 @@ export function PlanCheckout({ planName = 'Starter Business', planPrice = '₹49
     toast.info('Coupon code removed.');
   };
 
-  const handleDownloadQr = () => {
+  const handleDownloadQr = async () => {
     try {
-      const svgEl = document.getElementById('upi-qr-svg') as SVGElement | null;
-      if (!svgEl) return;
-      const svgData = new XMLSerializer().serializeToString(svgEl);
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        canvas.width = 400;
-        canvas.height = 400;
-        if (ctx) {
-          ctx.fillStyle = '#FFFFFF';
-          ctx.fillRect(0, 0, 400, 400);
-          ctx.drawImage(img, 0, 0, 400, 400);
-          const pngUrl = canvas.toDataURL('image/png');
-          const downloadLink = document.createElement('a');
-          downloadLink.href = pngUrl;
-          downloadLink.download = `billingmaster_upi_qr_${planName.replace(/\s+/g, '_').toLowerCase()}_${billingCycle}.png`;
-          document.body.appendChild(downloadLink);
-          downloadLink.click();
-          document.body.removeChild(downloadLink);
-          toast.success('QR Code downloaded successfully!');
-        }
-      };
-      img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+      const res = await fetch(dynamicQrUrl);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const downloadLink = document.createElement('a');
+      downloadLink.href = blobUrl;
+      downloadLink.download = `billingmaster_upi_qr_${planName.replace(/\s+/g, '_').toLowerCase()}_${billingCycle}_rs${finalPriceNum}.png`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      URL.revokeObjectURL(blobUrl);
+      toast.success('Dynamic QR Code downloaded successfully!');
     } catch (err) {
       toast.error('Failed to download QR Code.');
     }
   };
 
   const handleOpenPaymentApp = () => {
-    const upiUri = `upi://pay?pa=${upiId}&pn=BillingMaster&am=${finalPriceNum}&cu=INR&tn=${encodeURIComponent(planName + ' ' + currentCycleLabel + ' Upgrade')}`;
-    window.location.href = upiUri;
-    toast.info('Launching UPI payment apps...');
+    window.location.href = upiPaymentUri;
+    toast.info('Launching UPI payment app with pre-filled details...');
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -236,12 +292,14 @@ export function PlanCheckout({ planName = 'Starter Business', planPrice = '₹49
       ? `${finalPriceStr} / ${currentDetails.cycleObj.shortLabel} (Saved ₹${couponDiscountNum.toLocaleString()} via ${appliedCoupon.code})`
       : `${currentPriceStr} / ${currentDetails.cycleObj.shortLabel}`;
 
+    const trimmedUtr = utr ? utr.trim() : '';
+
     const newRecord = {
       id: `BILL-2026-${Math.floor(1000 + Math.random() * 9000)}`,
       planName: fullPlanName,
       planPrice: fullPriceStr,
-      utr: utr || `UTR-${Math.floor(100000000000 + Math.random() * 900000000000)}`,
-      notes: utr ? `Submitted UTR: ${utr}. Duration: ${currentCycleLabel}.` : `Payment screenshot uploaded for ${currentCycleLabel}.`,
+      utr: trimmedUtr,
+      notes: trimmedUtr ? `Submitted UTR: ${trimmedUtr}. Duration: ${currentCycleLabel}.` : `Payment screenshot uploaded for ${currentCycleLabel}.`,
       screenshotUrl: screenshotPreview || '',
       status: 'pending_verification',
       timestamp: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' }) + ' at ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
@@ -260,11 +318,12 @@ export function PlanCheckout({ planName = 'Starter Business', planPrice = '₹49
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          id: newRecord.id,
           business_id: business?.id || 'biz-01',
           business_name: business?.name || 'Merchant Store',
           requested_plan: fullPlanName,
           price: fullPriceStr,
-          utr_ref: utr || newRecord.utr,
+          utr_ref: trimmedUtr,
           screenshot_url: screenshotPreview || '',
           coupon_code: appliedCoupon?.code || '',
         }),
@@ -336,7 +395,7 @@ export function PlanCheckout({ planName = 'Starter Business', planPrice = '₹49
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
             <button
-              onClick={() => window.location.href = '/more'}
+              onClick={() => window.location.href = '/more#billing-history'}
               className="btn-primary w-full py-3 rounded-xl text-xs font-extrabold cursor-pointer"
             >
               View Billing & History
@@ -388,7 +447,12 @@ export function PlanCheckout({ planName = 'Starter Business', planPrice = '₹49
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-2.5">
           {BILLING_CYCLES.map((cycleItem) => {
             const isSelected = billingCycle === cycleItem.id;
-            const calc = getPriceDetailsForCycle(baseMonthlyPriceNum, baseYearlyPriceNum, cycleItem.id);
+            const calc = getPriceDetailsForCycle(baseMonthlyPriceNum, baseYearlyPriceNum, cycleItem.id, {
+              p3m: plan?.price_3months,
+              p6m: plan?.price_6months,
+              p2y: plan?.price_2years,
+              p3y: plan?.price_3years,
+            });
             return (
               <button
                 key={cycleItem.id}
@@ -402,7 +466,7 @@ export function PlanCheckout({ planName = 'Starter Business', planPrice = '₹49
               >
                 {/* Fixed height top slot for 100% horizontal alignment */}
                 <div className="h-5 flex items-center justify-center w-full mb-1">
-                  {cycleItem.badge ? (
+                  {calc.badge ? (
                     <span
                       className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full inline-block truncate max-w-full ${
                         isSelected
@@ -410,7 +474,7 @@ export function PlanCheckout({ planName = 'Starter Business', planPrice = '₹49
                           : 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20'
                       }`}
                     >
-                      {cycleItem.badge}
+                      {calc.badge}
                     </span>
                   ) : (
                     <span className="opacity-0 text-[9px]">-</span>
@@ -480,49 +544,18 @@ export function PlanCheckout({ planName = 'Starter Business', planPrice = '₹49
                 <p className="text-[11px] text-muted-foreground">Use GPay, PhonePe, Paytm, or BHIM</p>
               </div>
 
-              {/* Clean QR Box */}
-              <div className="mx-auto max-w-[190px] rounded-2xl border-2 border-orange-500/20 bg-white p-3 shadow-sm text-center">
-                <svg id="upi-qr-svg" className="w-full h-auto aspect-square" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <rect width="100" height="100" fill="white"/>
-                  {/* Outer corner blocks */}
-                  <rect x="6" y="6" width="26" height="26" fill="#18181B"/>
-                  <rect x="10" y="10" width="18" height="18" fill="white"/>
-                  <rect x="14" y="14" width="10" height="10" fill="#F97316"/>
-
-                  <rect x="68" y="6" width="26" height="26" fill="#18181B"/>
-                  <rect x="72" y="10" width="18" height="18" fill="white"/>
-                  <rect x="76" y="14" width="10" height="10" fill="#F97316"/>
-
-                  <rect x="6" y="68" width="26" height="26" fill="#18181B"/>
-                  <rect x="10" y="72" width="18" height="18" fill="white"/>
-                  <rect x="14" y="76" width="10" height="10" fill="#F97316"/>
-
-                  {/* QR Matrix Elements */}
-                  <rect x="38" y="10" width="8" height="8" fill="#18181B"/>
-                  <rect x="50" y="10" width="12" height="6" fill="#18181B"/>
-                  <rect x="38" y="24" width="24" height="6" fill="#18181B"/>
-
-                  <rect x="10" y="38" width="6" height="24" fill="#18181B"/>
-                  <rect x="22" y="38" width="12" height="8" fill="#18181B"/>
-                  <rect x="22" y="50" width="8" height="12" fill="#18181B"/>
-
-                  <rect x="38" y="38" width="24" height="24" fill="#F97316"/>
-                  <rect x="44" y="44" width="12" height="12" fill="white"/>
-                  <rect x="48" y="48" width="4" height="4" fill="#18181B"/>
-
-                  <rect x="68" y="38" width="8" height="16" fill="#18181B"/>
-                  <rect x="80" y="38" width="14" height="8" fill="#18181B"/>
-                  <rect x="80" y="50" width="14" height="12" fill="#18181B"/>
-
-                  <rect x="38" y="68" width="12" height="8" fill="#18181B"/>
-                  <rect x="54" y="68" width="8" height="26" fill="#18181B"/>
-                  <rect x="38" y="80" width="12" height="14" fill="#18181B"/>
-                  <rect x="68" y="80" width="26" height="14" fill="#18181B"/>
-                </svg>
-                <div className="mt-1 text-[10px] font-extrabold text-neutral-800 tracking-wider">
-                  ALL UPI APPS ACCEPTED
+              {/* Dynamic QR Box */}
+              <div className="mx-auto max-w-[210px] rounded-2xl border-2 border-orange-500/30 bg-white p-3 shadow-sm text-center space-y-2">
+                <img 
+                  src={dynamicQrUrl} 
+                  alt="Dynamic UPI QR Code" 
+                  className="w-full h-auto aspect-square rounded-lg object-contain mx-auto border border-neutral-100"
+                />
+                <div className="text-[10px] font-black text-neutral-800 tracking-wider uppercase">
+                  Scan with GPay / PhonePe / Paytm / BHIM
                 </div>
               </div>
+
 
               {/* Download QR Code Button */}
               <button

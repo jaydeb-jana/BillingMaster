@@ -46,6 +46,7 @@ export interface Business {
 
 interface BusinessControlProps {
   businesses: Business[];
+  plans?: any[];
   onToggleStatus: (bizId: string, currentStatus: string, reason?: string) => Promise<void>;
   onDeleteBusiness?: (bizId: string) => Promise<void>;
   onUpdateBusiness?: (bizId: string, data: Partial<Business>) => Promise<void>;
@@ -53,6 +54,7 @@ interface BusinessControlProps {
 
 export const BusinessControl: React.FC<BusinessControlProps> = ({
   businesses,
+  plans,
   onToggleStatus,
   onDeleteBusiness,
   onUpdateBusiness,
@@ -117,10 +119,6 @@ export const BusinessControl: React.FC<BusinessControlProps> = ({
       setIsCancellingPlan(true);
       const downgradedPlan = 'Free Tier';
 
-      if (onUpdateBusiness) {
-        await onUpdateBusiness(selectedBiz.id, { plan_name: downgradedPlan });
-      }
-
       const res = await fetch(`/api/admin/businesses/${selectedBiz.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -132,13 +130,65 @@ export const BusinessControl: React.FC<BusinessControlProps> = ({
         throw new Error(json.error || 'Failed to cancel merchant subscription');
       }
 
-      setSelectedBiz((prev) => (prev ? { ...prev, plan_name: downgradedPlan } : null));
+      const resData = await res.json().catch(() => ({}));
+      const newPlanName = resData.data?.plan_name || resData.plan_name || downgradedPlan;
+
+      setSelectedBiz((prev) => (prev ? { ...prev, plan_name: newPlanName } : null));
+      if (onUpdateBusiness) await onUpdateBusiness(selectedBiz.id, { plan_name: newPlanName });
+
+      if (newPlanName !== downgradedPlan && newPlanName.toLowerCase() !== 'free tier') {
+        toast.success(`Active plan cancelled. Promoted next queued plan "${newPlanName}" immediately.`);
+      } else {
+        toast.success(`Active plan for "${selectedBiz.name}" has been cancelled. Account downgraded to Free Tier.`);
+      }
+
       setShowCancelPlanModal(false);
-      toast.success(`Active plan for "${selectedBiz.name}" has been cancelled. Account downgraded to Free Tier.`);
+
+      // Re-fetch subscription queue so modal updates immediately
+      fetch(`/api/subscription-queue/my?business_id=${selectedBiz.id}`)
+        .then((r) => r.json())
+        .then((j) => {
+          if (j.data && Array.isArray(j.data)) setBizSubscriptionQueue(j.data);
+          else setBizSubscriptionQueue([]);
+        })
+        .catch(() => setBizSubscriptionQueue([]));
     } catch (err: any) {
       toast.error(err.message || 'Failed to cancel plan subscription');
     } finally {
       setIsCancellingPlan(false);
+    }
+  };
+
+  const handleCancelQueueItem = async (queueId: string) => {
+    if (!selectedBiz) return;
+    try {
+      const res = await fetch(`/api/subscription-queue/${queueId}`, {
+        method: 'DELETE',
+      });
+
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error || 'Failed to cancel queued plan');
+      }
+
+      const resData = await res.json();
+      toast.success('Queued plan cancelled successfully.');
+
+      if (resData.activePlan && selectedBiz.plan_name !== resData.activePlan) {
+        setSelectedBiz((prev) => (prev ? { ...prev, plan_name: resData.activePlan } : null));
+        if (onUpdateBusiness) await onUpdateBusiness(selectedBiz.id, { plan_name: resData.activePlan });
+      }
+
+      // Re-fetch subscription queue so modal updates immediately
+      fetch(`/api/subscription-queue/my?business_id=${selectedBiz.id}`)
+        .then((r) => r.json())
+        .then((j) => {
+          if (j.data && Array.isArray(j.data)) setBizSubscriptionQueue(j.data);
+          else setBizSubscriptionQueue([]);
+        })
+        .catch(() => setBizSubscriptionQueue([]));
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to cancel queued plan');
     }
   };
 
@@ -417,19 +467,19 @@ export const BusinessControl: React.FC<BusinessControlProps> = ({
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-neutral-800 text-[10px] font-extrabold uppercase tracking-widest text-neutral-400 bg-[#09090b]">
-                <th className="p-4 pl-6">Business Tenant</th>
-                <th className="p-4">Active Plan</th>
-                <th className="p-4">This Year Invoices</th>
-                <th className="p-4">This Year Revenue</th>
-                <th className="p-4">Total Customers</th>
-                <th className="p-4">Status</th>
-                <th className="p-4 text-center pr-6">Actions</th>
+                <th className="px-6 py-4">Business Tenant</th>
+                <th className="px-6 py-4 whitespace-nowrap">Active Plan</th>
+                <th className="px-6 py-4 whitespace-nowrap">This Year Invoices</th>
+                <th className="px-6 py-4 whitespace-nowrap">This Year Revenue</th>
+                <th className="px-6 py-4 whitespace-nowrap">Total Customers</th>
+                <th className="px-6 py-4 whitespace-nowrap">Status</th>
+                <th className="px-6 py-4 text-center whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-800/80 text-xs">
               {filteredBusinesses.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-neutral-500 text-xs">
+                  <td colSpan={7} className="px-6 py-10 text-center text-neutral-500 text-xs">
                     No matching merchant businesses found.
                   </td>
                 </tr>
@@ -440,7 +490,7 @@ export const BusinessControl: React.FC<BusinessControlProps> = ({
                   return (
                     <tr key={biz.id} className="hover:bg-neutral-900/60 transition-colors">
                       {/* Business Name & Email */}
-                      <td className="p-4 pl-6">
+                      <td className="px-6 py-4 align-middle">
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-400 font-bold shrink-0">
                             <Building2 className="w-4 h-4" />
@@ -455,27 +505,25 @@ export const BusinessControl: React.FC<BusinessControlProps> = ({
                       </td>
 
                       {/* Active Plan Read-Only Badge */}
-                      <td className="p-4">
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-orange-500/10 text-orange-400 border border-orange-500/20 text-xs font-black font-mono">
+                      <td className="px-6 py-4 align-middle">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-orange-500/10 text-orange-400 border border-orange-500/20 text-xs font-black font-mono whitespace-nowrap">
                           <Layers className="w-3 h-3 text-orange-400" />
                           <span>{biz.plan_name || 'Free Tier'}</span>
                         </span>
                       </td>
 
-
-
                       {/* This Year Invoices */}
-                      <td className="p-4 font-bold text-neutral-200">
+                      <td className="px-6 py-4 align-middle font-bold text-neutral-200 whitespace-nowrap">
                         {biz.total_invoices || 0} Invoices
                       </td>
 
                       {/* This Year Revenue */}
-                      <td className="p-4 font-extrabold text-emerald-400">
+                      <td className="px-6 py-4 align-middle font-extrabold text-emerald-400 whitespace-nowrap">
                         ₹{(biz.total_revenue || 0).toLocaleString()}
                       </td>
 
                       {/* Total Customers */}
-                      <td className="p-4 font-bold text-neutral-200">
+                      <td className="px-6 py-4 align-middle font-bold text-neutral-200 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           <Users className="w-3.5 h-3.5 text-orange-400" />
                           <span>{biz.total_customers || 28} Customers</span>
@@ -483,9 +531,9 @@ export const BusinessControl: React.FC<BusinessControlProps> = ({
                       </td>
 
                       {/* Status Badge */}
-                      <td className="p-4">
+                      <td className="px-6 py-4 align-middle whitespace-nowrap">
                         <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider border ${
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider border whitespace-nowrap ${
                             isActive
                               ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                               : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
@@ -497,14 +545,14 @@ export const BusinessControl: React.FC<BusinessControlProps> = ({
                       </td>
 
                       {/* Governance Action Buttons */}
-                      <td className="p-4 pr-6">
+                      <td className="px-6 py-4 align-middle whitespace-nowrap">
                         <div className="flex items-center justify-center gap-2">
                           <button
                             onClick={() => {
                               setSelectedBiz(biz);
                               setIsEditing(false);
                             }}
-                            className="px-2.5 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-bold border border-neutral-700 cursor-pointer flex items-center gap-1.5"
+                            className="px-3 py-1.5 rounded-xl bg-neutral-800/80 hover:bg-neutral-700/80 text-neutral-200 text-xs font-bold border border-neutral-700/70 cursor-pointer flex items-center gap-1.5 whitespace-nowrap transition-all shadow-xs"
                             title="View & Edit Merchant Details"
                           >
                             <Eye className="w-3.5 h-3.5 text-orange-400" />
@@ -513,7 +561,7 @@ export const BusinessControl: React.FC<BusinessControlProps> = ({
 
                           <button
                             onClick={() => handleImpersonateClick(biz)}
-                            className="px-2.5 py-1.5 rounded-lg bg-orange-500/15 hover:bg-orange-500/25 text-orange-400 text-xs font-bold border border-orange-500/30 cursor-pointer flex items-center gap-1"
+                            className="px-3 py-1.5 rounded-xl bg-orange-500/15 hover:bg-orange-500/25 text-orange-400 text-xs font-extrabold border border-orange-500/30 cursor-pointer flex items-center gap-1.5 whitespace-nowrap transition-all shadow-xs"
                             title="Log In to Store Account"
                           >
                             <LogIn className="w-3.5 h-3.5" />
@@ -522,7 +570,7 @@ export const BusinessControl: React.FC<BusinessControlProps> = ({
 
                           <button
                             onClick={() => handleToggleClick(biz)}
-                            className={`p-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-all ${
+                            className={`p-2 rounded-xl text-xs font-bold border cursor-pointer transition-all shrink-0 ${
                               isActive
                                 ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/30'
                                 : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
@@ -534,7 +582,7 @@ export const BusinessControl: React.FC<BusinessControlProps> = ({
 
                           <button
                             onClick={() => setBizToDelete(biz)}
-                            className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-bold border border-rose-500/30 cursor-pointer transition-all"
+                            className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-bold border border-rose-500/30 cursor-pointer transition-all shrink-0"
                             title="Delete Store Account"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -617,54 +665,45 @@ export const BusinessControl: React.FC<BusinessControlProps> = ({
               </h4>
 
               <div className="grid grid-cols-2 gap-y-2.5 gap-x-4 text-neutral-300">
-                <div className="flex items-center justify-between border-b border-neutral-800/60 pb-1.5">
-                  <span className="text-neutral-400">Contact Email:</span>
-                  <span className="font-bold text-white font-mono">{selectedBiz.email || 'Not provided'}</span>
+                <div className="flex items-center justify-between border-b border-neutral-800/60 pb-1.5 gap-2 min-w-0">
+                  <span className="text-neutral-400 shrink-0">Contact Email:</span>
+                  <span className="font-bold text-white font-mono truncate text-right min-w-0" title={selectedBiz.email || 'Not provided'}>
+                    {selectedBiz.email || 'Not provided'}
+                  </span>
                 </div>
-                <div className="flex items-center justify-between border-b border-neutral-800/60 pb-1.5">
-                  <span className="text-neutral-400">Contact Phone:</span>
-                  <span className="font-bold text-white font-mono">{selectedBiz.phone || '+91 98765 43210'}</span>
+                <div className="flex items-center justify-between border-b border-neutral-800/60 pb-1.5 gap-2 min-w-0">
+                  <span className="text-neutral-400 shrink-0">Contact Phone:</span>
+                  <span className="font-bold text-white font-mono truncate text-right min-w-0">{selectedBiz.phone || '+91 98765 43210'}</span>
                 </div>
-                <div className="flex items-center justify-between border-b border-neutral-800/60 pb-1.5">
-                  <span className="text-neutral-400">Catalog Slug:</span>
-                  <span className="font-bold text-orange-400 font-mono">/{selectedBiz.catalog_handle || (selectedBiz as any).catalog_slug || 'store'}</span>
+                <div className="flex items-center justify-between border-b border-neutral-800/60 pb-1.5 gap-2 min-w-0">
+                  <span className="text-neutral-400 shrink-0">Catalog Slug:</span>
+                  <span className="font-bold text-orange-400 font-mono truncate text-right min-w-0">/{selectedBiz.catalog_handle || (selectedBiz as any).catalog_slug || 'store'}</span>
                 </div>
-                <div className="flex items-center justify-between border-b border-neutral-800/60 pb-1.5">
-                  <span className="text-neutral-400 flex items-center gap-1 font-medium">
+                <div className="flex items-center justify-between border-b border-neutral-800/60 pb-1.5 gap-2 min-w-0">
+                  <span className="text-neutral-400 flex items-center gap-1 font-medium shrink-0">
                     <Layers className="w-3.5 h-3.5 text-orange-400" />
                     <span>Active Plan Tier:</span>
                   </span>
-                  <select
-                    value={selectedBiz.plan_name || 'Free Tier'}
-                    onChange={(e) => handleQuickChangePlan(selectedBiz.id, e.target.value)}
-                    className="px-3 py-1 rounded-xl bg-[#18181f] text-orange-400 border border-orange-500/40 text-xs font-black tracking-wide font-mono focus:outline-none focus:border-orange-400 cursor-pointer shadow-sm"
-                    title="Click to assign or change active merchant subscription plan"
-                  >
-                    <option value="Free Tier">Free Tier</option>
-                    <option value="Starter Business">Starter Business</option>
-                    <option value="Pro Enterprise">Pro Enterprise</option>
-                    {selectedBiz.plan_name && !['Free Tier', 'Starter Business', 'Pro Enterprise', 'Free'].includes(selectedBiz.plan_name) && (
-                      <option value={selectedBiz.plan_name}>{selectedBiz.plan_name}</option>
-                    )}
-                  </select>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-orange-500/10 text-orange-400 border border-orange-500/20 text-xs font-black font-mono whitespace-nowrap shrink-0">
+                    {selectedBiz.plan_name || 'Free Tier'}
+                  </span>
                 </div>
 
-
-                <div className="flex items-center justify-between border-b border-neutral-800/60 pb-1.5">
-                  <span className="text-neutral-400">Business Turnover:</span>
-                  <span className="font-bold text-white">{selectedBiz.turnover || '50L - 1Cr'}</span>
+                <div className="flex items-center justify-between border-b border-neutral-800/60 pb-1.5 gap-2 min-w-0">
+                  <span className="text-neutral-400 shrink-0">Business Turnover:</span>
+                  <span className="font-bold text-white text-right min-w-0 truncate">{selectedBiz.turnover || '50L - 1Cr'}</span>
                 </div>
-                <div className="flex items-center justify-between border-b border-neutral-800/60 pb-1.5">
-                  <span className="text-neutral-400">Employees Size:</span>
-                  <span className="font-bold text-white">{selectedBiz.employees || '1-10'}</span>
+                <div className="flex items-center justify-between border-b border-neutral-800/60 pb-1.5 gap-2 min-w-0">
+                  <span className="text-neutral-400 shrink-0">Employees Size:</span>
+                  <span className="font-bold text-white text-right min-w-0 truncate">{selectedBiz.employees || '1-10'}</span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-neutral-400">Currency:</span>
-                  <span className="font-bold text-white">{selectedBiz.currency || 'INR'}</span>
+                <div className="flex items-center justify-between gap-2 min-w-0">
+                  <span className="text-neutral-400 shrink-0">Currency:</span>
+                  <span className="font-bold text-white text-right min-w-0 truncate">{selectedBiz.currency || 'INR'}</span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-neutral-400">Registration Date:</span>
-                  <span className="font-bold text-white font-mono">
+                <div className="flex items-center justify-between gap-2 min-w-0">
+                  <span className="text-neutral-400 shrink-0">Registration Date:</span>
+                  <span className="font-bold text-white font-mono text-right min-w-0 truncate">
                     {new Date(selectedBiz.created_at).toLocaleDateString()}
                   </span>
                 </div>
@@ -673,8 +712,14 @@ export const BusinessControl: React.FC<BusinessControlProps> = ({
 
             {/* Active Subscription & Billing Card */}
             {(() => {
-              const currentPlanName = selectedBiz.plan_name || 'Free Tier';
+              const activeQueueSub = bizSubscriptionQueue.find((i: any) => i.status === 'active');
+              const currentPlanName = activeQueueSub?.plan_name || selectedBiz.plan_name || 'Free Tier';
               const isPaidPlan = !['free', 'free tier', ''].includes(currentPlanName.trim().toLowerCase());
+              const queuedPaidItems = bizSubscriptionQueue.filter((i: any) => {
+                if (i.status !== 'queued') return false;
+                const pName = (i.plan_name || '').toLowerCase().trim();
+                return !pName.includes('free') && !pName.includes('trial');
+              });
 
               const acceptedReqs = bizBillingReqs
                 .filter((r: any) => r.status === 'accepted')
@@ -692,10 +737,13 @@ export const BusinessControl: React.FC<BusinessControlProps> = ({
                 planPaidPrice = 'Paid Subscription';
               }
 
-              const latestUtr = acceptedReqs.length > 0 ? acceptedReqs[acceptedReqs.length - 1]?.utr_ref : null;
+              const rawUtr = acceptedReqs.length > 0 ? acceptedReqs[acceptedReqs.length - 1]?.utr_ref : null;
+              const latestUtr = rawUtr && !rawUtr.startsWith('UTR-') ? rawUtr : null;
 
               let runningExpiry: Date | null = null;
-              if (isPaidPlan) {
+              if (activeQueueSub?.expires_at) {
+                runningExpiry = new Date(activeQueueSub.expires_at);
+              } else if (isPaidPlan) {
                 const getDur = (pStr: string): number => {
                   if (!pStr) return 365;
                   const s = pStr.toLowerCase();
@@ -713,15 +761,10 @@ export const BusinessControl: React.FC<BusinessControlProps> = ({
                   const sDate = new Date(bizAny.updated_at || selectedBiz.created_at || new Date().toISOString());
                   runningExpiry = new Date(sDate.getTime() + getDur(currentPlanName) * 24 * 60 * 60 * 1000);
                 } else {
-                  for (const req of acceptedReqs) {
-                    const rDate = new Date(req.updated_at || req.created_at);
-                    const rDur = getDur(req.requested_plan || currentPlanName);
-                    if (!runningExpiry || rDate > runningExpiry) {
-                      runningExpiry = new Date(rDate.getTime() + rDur * 24 * 60 * 60 * 1000);
-                    } else {
-                      runningExpiry = new Date(runningExpiry.getTime() + rDur * 24 * 60 * 60 * 1000);
-                    }
-                  }
+                  const latestAcc = acceptedReqs[acceptedReqs.length - 1];
+                  const rDate = new Date(latestAcc.updated_at || latestAcc.created_at);
+                  const rDur = getDur(latestAcc.requested_plan || currentPlanName);
+                  runningExpiry = new Date(rDate.getTime() + rDur * 24 * 60 * 60 * 1000);
                 }
               }
 
@@ -735,39 +778,39 @@ export const BusinessControl: React.FC<BusinessControlProps> = ({
                       Active Subscription & Payment Details
                     </h4>
                     {isPaidPlan ? (
-                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1">
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1 shrink-0 whitespace-nowrap">
                         <CheckCircle2 className="w-3 h-3 text-emerald-400" />
                         Paid Subscription Active
                       </span>
                     ) : (
-                      <span className="px-2.5 py-0.5 rounded-full bg-neutral-800 text-neutral-400 border border-neutral-700 text-[10px] font-extrabold uppercase tracking-wider">
+                      <span className="px-2.5 py-0.5 rounded-full bg-neutral-800 text-neutral-400 border border-neutral-700 text-[10px] font-extrabold uppercase tracking-wider shrink-0 whitespace-nowrap">
                         Free Plan Tier
                       </span>
                     )}
                   </div>
 
                   <div className="p-3.5 rounded-xl bg-[#121217] border border-neutral-800/80 flex items-center justify-between gap-4">
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-2">
-                        <span className="text-neutral-400 text-xs font-medium">Subscribed Plan:</span>
-                        <span className="px-2.5 py-0.5 rounded-lg bg-orange-500/15 text-orange-400 border border-orange-500/30 text-xs font-black tracking-wide font-mono">
+                    <div className="space-y-1.5 min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-neutral-400 text-xs font-medium shrink-0">Subscribed Plan:</span>
+                        <span className="px-2.5 py-0.5 rounded-lg bg-orange-500/15 text-orange-400 border border-orange-500/30 text-xs font-black tracking-wide font-mono whitespace-nowrap shrink-0">
                           {currentPlanName}
                         </span>
                         {runningExpiry && (
-                          <span className="px-2.5 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[11px] font-bold font-mono">
+                          <span className="px-2.5 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[11px] font-bold font-mono whitespace-nowrap shrink-0">
                             Expires {runningExpiry.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ({daysRemaining} Days Left)
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-3 text-xs text-neutral-300">
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-neutral-300">
                         <div>
                           <span className="text-neutral-400">Payment & Pricing: </span>
-                          <span className="font-extrabold text-white font-mono">{planPaidPrice}</span>
+                          <span className="font-extrabold text-white font-mono whitespace-nowrap">{planPaidPrice}</span>
                         </div>
                         {latestUtr && (
                           <div className="border-l border-neutral-800 pl-3">
                             <span className="text-neutral-400">UTR Ref: </span>
-                            <span className="font-mono font-bold text-orange-300">{latestUtr}</span>
+                            <span className="font-mono font-bold text-orange-300 whitespace-nowrap">{latestUtr}</span>
                           </div>
                         )}
                       </div>
@@ -777,41 +820,44 @@ export const BusinessControl: React.FC<BusinessControlProps> = ({
                     {isPaidPlan ? (
                       <button
                         onClick={() => setShowCancelPlanModal(true)}
-                        className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-extrabold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 shadow-sm"
+                        className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-extrabold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap shadow-sm"
                         title="Cancel merchant paid subscription and downgrade store to Free Tier"
                       >
-                        <XCircle className="w-4 h-4 text-rose-400" />
+                        <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
                         <span>Cancel Active Plan</span>
                       </button>
                     ) : (
-                      <div className="text-[11px] text-neutral-500 italic font-mono shrink-0">
+                      <div className="text-[11px] text-neutral-500 italic font-mono shrink-0 whitespace-nowrap">
                         No active paid plan to cancel
                       </div>
                     )}
                   </div>
 
-                  {bizSubscriptionQueue.filter((i) => i.status === 'queued').length > 0 && (
+                  {queuedPaidItems.length > 0 && (
                     <div className="pt-3 border-t border-neutral-800/80 space-y-2">
                       <div className="flex items-center justify-between text-[11px] font-extrabold uppercase tracking-wider text-orange-400">
-                        <span>Subscription Queue (`qu`) ({bizSubscriptionQueue.filter((i) => i.status === 'queued').length} Queued)</span>
+                        <span>Subscription Queue ({queuedPaidItems.length} Queued)</span>
                       </div>
                       <div className="divide-y divide-neutral-800 rounded-xl bg-[#121217] border border-neutral-800/80 overflow-hidden">
                         {(() => {
-                          const queuedItems = bizSubscriptionQueue.filter((i) => i.status === 'queued');
+                          const queuedItems = queuedPaidItems;
                           let cumulativeDate = runningExpiry ? new Date(runningExpiry) : new Date();
                           let cumulativeDaysFuture = daysRemaining || 0;
 
                           return queuedItems.map((item: any, index: number) => {
-                            const itemDuration = Number(item.duration_days) || 365;
+                            const isItemFree = Number(item.duration_days) >= 36500 || ['free', 'free tier'].includes((item.plan_name || '').toLowerCase().trim());
+                            const itemDuration = isItemFree ? 36500 : (Number(item.duration_days) || 365);
                             const itemStartDate = new Date(cumulativeDate);
                             const itemStartDaysFuture = cumulativeDaysFuture;
                             const itemEndDate = new Date(itemStartDate.getTime() + itemDuration * 24 * 60 * 60 * 1000);
 
-                            cumulativeDate = itemEndDate;
-                            cumulativeDaysFuture += itemDuration;
+                            if (!isItemFree) {
+                              cumulativeDate = itemEndDate;
+                              cumulativeDaysFuture += itemDuration;
+                            }
 
                             const startDateStr = itemStartDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                            const endDateStr = itemEndDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                            const endDateStr = isItemFree ? 'Lifetime Access' : itemEndDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
                             return (
                               <div key={item.id} className="p-3 space-y-1.5 text-xs">
@@ -820,24 +866,29 @@ export const BusinessControl: React.FC<BusinessControlProps> = ({
                                     <span className="px-2 py-0.5 rounded bg-orange-500/15 text-orange-400 font-mono font-bold text-[10px]">
                                       Queue #{index + 1}
                                     </span>
-                                    <span className="px-2 py-0.5 rounded bg-neutral-800 text-neutral-400 font-mono text-[10px]">
-                                      Priority #{item.priority_order ?? 0}
-                                    </span>
                                     <span className="font-bold text-white">{item.plan_name}</span>
-                                    <span className="text-neutral-400 text-[11px]">({itemDuration} Days)</span>
+                                    <span className="text-neutral-400 text-[11px]">{isItemFree ? '(Lifetime Access)' : `(${itemDuration} Days)`}</span>
                                   </div>
-                                  <div>
+                                  <div className="flex items-center gap-2">
                                     <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 text-[10px] font-bold uppercase">
                                       {index === 0 ? 'Next in Line' : 'Queued'}
                                     </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCancelQueueItem(item.id)}
+                                      className="px-2 py-0.5 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[10px] font-extrabold transition-all flex items-center gap-1 cursor-pointer"
+                                      title="Cancel this queued subscription plan"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                      <span>Cancel Queue</span>
+                                    </button>
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-2 text-[10px] font-mono text-neutral-400">
                                   <span className="text-orange-400 font-bold">Starts in {itemStartDaysFuture} Days</span>
+                                  <span>({index === 0 ? 'Right after active plan ends' : `After Queue #${index} ends`})</span>
                                   <span>•</span>
-                                  <span>Starts {startDateStr}</span>
-                                  <span>→</span>
-                                  <span>Ends {endDateStr}</span>
+                                  <span>Runs {startDateStr} → {endDateStr}</span>
                                 </div>
                               </div>
                             );

@@ -11,7 +11,7 @@ import {
   FileSpreadsheet, History as HistoryIcon
 } from 'lucide-react';
 import { db, auth, getBusinessId } from '@/lib/api';
-import { useScrollReset, resetScrollRef } from '@/lib/useScrollReset';
+import { useScrollReset, resetScrollRef, useBodyScrollLock } from '@/lib/useScrollReset';
 import { toast } from 'sonner';
 import { useLocation } from 'wouter';
 import { HelpCenterModal } from '@/components/HelpCenterModal';
@@ -192,6 +192,7 @@ export function MoreHub({ onNavigate }: MoreHubProps) {
 
   // Billing & Subscription Payment History State
   const [selectedProofItem, setSelectedProofItem] = useState<any | null>(null);
+  useBodyScrollLock(Boolean(activeModal || purgeTargetId || showEmptyBinConfirm || selectedProofItem));
   const [billingSearch, setBillingSearch] = useState('');
   const [paymentHistory, setPaymentHistory] = useState<any[]>(() => {
     try {
@@ -210,7 +211,7 @@ export function MoreHub({ onNavigate }: MoreHubProps) {
       const res = await fetch(`/api/billing-requests/my?business_id=${bid}`);
       if (res.ok) {
         const json = await res.json();
-        if (json.data && Array.isArray(json.data) && json.data.length > 0) {
+        if (json.data && Array.isArray(json.data)) {
           const liveItems = json.data.map((req: any) => ({
             id: req.id,
             planName: `${req.requested_plan} Plan Purchase`,
@@ -225,9 +226,31 @@ export function MoreHub({ onNavigate }: MoreHubProps) {
             time: new Date(req.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
             paymentMethod: 'Direct UPI App',
           }));
-          setPaymentHistory(liveItems);
+
+          const localItemsRaw = localStorage.getItem('billingmaster_payment_history');
+          let mergedItems = [...liveItems];
+          if (localItemsRaw) {
+            try {
+              const localItems = JSON.parse(localItemsRaw);
+              if (Array.isArray(localItems)) {
+                localItems.forEach((localItem: any) => {
+                  if (localItem.id === 'REQ-2026-1001') return;
+                  const matchInLive = liveItems.find(
+                    (m: any) => m.id === localItem.id || (m.utr && localItem.utr && m.utr === localItem.utr)
+                  );
+                  if (!matchInLive) {
+                    mergedItems.push(localItem);
+                  }
+                });
+              }
+            } catch (e) {}
+          }
+
+          mergedItems = mergedItems.filter((item: any) => item.id !== 'REQ-2026-1001');
+
+          setPaymentHistory(mergedItems);
           try {
-            localStorage.setItem('billingmaster_payment_history', JSON.stringify(liveItems));
+            localStorage.setItem('billingmaster_payment_history', JSON.stringify(mergedItems));
           } catch (e) {}
           return;
         }
@@ -238,10 +261,30 @@ export function MoreHub({ onNavigate }: MoreHubProps) {
       const saved = localStorage.getItem('billingmaster_payment_history');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) setPaymentHistory(parsed);
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter((item: any) => item.id !== 'REQ-2026-1001');
+          setPaymentHistory(cleaned);
+        }
       }
     } catch (e) {}
   };
+
+  useEffect(() => {
+    const checkHash = () => {
+      if (
+        window.location.hash === '#billing-history' ||
+        window.location.hash === '#billing_history' ||
+        window.location.hash === '#billing' ||
+        window.location.search.includes('billing')
+      ) {
+        setActiveModal('billing-history');
+        fetchLiveBillingHistory();
+      }
+    };
+    checkHash();
+    window.addEventListener('hashchange', checkHash);
+    return () => window.removeEventListener('hashchange', checkHash);
+  }, []);
 
   useEffect(() => {
     if (activeModal === 'billing-history') {

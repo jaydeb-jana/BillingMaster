@@ -33,3 +33,28 @@ export function resetScrollRef(el: HTMLElement | null) {
     el.scrollTop = 0;
   }
 }
+
+let lockCount = 0;
+let originalOverflow = '';
+
+/**
+ * Prevents background document body scroll bleed when a modal or dialog overlay is active.
+ */
+export function useBodyScrollLock(isLocked: boolean) {
+  useEffect(() => {
+    if (!isLocked) return;
+
+    if (lockCount === 0) {
+      originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+    }
+    lockCount++;
+
+    return () => {
+      lockCount = Math.max(0, lockCount - 1);
+      if (lockCount === 0) {
+        document.body.style.overflow = originalOverflow || '';
+      }
+    };
+  }, [isLocked]);
+}

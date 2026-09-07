@@ -12,6 +12,7 @@ import {
 import jsPDF from 'jspdf';
 import { db, auth, getBusinessId } from '@/lib/api';
 import { Link } from 'wouter';
+import { AnimatedValue } from './AnimatedValue';
 
 type DatePreset = 'all' | 'today' | 'yesterday' | '7days' | 'this_month' | 'last_month' | 'this_year' | 'custom';
 type ReportTab = 'sales' | 'products' | 'customers' | 'tax' | 'pnl';
@@ -657,10 +658,10 @@ export function Reports() {
             </div>
           </div>
           <div className="mono mt-2 text-xl sm:text-2xl font-bold text-foreground">
-            INR {salesMetrics.totalSales.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+            <AnimatedValue value={`INR ${salesMetrics.totalSales.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
           </div>
           <div className="mt-1 text-[11px] text-muted-foreground flex items-center gap-1">
-            <span className="font-semibold text-foreground">{salesMetrics.totalInvoicesCount}</span> invoices issued
+            <span className="font-semibold text-foreground"><AnimatedValue value={salesMetrics.totalInvoicesCount} /></span> invoices issued
           </div>
         </div>
 
@@ -672,10 +673,10 @@ export function Reports() {
             </div>
           </div>
           <div className="mono mt-2 text-xl sm:text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-            INR {salesMetrics.totalPaid.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+            <AnimatedValue value={`INR ${salesMetrics.totalPaid.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
           </div>
           <div className="mt-1 text-[11px] text-emerald-700 dark:text-emerald-400 font-medium">
-            {salesMetrics.collectionRate.toFixed(1)}% collection rate
+            <AnimatedValue value={`${salesMetrics.collectionRate.toFixed(1)}%`} /> collection rate
           </div>
         </div>
 
@@ -687,7 +688,7 @@ export function Reports() {
             </div>
           </div>
           <div className="mono mt-2 text-xl sm:text-2xl font-bold text-amber-600 dark:text-amber-400">
-            INR {salesMetrics.totalDue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+            <AnimatedValue value={`INR ${salesMetrics.totalDue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
           </div>
           <div className="mt-1 text-[11px] text-amber-700 dark:text-amber-400 font-medium">
             Awaiting customer payment
@@ -702,7 +703,7 @@ export function Reports() {
             </div>
           </div>
           <div className="mono mt-2 text-xl sm:text-2xl font-bold text-foreground">
-            INR {pnlMetrics.netOperatingProfit.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+            <AnimatedValue value={`INR ${pnlMetrics.netOperatingProfit.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
           </div>
           <div className="mt-1 text-[11px] text-muted-foreground">
             Margin: <span className="font-semibold text-foreground">{pnlMetrics.netProfitMargin.toFixed(1)}%</span>

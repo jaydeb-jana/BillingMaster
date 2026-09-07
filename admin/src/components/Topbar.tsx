@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, PlusCircle, RefreshCw } from 'lucide-react';
+import { PlusCircle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface TopbarProps {
@@ -19,16 +19,6 @@ export const Topbar: React.FC<TopbarProps> = ({ activeTabTitle, onRefreshData, o
           <span className="text-orange-400 font-bold">Admin Panel</span>
         </div>
         <h2 className="text-lg font-bold text-white tracking-tight">{activeTabTitle}</h2>
-      </div>
-
-      {/* Center Search Bar */}
-      <div className="relative w-80 lg:w-96 hidden md:block mx-4">
-        <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-        <input
-          type="text"
-          placeholder="Search tenants, plan codes, secret news, audit logs..."
-          className="w-full h-9 bg-[#131317] border border-neutral-800 rounded-xl pl-9 pr-4 py-1.5 text-xs text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-orange-500/60 focus:ring-1 focus:ring-orange-500/30 transition-all"
-        />
       </div>
 
       {/* Right Controls */}

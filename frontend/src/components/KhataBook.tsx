@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { db, getBusinessId, auth, getSupabaseErrorMessage } from '@/lib/api';
-import { useScrollReset } from '@/lib/useScrollReset';
+import { useScrollReset, useBodyScrollLock } from '@/lib/useScrollReset';
 import { toast } from 'sonner';
 import { GSTVerificationInput } from './GSTVerificationInput';
 
@@ -162,6 +162,8 @@ export function KhataBook({ initialCustomerId }: KhataBookProps) {
 
   const [showContactModal, setShowContactModal] = useState<CustomerSummary | null>(null);
   const [copiedContactField, setCopiedContactField] = useState<string | null>(null);
+
+  useBodyScrollLock(Boolean(showEntryModal || showCustomerModal || showDeleteModal || showReminderModal || showContactModal));
 
   // Entry Form state
   const [entryForm, setEntryForm] = useState({

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useBodyScrollLock } from '@/lib/useScrollReset';
 import {
   X, Copy, Check, MessageSquare, Mail, Share2, Send,
   Twitter, Link as LinkIcon, Package
@@ -28,6 +29,7 @@ export function ShareModal({
   productPrice,
   productImage,
 }: ShareModalProps) {
+  useBodyScrollLock(isOpen);
   const [copied, setCopied] = useState(false);
 
   if (!isOpen) return null;

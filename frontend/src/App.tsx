@@ -7,7 +7,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { auth, db, getBusinessId, getImpersonatedBusinessId, setCurrentBusinessId, supabase, supabaseConfigured, getSupabaseErrorMessage, getProductBarcode, generateInternalSku, getProductUniqueId } from '@/lib/api';
-import { useScrollReset, resetScrollRef } from '@/lib/useScrollReset';
+import { useScrollReset, resetScrollRef, useBodyScrollLock } from '@/lib/useScrollReset';
 import { Link, Route, Switch, Router as WouterRouter, useLocation, useParams } from 'wouter';
 import { useHashLocation } from 'wouter/use-hash-location';
 import { useBrowserLocation } from 'wouter/use-browser-location';
@@ -20,10 +20,12 @@ import {
   Landmark, LayoutDashboard, Lock, Unlock, LogOut, ImagePlus, Camera, Mail, MapPin, Menu, MessageCircle, Minus, MoreHorizontal, Package, Pencil, Phone, PhoneCall, Plus, Printer, QrCode, Receipt,
   RefreshCw, Search, Send, Settings as SettingsIcon, ShoppingCart, SlidersHorizontal, Sparkles, Store, Trash2, Eye, EyeOff,
   Truck, UserRound, Users, Wallet, X, XCircle, AlertCircle, Share2, Copy, ScanLine, Barcode, ShieldCheck, ShieldAlert,
-  AlertTriangle, CheckCheck, ExternalLink, Inbox, Info, BellRing, Filter, RotateCcw, History, Upload, Crown,
+  AlertTriangle, CheckCheck, ExternalLink, Inbox, Info, BellRing, Filter, RotateCcw, History, Upload, Crown, Cpu, Ticket,
 } from 'lucide-react';
+import { AnimatedValue } from '@/components/AnimatedValue';
 import { KhataBook } from '@/components/KhataBook';
 import { BarcodeVerifierModal } from '@/components/BarcodeVerifierModal';
+import { ProductBarcodeSearchModal } from '@/components/ProductBarcodeSearchModal';
 import { Reports } from '@/components/Reports';
 import { Expenses } from '@/components/Expenses';
 import { GSTVerificationInput } from '@/components/GSTVerificationInput';
@@ -39,6 +41,9 @@ import {
   PRINT_SIZES,
   type InvoiceTemplateSettings
 } from '@/components/InvoiceTemplateModal';
+import { InvoiceDocumentSheet } from '@/components/InvoiceDocumentSheet';
+import { getStoredEnabledCodes, getDropdownOptionsForUnits } from '@/constants/unitOptions';
+import { UnitSettingsModal } from '@/components/UnitSettingsModal';
 
 const queryClient = new QueryClient();
 type Row = Record<string, any>;
@@ -302,13 +307,14 @@ const mobileNavItems: { href: string; label: string; icon: Icon }[] = [
   { href: '/plan', label: 'Plan', icon: Crown },
 ];
 
-function AppField({ label, value, onChange, type = 'text', required, test, placeholder }: { label: string; value: any; onChange: (v: string) => void; type?: string; required?: boolean; test?: string; placeholder?: string }) {
+function AppField({ label, value, onChange, type = 'text', required, test, placeholder, inputMode, pattern, maxLength }: { label: string; value: any; onChange: (v: string) => void; type?: string; required?: boolean; test?: string; placeholder?: string; inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode']; pattern?: string; maxLength?: number }) {
   const [showPassword, setShowPassword] = useState(false);
   const isPassword = type === 'password';
   const effectiveType = isPassword ? (showPassword ? 'text' : 'password') : type;
 
   return (
-    <label className="block text-xs font-bold">{label}
+    <label className="block text-xs font-bold">
+      {label} {required && <span className="text-destructive ml-0.5">*</span>}
       <div className="relative mt-2">
         <input
           type={effectiveType}
@@ -316,6 +322,9 @@ function AppField({ label, value, onChange, type = 'text', required, test, place
           placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
           required={required}
+          inputMode={inputMode}
+          pattern={pattern}
+          maxLength={maxLength}
           className={`input-shell w-full px-3 text-sm font-normal ${isPassword ? 'pr-10' : ''}`}
           data-testid={test}
         />
@@ -373,11 +382,15 @@ function CustomDropdown({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
   const selectedOption = options.find((o) => o.value === value);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setSearchQuery('');
+      return;
+    }
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setOpen(false);
@@ -388,6 +401,17 @@ function CustomDropdown({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [open]);
+
+  const filteredOptions = useMemo(() => {
+    if (!searchQuery.trim()) return options;
+    const q = searchQuery.toLowerCase().trim();
+    return options.filter(
+      (o) =>
+        o.label.toLowerCase().includes(q) ||
+        o.value.toLowerCase().includes(q) ||
+        (o.hint && o.hint.toLowerCase().includes(q))
+    );
+  }, [options, searchQuery]);
 
   return (
     <div ref={dropdownRef} className={className}>
@@ -418,40 +442,59 @@ function CustomDropdown({
       {open && (
         <div
           role="listbox"
-          className="absolute top-full left-0 z-50 mt-1.5 max-h-64 w-full overflow-y-auto rounded-xl border border-border/80 bg-card p-1.5 text-card-foreground shadow-xl ring-1 ring-black/5 animate-in fade-in-0 zoom-in-95"
+          className="absolute top-full left-0 z-50 mt-1.5 max-h-72 w-full overflow-y-auto rounded-xl border border-border/80 bg-card p-1.5 text-card-foreground shadow-xl ring-1 ring-black/5 animate-in fade-in-0 zoom-in-95"
         >
-          {options.map((opt) => {
-            const isSelected = value === opt.value;
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                role="option"
-                aria-selected={isSelected}
-                onClick={() => {
-                  onChange(opt.value);
-                  setOpen(false);
-                }}
-                className={`relative flex w-full cursor-pointer select-none items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm transition-colors duration-150 ${
-                  isSelected
-                    ? 'bg-primary/10 font-semibold text-primary'
-                    : 'text-foreground hover:bg-muted/80'
-                }`}
-              >
-                <div className="min-w-0 flex-1 pr-4">
-                  <div className="truncate">{opt.label}</div>
-                  {opt.hint && (
-                    <div className="text-[11px] font-normal text-muted-foreground">{opt.hint}</div>
+          {options.length > 6 && (
+            <div className="sticky top-0 z-10 bg-card p-1 pb-1.5 mb-1 border-b border-border/60">
+              <div className="relative">
+                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Type to search..."
+                  className="w-full rounded-lg bg-muted/60 pl-8 pr-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
+            </div>
+          )}
+          {filteredOptions.length === 0 ? (
+            <div className="p-3 text-center text-xs text-muted-foreground">No matching options</div>
+          ) : (
+            filteredOptions.map((opt) => {
+              const isSelected = value === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  onClick={() => {
+                    onChange(opt.value);
+                    setOpen(false);
+                  }}
+                  className={`relative flex w-full cursor-pointer select-none items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm transition-colors duration-150 ${
+                    isSelected
+                      ? 'bg-primary/10 font-semibold text-primary'
+                      : 'text-foreground hover:bg-muted/80'
+                  }`}
+                >
+                  <div className="min-w-0 flex-1 pr-4">
+                    <div className="truncate">{opt.label}</div>
+                    {opt.hint && (
+                      <div className="text-[11px] font-normal text-muted-foreground">{opt.hint}</div>
+                    )}
+                  </div>
+                  {isSelected && (
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center text-primary">
+                      <Check className="h-4 w-4 stroke-[2.5]" />
+                    </span>
                   )}
-                </div>
-                {isSelected && (
-                  <span className="flex h-4 w-4 shrink-0 items-center justify-center text-primary">
-                    <Check className="h-4 w-4 stroke-[2.5]" />
-                  </span>
-                )}
-              </button>
-            );
-          })}
+                </button>
+              );
+            })
+          )}
         </div>
       )}
     </div>
@@ -495,6 +538,8 @@ function Shell({ children }: { children: ReactNode }) {
   });
 
   const [helpOpen, setHelpOpen] = useState(false);
+  const [showSignOutModal, setShowSignOutModal] = useState(false);
+  useBodyScrollLock(showSignOutModal);
   const [profile, setProfile] = useState<Row | null>(null);
   const [business, setBusiness] = useState<Row | null>(null);
   const [workspaceProducts, setWorkspaceProducts] = useState<Row[]>([]);
@@ -536,6 +581,7 @@ function Shell({ children }: { children: ReactNode }) {
         setProfileOpen(false);
         setNotificationsOpen(false);
         setHelpOpen(false);
+        setShowSignOutModal(false);
       }
     }
     function handleWheel(event: WheelEvent) {
@@ -695,7 +741,16 @@ function Shell({ children }: { children: ReactNode }) {
       }
     }
     void loadData();
-    return () => { active = false; };
+
+    const handleBizUpdate = () => {
+      void loadData();
+    };
+    window.addEventListener('billingmaster_business_updated', handleBizUpdate);
+
+    return () => {
+      active = false;
+      window.removeEventListener('billingmaster_business_updated', handleBizUpdate);
+    };
   }, [location]);
 
   // Compute rich, live notifications
@@ -886,10 +941,26 @@ function Shell({ children }: { children: ReactNode }) {
   const businessGstin = business?.gstin || userMeta.gstin || '';
   const userRole = profile?.role || 'Owner';
 
-  const handleSignOut = async () => {
+  const effectiveLogoUrl = useMemo(() => {
+    if (business?.logo_url) return String(business.logo_url);
+    try {
+      const sess = auth.session();
+      const meta = sess?.user?.user_metadata || {};
+      if (meta.logo_url) return String(meta.logo_url);
+      if (sess?.user?.id) {
+        const cached = localStorage.getItem(`arventa_biz_${sess.user.id}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed?.logo_url) return String(parsed.logo_url);
+        }
+      }
+    } catch (e) {}
+    return null;
+  }, [business]);
+
+  const handleSignOut = () => {
     setProfileOpen(false);
-    await auth.signOut();
-    setLocation('/login');
+    setShowSignOutModal(true);
   };
 
   const handleContactWhatsApp = () => {
@@ -992,22 +1063,53 @@ Why has my account been suspended? Please contact me as soon as possible.`;
   }
 
   return <div className="noise flex min-h-[100dvh] bg-background print:bg-white print:p-0">
-    <aside className={`fixed inset-y-0 left-0 z-40 flex w-[252px] flex-col bg-sidebar px-4 py-5 text-sidebar-foreground transition-transform duration-300 lg:static lg:translate-x-0 print:hidden ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-      <div className="mb-9 flex items-center justify-between px-2"><Logo /><button onClick={() => setMobileOpen(false)} className="rounded-md p-1 text-sidebar-foreground/60 lg:hidden" data-testid="button-close-menu"><X size={18} /></button></div>
-      <div className="mb-3 px-3 text-[10px] font-bold uppercase tracking-[.16em] text-sidebar-foreground/40">Workspace</div>
-      <nav className="space-y-1">
-        {navItems.map(({ href, label, icon: NavIcon }) => <Link key={href} href={href} onClick={() => setMobileOpen(false)} className={`group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold no-underline transition-colors ${location.startsWith(href) ? 'bg-sidebar-accent text-sidebar-foreground' : 'text-sidebar-foreground/62 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground'}`} data-testid={`link-nav-${label.toLowerCase()}`}>
-          <NavIcon size={17} strokeWidth={location.startsWith(href) ? 2.5 : 1.8} /><span>{label}</span>{label === 'Invoices' && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-secondary" />}{label === 'Plan' && <span className="ml-auto rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-extrabold text-primary border border-primary/20 capitalize">{business?.plan_name || 'Free'}</span>}
-        </Link>)}
-      </nav>
-      <div className="mt-8 px-3 text-[10px] font-bold uppercase tracking-[.16em] text-sidebar-foreground/40">Manage</div>
-      <nav className="mt-3 space-y-1">
-        <Link href="/settings" onClick={() => setMobileOpen(false)} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold no-underline transition-colors ${location.startsWith('/settings') ? 'bg-sidebar-accent text-sidebar-foreground' : 'text-sidebar-foreground/62 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground'}`} data-testid="link-nav-settings"><SettingsIcon size={17} /><span>Settings</span></Link>
-      </nav>
-      <div className="mt-auto rounded-2xl border border-sidebar-foreground/10 bg-sidebar-accent/45 p-3.5">
-        <div className="mb-3 flex items-center justify-between"><span className="grid h-8 w-8 place-items-center rounded-full bg-accent text-xs font-bold text-accent-foreground">{initials}</span><span className="rounded-full bg-secondary/15 px-2 py-1 text-[10px] font-bold text-secondary">{userRole.toUpperCase()}</span></div>
-        <div className="truncate text-xs font-bold">{workspaceName}</div><div className="mt-0.5 truncate text-[11px] text-sidebar-foreground/50">Business profile</div>
-        <button className="mt-3 flex items-center gap-2 text-[11px] font-semibold text-sidebar-foreground/58 hover:text-sidebar-foreground" onClick={handleSignOut} data-testid="button-signout"><LogOut size={13} /> Sign out</button>
+    <aside className={`fixed inset-y-0 left-0 z-40 flex w-[252px] h-screen flex-col bg-sidebar px-4 py-5 text-sidebar-foreground transition-transform duration-300 lg:sticky lg:top-0 lg:translate-x-0 lg:shrink-0 print:hidden ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <div className="mb-6 flex items-center justify-between px-2 shrink-0">
+        <Logo />
+        <button onClick={() => setMobileOpen(false)} className="rounded-md p-1 text-sidebar-foreground/60 lg:hidden" data-testid="button-close-menu">
+          <X size={18} />
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto min-h-0 space-y-6 pr-1 custom-scrollbar">
+        <div>
+          <div className="mb-3 px-3 text-[10px] font-bold uppercase tracking-[.16em] text-sidebar-foreground/40">Workspace</div>
+          <nav className="space-y-1">
+            {navItems.map(({ href, label, icon: NavIcon }) => (
+              <Link key={href} href={href} onClick={() => setMobileOpen(false)} className={`group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold no-underline transition-colors ${location.startsWith(href) ? 'bg-sidebar-accent text-sidebar-foreground' : 'text-sidebar-foreground/62 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground'}`} data-testid={`link-nav-${label.toLowerCase()}`}>
+                <NavIcon size={17} strokeWidth={location.startsWith(href) ? 2.5 : 1.8} />
+                <span>{label}</span>
+                {label === 'Invoices' && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-secondary" />}
+                {label === 'Plan' && <span className="ml-auto rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-extrabold text-primary border border-primary/20 capitalize">{business?.plan_name || 'Free'}</span>}
+              </Link>
+            ))}
+          </nav>
+        </div>
+        <div>
+          <div className="mb-3 px-3 text-[10px] font-bold uppercase tracking-[.16em] text-sidebar-foreground/40">Manage</div>
+          <nav className="space-y-1">
+            <Link href="/settings" onClick={() => setMobileOpen(false)} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold no-underline transition-colors ${location.startsWith('/settings') ? 'bg-sidebar-accent text-sidebar-foreground' : 'text-sidebar-foreground/62 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground'}`} data-testid="link-nav-settings">
+              <SettingsIcon size={17} />
+              <span>Settings</span>
+            </Link>
+          </nav>
+        </div>
+      </div>
+      <div className="shrink-0 mt-4 rounded-2xl border border-sidebar-foreground/10 bg-sidebar-accent/45 p-3.5">
+        <div className="mb-3 flex items-center justify-between">
+          {effectiveLogoUrl ? (
+            <div className="h-8 w-8 rounded-full overflow-hidden border border-sidebar-foreground/20 shrink-0 bg-white dark:bg-zinc-900 shadow-xs">
+              <img src={effectiveLogoUrl} alt={workspaceName} className="h-full w-full object-cover" />
+            </div>
+          ) : (
+            <span className="grid h-8 w-8 place-items-center rounded-full bg-accent text-xs font-bold text-accent-foreground">{initials}</span>
+          )}
+          <span className="rounded-full bg-secondary/15 px-2 py-1 text-[10px] font-bold text-secondary">{userRole.toUpperCase()}</span>
+        </div>
+        <div className="truncate text-xs font-bold">{workspaceName}</div>
+        <div className="mt-0.5 truncate text-[11px] text-sidebar-foreground/50">Business profile</div>
+        <button className="mt-3 flex items-center gap-2 text-[11px] font-semibold text-sidebar-foreground/58 hover:text-sidebar-foreground" onClick={handleSignOut} data-testid="button-signout">
+          <LogOut size={13} /> Sign out
+        </button>
       </div>
     </aside>
     {mobileOpen && <button className="fixed inset-0 z-30 bg-sidebar/30 lg:hidden print:hidden" onClick={() => setMobileOpen(false)} aria-label="Close navigation" data-testid="button-overlay" />}
@@ -1192,9 +1294,13 @@ Why has my account been suspended? Please contact me as soon as possible.`;
               aria-expanded={profileOpen}
               aria-label="User profile menu"
             >
-              <span className="relative grid h-8 w-8 place-items-center rounded-full bg-primary text-[11px] font-extrabold text-primary-foreground shadow-xs">
-                {initials}
-                <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-background bg-emerald-500" />
+              <span className="relative grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-[11px] font-extrabold text-primary-foreground shadow-xs overflow-hidden border border-border/40">
+                {effectiveLogoUrl ? (
+                  <img src={effectiveLogoUrl} alt={workspaceName} className="h-full w-full object-cover" />
+                ) : (
+                  initials
+                )}
+                <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-background bg-emerald-500 z-10" />
               </span>
               <div className="hidden text-left sm:block">
                 <p className="text-xs font-bold leading-none text-foreground max-w-[120px] truncate">{userName}</p>
@@ -1209,8 +1315,12 @@ Why has my account been suspended? Please contact me as soon as possible.`;
                 {/* Header User Card */}
                 <div className="rounded-xl bg-muted/40 p-3.5 mb-1.5 border border-border/40">
                   <div className="flex items-center gap-3">
-                    <span className="relative grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary text-sm font-extrabold text-primary-foreground shadow-sm">
-                      {initials}
+                    <span className="relative grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary text-sm font-extrabold text-primary-foreground shadow-sm overflow-hidden border border-border/40">
+                      {effectiveLogoUrl ? (
+                        <img src={effectiveLogoUrl} alt={workspaceName} className="h-full w-full object-cover" />
+                      ) : (
+                        initials
+                      )}
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-1">
@@ -1333,6 +1443,81 @@ Why has my account been suspended? Please contact me as soon as possible.`;
       {/* Help & Support Center Modal */}
       <HelpCenterModal isOpen={helpOpen} onClose={() => setHelpOpen(false)} />
 
+      {/* Sign Out Confirmation Modal */}
+      {showSignOutModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-xs animate-fadeIn">
+          <div className="w-full max-w-md rounded-2xl border border-border/80 bg-card p-6 shadow-2xl animate-rise text-foreground">
+            <div className="flex items-center justify-between pb-4 border-b border-border/60">
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-destructive/10 text-destructive">
+                  <LogOut size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold tracking-tight">Confirm Sign Out</h3>
+                  <p className="text-[11px] text-muted-foreground">Session termination</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSignOutModal(false)}
+                className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
+                aria-label="Close dialog"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="py-5 space-y-4">
+              <p className="text-xs sm:text-sm text-foreground/90 leading-relaxed">
+                Are you sure you want to sign out of this account?
+              </p>
+              
+              <div className="rounded-2xl border border-border/70 bg-muted/40 p-3.5 flex items-center gap-3">
+                <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary text-xs font-extrabold text-primary-foreground overflow-hidden border border-border/40">
+                  {effectiveLogoUrl ? (
+                    <img src={effectiveLogoUrl} alt={workspaceName} className="h-full w-full object-cover" />
+                  ) : (
+                    initials
+                  )}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-black text-foreground">{userName}</p>
+                  <p className="truncate text-[11px] text-muted-foreground mt-0.5">{userEmail}</p>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                You will need to enter your email and password to access your shop workspace again.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-border/60">
+              <button
+                type="button"
+                onClick={() => setShowSignOutModal(false)}
+                className="rounded-xl border border-border bg-background px-4 py-2.5 text-xs font-bold text-foreground shadow-xs hover:bg-muted transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setShowSignOutModal(false);
+                  setProfileOpen(false);
+                  await auth.signOut();
+                  toast.success('Signed out successfully.');
+                  setLocation('/login');
+                }}
+                className="rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground px-4.5 py-2.5 text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                data-testid="button-confirm-signout"
+              >
+                <LogOut size={14} />
+                <span>Confirm Sign Out</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mx-auto max-w-[1440px] px-4 py-7 pb-24 sm:px-7 lg:px-10 lg:py-9 print:m-0 print:max-w-none print:p-0">{children}</div>
     </main>
     <nav className="fixed inset-x-3 bottom-3 z-20 flex items-center justify-around rounded-2xl border border-border bg-card/95 p-2 shadow-float backdrop-blur lg:hidden print:hidden">
@@ -1411,7 +1596,9 @@ function Metric({ icon: MetricIcon, label, value, hint, href }: { icon: Icon; la
           {label} <ArrowRight size={12} className="opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
         </span>
       </div>
-      <div className="mono text-[27px] font-medium tracking-[-.08em] text-foreground">{value}</div>
+      <div className="mono text-[27px] font-medium tracking-[-.08em] text-foreground">
+        <AnimatedValue value={value} />
+      </div>
       <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div>
     </div>
   );
@@ -1861,7 +2048,10 @@ function InvoiceRow({ row, customerName }: { row: Row; customerName?: string }) 
         </div>
       </div>
       <div className="text-right">
-        <div className="mono text-sm font-bold">₹{row.total != null ? Number(row.total).toFixed(2) : '0.00'} <span className="text-[10px] text-muted-foreground">{row.currency || 'INR'}</span></div>
+        <div className="mono text-sm font-bold">
+          <AnimatedValue value={`₹${row.total != null ? Number(row.total).toFixed(2) : '0.00'}`} />{' '}
+          <span className="text-[10px] text-muted-foreground">{row.currency || 'INR'}</span>
+        </div>
       </div>
     </Link>
   );
@@ -2313,119 +2503,6 @@ function InvoiceQuickSettings({ onClose }: { onClose: () => void }) {
               </div>
             </div>
 
-            {/* Live Template Visual Preview Card */}
-            {(() => {
-              const activePreviewTplId = form.enable_tax 
-                ? (form.invoice_gst_template || 'gst-pro')
-                : (form.invoice_nongst_template || 'modern');
-              const selectedTpl = INVOICE_TEMPLATES.find(t => t.id === activePreviewTplId) || INVOICE_TEMPLATES[0];
-              const printSz = form.invoice_print_size || 'A4';
-              return (
-                <div className="rounded-2xl border border-primary/30 bg-primary/5 p-3.5 shadow-2xs">
-                  <div className="flex items-center justify-between mb-2 pb-2 border-b border-primary/20">
-                    <div className="flex items-center gap-2">
-                      <div className="grid h-6 w-6 place-items-center rounded-lg bg-primary text-primary-foreground">
-                        <Sparkles size={13} />
-                      </div>
-                      <div>
-                        <div className="text-xs font-black text-foreground flex items-center gap-1.5">
-                          <span>{selectedTpl.name}</span>
-                          <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded ${selectedTpl.badgeColor}`}>
-                            {selectedTpl.badge}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-extrabold text-primary bg-background px-2 py-0.5 rounded-md border border-primary/30 mono">
-                      Active Preview ({form.enable_tax ? 'GST Mode' : 'Non-GST Mode'} • {printSz})
-                    </span>
-                  </div>
-
-                  {/* Visual Mock Card */}
-                  <div className="h-24 w-full rounded-xl border border-border bg-card p-2.5 shadow-inner flex flex-col justify-between overflow-hidden text-[9px] select-none">
-                    {selectedTpl.id === 'gst-pro' && (
-                      <div className="h-full flex flex-col justify-between space-y-1">
-                        <div className="flex justify-between items-center border-b border-emerald-500/40 pb-0.5 text-emerald-600 font-bold text-[8px]">
-                          <span className="flex items-center gap-1"><ShieldCheck size={10} /> GST TAX INVOICE</span>
-                          <span className="mono">GSTIN: 19ABCDE1234F1Z5</span>
-                        </div>
-                        <div className="grid grid-cols-4 gap-0.5 text-[8px] font-bold text-muted-foreground bg-muted/40 p-1 rounded">
-                          <span className="col-span-2">Item Name</span>
-                          <span>HSN/SAC</span>
-                          <span className="text-right">CGST+SGST</span>
-                        </div>
-                        <div className="flex justify-between items-center bg-emerald-50 dark:bg-emerald-950/40 p-1 rounded font-black text-emerald-700 dark:text-emerald-300 text-[8.5px]">
-                          <span>TOTAL INCL. GST</span>
-                          <span className="mono">₹5,900.00</span>
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedTpl.id === 'standard' && (
-                      <div className="h-full flex flex-col justify-between space-y-1">
-                        <div className="flex justify-between items-center border-b border-border pb-0.5">
-                          <div className="font-extrabold text-primary text-[9px]">BILLING MASTER STORE</div>
-                          <div className="mono text-muted-foreground font-bold text-[8px]">INV-2026-0042</div>
-                        </div>
-                        <div className="flex justify-between text-muted-foreground py-0.5 text-[8.5px]">
-                          <span>Product Purchase & Line Items</span>
-                          <span className="mono font-bold text-foreground">₹4,250.00</span>
-                        </div>
-                        <div className="flex justify-between items-center bg-primary/10 p-1 rounded font-black text-primary text-[8.5px]">
-                          <span>Subtotal & Tax Breakdown</span>
-                          <span className="mono">₹4,250.00</span>
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedTpl.id === 'modern' && (
-                      <div className="h-full flex flex-col justify-between space-y-1">
-                        <div className="bg-foreground text-background px-2 py-0.5 rounded flex justify-between items-center font-bold tracking-wider text-[8px]">
-                          <span>COMMERCIAL INVOICE</span>
-                          <span className="mono">#89012</span>
-                        </div>
-                        <div className="px-1 text-muted-foreground space-y-0.5 text-[8px]">
-                          <div className="flex justify-between"><span>Web Design & Services</span><span>₹12,000</span></div>
-                        </div>
-                        <div className="bg-blue-500/10 px-1.5 py-0.5 rounded flex justify-between font-black text-blue-600 text-[8.5px]">
-                          <span>GRAND TOTAL</span>
-                          <span className="mono">₹13,500.00</span>
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedTpl.id === 'pos-thermal' && (
-                      <div className="h-full flex flex-col items-center justify-between text-center font-mono text-[8px]">
-                        <div className="border-b border-dashed border-border w-full pb-0.5 font-bold">
-                          *** RETAIL COUNTER RECEIPT ***
-                        </div>
-                        <div className="w-full flex justify-between text-muted-foreground text-[7.5px]">
-                          <span>ITEM x2</span>
-                          <span>₹350.00</span>
-                        </div>
-                        <div className="w-full border-t border-dashed border-border pt-0.5 flex justify-between font-black text-foreground text-[8.5px]">
-                          <span>TOTAL PAID</span>
-                          <span>₹350.00</span>
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedTpl.id === 'executive' && (
-                      <div className="h-full flex flex-col justify-between border-2 border-double border-amber-500/40 p-1 rounded bg-amber-500/5 text-[8px]">
-                        <div className="text-center font-serif font-black text-amber-600 tracking-widest border-b border-amber-500/30 pb-0.5">
-                          OFFICIAL CONTRACT INVOICE
-                        </div>
-                        <div className="flex justify-between items-center bg-amber-500/10 p-1 rounded font-bold text-amber-800 dark:text-amber-200">
-                          <span>Authorized Total</span>
-                          <span className="mono font-black">₹25,000.00</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
-
             {/* CATEGORY 1: GENERAL / NON-GST TEMPLATES */}
             <div className="space-y-2">
               <div className="flex items-center justify-between border-b border-border pb-1">
@@ -2437,8 +2514,8 @@ function InvoiceQuickSettings({ onClose }: { onClose: () => void }) {
                   Non-GST Category
                 </span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {INVOICE_TEMPLATES.filter(t => t.id === 'modern' || t.id === 'pos-thermal' || t.id === 'executive').map(tpl => {
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {INVOICE_TEMPLATES.filter(t => t.category === 'nongst').map(tpl => {
                   const isNonGstSelected = (form.invoice_nongst_template || 'modern') === tpl.id;
                   return (
                     <button
@@ -2455,6 +2532,97 @@ function InvoiceQuickSettings({ onClose }: { onClose: () => void }) {
                           : 'border-border bg-card hover:border-primary/40 hover:bg-muted/20'
                       }`}
                     >
+                      {/* Vertical A4 Paper Sheet Preview on TOP of Card (Above Name) */}
+                      <div className="w-full bg-slate-900/5 dark:bg-slate-950/40 py-2.5 px-1.5 rounded-lg border border-border/80 flex items-center justify-center min-h-[210px] shadow-inner relative overflow-hidden mb-2.5">
+                        <div className="w-[140px] h-[195px] bg-white text-slate-900 rounded-xs shadow-md border border-slate-200/90 p-2 flex flex-col justify-between text-[6px] font-sans leading-tight relative select-none">
+                          {tpl.id === 'modern' && (
+                            <>
+                              <div className="bg-slate-900 text-white p-1 rounded-xs flex justify-between items-center font-bold">
+                                <span className="text-[7px]">MODERN MINIMALIST</span>
+                                <span className="mono text-[5.5px] text-blue-400">#089</span>
+                              </div>
+                              <div className="text-[5px] text-slate-500">Contemporary Service Billing</div>
+                              <div className="space-y-0.5 text-[5px] text-slate-700 py-1">
+                                <div className="flex justify-between border-b border-slate-100 pb-0.5"><span>Web & Tech Service</span><span>₹4,000</span></div>
+                                <div className="flex justify-between"><span>Hosting & Servers</span><span>₹484</span></div>
+                              </div>
+                              <div className="bg-blue-500/10 p-0.5 rounded flex justify-between font-black text-blue-600 text-[6.5px] border border-blue-200">
+                                <span>GRAND TOTAL</span>
+                                <span className="mono">₹4,484.00</span>
+                              </div>
+                            </>
+                          )}
+                          {tpl.id === 'pos-thermal' && (
+                            <div className="h-full bg-slate-50 text-slate-900 font-mono p-1 border-y border-dashed border-slate-400 flex flex-col justify-between text-[5.5px]">
+                              <div className="text-center font-bold border-b border-dashed border-slate-300 pb-0.5">*** RECEIPT POS ***</div>
+                              <div className="space-y-0.5 text-[5px]">
+                                <div className="flex justify-between"><span>ITEM A x1</span><span>₹200.00</span></div>
+                                <div className="flex justify-between"><span>ITEM B x1</span><span>₹215.00</span></div>
+                              </div>
+                              <div className="border-t border-dashed border-slate-300 pt-0.5 flex justify-between font-black text-[6.5px]">
+                                <span>TOTAL PAID</span><span>₹415.00</span>
+                              </div>
+                            </div>
+                          )}
+                          {tpl.id === 'executive' && (
+                            <div className="h-full border-2 border-double border-amber-600/60 p-1 flex flex-col justify-between text-[5.5px]">
+                              <div className="text-center font-serif font-black text-amber-800 text-[7px] border-b border-amber-600/30 pb-0.5">EXECUTIVE CONTRACT</div>
+                              <div className="flex justify-between"><span>Contract Services</span><span>₹25,000</span></div>
+                              <div className="bg-amber-500/15 p-0.5 rounded font-bold text-amber-900 flex justify-between text-[6.5px]">
+                                <span>Total</span><span className="mono">₹25,000.00</span>
+                              </div>
+                            </div>
+                          )}
+                          {tpl.id === 'royalty-gold' && (
+                            <>
+                              <div className="border-t-2 border-amber-500 pt-0.5 border-b border-amber-300/60 pb-0.5 flex justify-between items-center">
+                                <span className="font-serif font-black text-amber-800 text-[7px] flex items-center gap-0.5"><Crown size={7} /> ROYALTY GOLD</span>
+                                <span className="mono text-[5px] bg-amber-400/20 px-1 rounded font-bold">LUXURY</span>
+                              </div>
+                              <div className="text-[5px] text-slate-600 flex justify-between"><span>Gold Jewelry</span><span>₹1,25,000</span></div>
+                              <div className="bg-amber-500/20 border border-amber-400/40 p-0.5 rounded font-black text-amber-900 flex justify-between text-[6.5px]">
+                                <span>TOTAL</span><span className="mono">₹1,25,000.00</span>
+                              </div>
+                            </>
+                          )}
+                          {tpl.id === 'cyber-tech' && (
+                            <div className="h-full bg-slate-950 text-slate-100 font-mono p-1 rounded-xs border border-indigo-500/40 flex flex-col justify-between text-[5.5px]">
+                              <div className="flex justify-between text-indigo-400 font-bold text-[6.5px]">
+                                <span className="flex items-center gap-0.5"><Cpu size={7} /> CYBER_TECH</span>
+                                <span>OK</span>
+                              </div>
+                              <div className="flex justify-between"><span>&gt; Server</span><span>₹18,500</span></div>
+                              <div className="bg-indigo-900/40 p-0.5 rounded font-black text-indigo-300 flex justify-between text-[6.5px]">
+                                <span>TOTAL</span><span>₹18,500.00</span>
+                              </div>
+                            </div>
+                          )}
+                          {tpl.id === 'chic-boutique' && (
+                            <>
+                              <div className="bg-rose-100 text-rose-900 p-0.5 rounded-xs flex justify-between font-extrabold text-[7px]">
+                                <span className="flex items-center gap-0.5"><Sparkles size={7} /> CHIC BOUTIQUE</span>
+                                <span className="text-[5px]">PASTEL</span>
+                              </div>
+                              <div className="flex justify-between text-[5px]"><span>Apparel</span><span>₹3,800</span></div>
+                              <div className="bg-rose-500/15 p-0.5 rounded-full px-1.5 font-black text-rose-800 flex justify-between text-[6.5px]">
+                                <span>PAYABLE</span><span className="mono">₹3,800.00</span>
+                              </div>
+                            </>
+                          )}
+                          {tpl.id === 'compact-slip' && (
+                            <div className="h-full bg-teal-50 text-teal-950 p-1 rounded-xs border border-teal-300 flex flex-col justify-between text-[5.5px]">
+                              <div className="bg-teal-600 text-white p-0.5 rounded-xs flex justify-between font-bold text-[6.5px]">
+                                <span className="flex items-center gap-0.5"><Ticket size={7} /> DISPATCH SLIP</span>
+                              </div>
+                              <div className="flex justify-between"><span>Slip Item</span><span>₹1,950</span></div>
+                              <div className="border-t border-dashed border-teal-400 pt-0.5 text-teal-800 font-bold flex justify-between text-[6px]">
+                                <span>PASS</span><span className="mono">✓</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-extrabold text-foreground">{tpl.name}</span>
                         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${tpl.badgeColor}`}>
@@ -2484,8 +2652,8 @@ function InvoiceQuickSettings({ onClose }: { onClose: () => void }) {
                   GST Category
                 </span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {INVOICE_TEMPLATES.filter(t => t.id === 'gst-pro' || t.id === 'standard').map(tpl => {
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {INVOICE_TEMPLATES.filter(t => t.category === 'gst').map(tpl => {
                   const isGstSelected = (form.invoice_gst_template || 'gst-pro') === tpl.id;
                   return (
                     <button
@@ -2502,6 +2670,80 @@ function InvoiceQuickSettings({ onClose }: { onClose: () => void }) {
                           : 'border-border bg-card hover:border-emerald-500/40 hover:bg-muted/20'
                       }`}
                     >
+                      {/* Vertical A4 Paper Sheet Preview on TOP of Card (Above Name) */}
+                      <div className="w-full bg-slate-900/5 dark:bg-slate-950/40 py-2.5 px-1.5 rounded-lg border border-border/80 flex items-center justify-center min-h-[210px] shadow-inner relative overflow-hidden mb-2.5">
+                        <div className="w-[140px] h-[195px] bg-white text-slate-900 rounded-xs shadow-md border border-slate-200/90 p-2 flex flex-col justify-between text-[6px] font-sans leading-tight relative select-none">
+                          {tpl.id === 'gst-pro' && (
+                            <>
+                              <div className="border-b border-emerald-600 pb-0.5 flex justify-between items-start">
+                                <div>
+                                  <div className="font-extrabold text-emerald-800 text-[7px] flex items-center gap-0.5"><ShieldCheck size={7} /> GST TAX INVOICE</div>
+                                  <div className="text-[5px] text-slate-500 font-bold">GSTIN: 19ABCDE1234F1Z5</div>
+                                </div>
+                                <div className="text-right text-[5px]">
+                                  <div className="font-bold text-emerald-700">#INV-9901</div>
+                                </div>
+                              </div>
+                              <div className="border border-slate-200 rounded overflow-hidden text-[5px]">
+                                <div className="bg-emerald-600 text-white font-bold px-1 py-0.5 flex justify-between">
+                                  <span>Item</span><span>HSN</span><span>CGST+SGST</span><span>Total</span>
+                                </div>
+                                <div className="p-1 space-y-0.5 text-slate-700">
+                                  <div className="flex justify-between"><span>Goods</span><span>8471</span><span>18%</span><span>₹7,500</span></div>
+                                  <div className="flex justify-between border-t border-slate-100 pt-0.5"><span>Logistics</span><span>9965</span><span>18%</span><span>₹1,420</span></div>
+                                </div>
+                              </div>
+                              <div className="bg-emerald-500/10 p-0.5 rounded flex justify-between font-black text-emerald-800 text-[6.5px] border border-emerald-500/20">
+                                <span>TOTAL INCL. TAX</span>
+                                <span className="mono">₹8,920.00</span>
+                              </div>
+                            </>
+                          )}
+                          {tpl.id === 'standard' && (
+                            <>
+                              <div className="border-b border-orange-500 pb-0.5 flex justify-between items-start">
+                                <div>
+                                  <div className="font-black text-orange-600 text-[7.5px]">BILLINGMASTER STORE</div>
+                                  <div className="text-[5px] text-slate-400">Commercial Trading</div>
+                                </div>
+                                <div className="text-right text-[5px]">
+                                  <div className="font-bold text-slate-700">INV-001</div>
+                                </div>
+                              </div>
+                              <div className="border border-slate-200 rounded text-[5px]">
+                                <div className="bg-slate-100 text-slate-700 font-bold px-1 py-0.5 flex justify-between">
+                                  <span>Item</span><span>Qty</span><span>Rate</span><span>Amount</span>
+                                </div>
+                                <div className="p-1 space-y-0.5">
+                                  <div className="flex justify-between"><span>Product A</span><span>2</span><span>₹1,250</span><span>₹2,500</span></div>
+                                  <div className="flex justify-between border-t border-slate-100 pt-0.5"><span>Product B</span><span>1</span><span>₹1,750</span><span>₹1,750</span></div>
+                                </div>
+                              </div>
+                              <div className="bg-orange-50 p-0.5 rounded flex justify-between font-black text-orange-700 text-[6.5px] border border-orange-200">
+                                <span>SUBTOTAL + TAX</span>
+                                <span className="mono">₹4,250.00</span>
+                              </div>
+                            </>
+                          )}
+                          {tpl.id === 'b2b-enterprise' && (
+                            <>
+                              <div className="bg-purple-700 text-white p-0.5 rounded-xs flex justify-between items-center font-bold text-[6px]">
+                                <span className="flex items-center gap-0.5"><Building2 size={6} /> B2B ENTERPRISE</span>
+                                <span className="mono text-[5px]">PO-99214</span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-0.5 text-[5px] bg-purple-50/70 p-0.5 rounded border border-purple-200">
+                                <div><strong>Billed:</strong> Client</div>
+                                <div><strong>Shipped:</strong> Hub</div>
+                              </div>
+                              <div className="bg-purple-600 text-white p-0.5 rounded flex justify-between font-black text-[6.5px]">
+                                <span>AUDITED B2B TOTAL</span>
+                                <span className="mono">₹48,500.00</span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-extrabold text-foreground">{tpl.name}</span>
                         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${tpl.badgeColor}`}>
@@ -2787,6 +3029,7 @@ function InvoiceNew() {
   
   const [customerModal, setCustomerModal] = useState(false);
   const [newCustomerForm, setNewCustomerForm] = useState<Row>({});
+  useBodyScrollLock(Boolean(customItemModal || zeroStockModalProduct || customerModal));
 
   const openCustomerModal = () => {
     setNewCustomerForm({
@@ -4031,6 +4274,7 @@ function InvoiceDetail() {
   const [returnLogs, setReturnLogs] = useState<Row[]>([]);
   const [returningItem, setReturningItem] = useState<boolean>(false);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  useBodyScrollLock(Boolean(paymentModal || payLaterModal || cancelConfirmModal || returnModalItem || templateModalOpen));
   const [templateSettings, setTemplateSettings] = useState<InvoiceTemplateSettings>(() => {
     try {
       const raw = localStorage.getItem('arventa_invoice_template_settings');
@@ -4751,8 +4995,16 @@ function InvoiceDetail() {
   const fromCustomer = searchParams.get('fromCustomer');
   const backLink = fromCustomer ? `/customers?view=${fromCustomer}` : '/invoices';
 
+  const activePrintSize = templateSettings?.print_size || 'A4';
+
   return (
-    <div className={`mx-auto pb-16 print:max-w-full print:p-0 ${isThermal ? 'max-w-md' : 'max-w-2xl'}`}>
+    <div className={`mx-auto pb-16 print:max-w-full print:p-0 transition-all duration-300 ${
+      activePrintSize === '58mm' ? 'max-w-[58mm]' :
+      activePrintSize === '80mm' ? 'max-w-[80mm]' :
+      activePrintSize === 'A5' ? 'max-w-[148mm]' :
+      activePrintSize === 'Letter' ? 'max-w-[216mm]' :
+      'max-w-[210mm]'
+    }`}>
       {/* Top Action Toolbar */}
       <div className="mb-3 flex items-center justify-between gap-2.5 print:hidden">
         <div className="flex items-center gap-2">
@@ -4781,7 +5033,7 @@ function InvoiceDetail() {
               <button
                 type="button"
                 onClick={() => setTemplateModalOpen(true)}
-                className="inline-flex items-center gap-1 text-[10px] font-bold text-primary hover:underline"
+                className="inline-flex items-center gap-1 text-[10px] font-bold text-primary hover:underline cursor-pointer"
               >
                 <SlidersHorizontal size={10} />
                 <span>{INVOICE_TEMPLATES.find(t => t.id === templateSettings.template_id)?.name || 'Template'} ({templateSettings.print_size})</span>
@@ -4812,221 +5064,28 @@ function InvoiceDetail() {
         </div>
       </div>
 
-      {/* Printable Invoice Sheet - Compact, clean & professional */}
-      <div id="invoice-download-container" className="invoice-sheet card-shell overflow-hidden border border-border bg-card p-4 sm:p-6 shadow-sm print:m-0 print:w-full print:border-none print:p-6 print:shadow-none bg-white text-black dark:text-foreground">
-        
-        {/* Header: Business & Invoice Meta */}
-        <div className="flex flex-col justify-between gap-3 border-b border-border/70 pb-4 sm:flex-row sm:items-start">
-          <div className="flex items-start gap-2.5">
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary text-base font-black text-primary-foreground">
-              {(business?.name || 'BM')[0].toUpperCase()}
-            </div>
-            <div>
-              <h1 className="text-base sm:text-lg font-black tracking-tight text-foreground leading-tight">{business?.name || 'BillingMaster'}</h1>
-              <p className="text-[11px] font-medium text-muted-foreground">{business?.owner_name || 'Commercial Billing'}</p>
-              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
-                {business?.phone && <span className="flex items-center gap-1"><Phone size={11} /> {business.phone}</span>}
-                {business?.address && <span className="flex items-center gap-1"><MapPin size={11} /> {business.address}</span>}
-                {(business?.gstin || paymentInfo?.gstin) && (
-                  <span className="flex items-center gap-1 font-bold text-primary">
-                    <ShieldCheck size={11} /> GSTIN: {business?.gstin || paymentInfo?.gstin}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Invoice Meta Card */}
-          <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2 text-left sm:text-right sm:min-w-[170px]">
-            <div className="text-[9px] font-black uppercase tracking-wider text-primary">TAX INVOICE</div>
-            <div className="mono text-base font-black tracking-tight text-foreground">{invoice.invoice_number || 'INV-0001'}</div>
-            <div className="text-[11px] text-muted-foreground mt-0.5">
-              <span>{invoice.issue_date || 'Today'}</span> {timeStr && <span>• {timeStr}</span>}
-            </div>
-            <div className="mt-1 text-[10px] font-extrabold uppercase text-emerald-600">
-              COMMERCIAL INVOICE
-            </div>
-          </div>
-        </div>
-
-        {/* Customer / Billed To Section - Compact Grid */}
-        <div className="my-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2 text-xs">
-          <div className="rounded-lg border border-border/50 bg-muted/10 p-2.5">
-            <span className="text-[9px] font-black uppercase tracking-wider text-primary">BILLED TO</span>
-            <div className="mt-0.5 text-xs font-bold text-foreground truncate">{customer?.name || customer?.full_name || 'Walk-in Customer'}</div>
-            <div className="mt-1 space-y-0.5 text-[11px] text-muted-foreground">
-              {customer?.phone && <div className="flex items-center gap-1"><Phone size={11} /> {customer.phone}</div>}
-              {customer?.address && <div className="flex items-center gap-1"><MapPin size={11} /> {customer.address}</div>}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-border/50 bg-muted/10 p-2.5 flex flex-col justify-between">
-            <div>
-              <span className="text-[9px] font-black uppercase tracking-wider text-primary">DISPATCH STATUS</span>
-              <div className="mt-1 space-y-0.5 text-[11px] text-muted-foreground">
-                <div className="flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                  <span>Email: Active (Primary)</span>
-                </div>
-                {notifString.includes('WhatsApp') && (
-                  <div className="flex items-center gap-1.5 text-emerald-600">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                    <span>WhatsApp: Digital Dispatch</span>
-                  </div>
-                )}
-              </div>
-            </div>
-            {isPaid && invoice.paid_at && (
-              <div className="mt-1 text-[10px] font-bold text-emerald-600">
-                ✓ Paid on {new Date(invoice.paid_at).toLocaleDateString()}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Itemized Table - Compact Padding */}
-        <div className="overflow-x-auto rounded-lg border border-border/70">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-muted/30 border-b border-border/60 text-[9px] font-black uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="py-2 px-2.5 w-8 text-center">#</th>
-                <th className="py-2 px-2.5">Item</th>
-                <th className="py-2 px-2 text-center w-16">Qty</th>
-                <th className="py-2 px-2 text-right w-20">Price</th>
-                <th className="py-2 px-2.5 text-right w-24">Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/50 text-[11px]">
-              {items.length > 0 ? (
-                items.map((it, idx) => (
-                  <tr key={it.id || idx} className="hover:bg-muted/10">
-                    <td className="py-2 px-2.5 text-center text-muted-foreground">{idx + 1}</td>
-                    <td className="py-2 px-2.5">
-                      <div className="font-bold text-foreground">{it.product_name || 'Item'}</div>
-                    </td>
-                    <td className="py-2 px-2 text-center font-semibold text-foreground">
-                      {it.quantity} <span className="text-[9px] font-normal text-muted-foreground">{it.product_unit || 'pcs'}</span>
-                    </td>
-                    <td className="py-2 px-2 text-right mono">₹{Number(it.unit_price || 0).toFixed(2)}</td>
-                    <td className="py-2 px-2.5 text-right mono font-bold text-foreground">₹{Number(it.total || (it.quantity * it.unit_price) || 0).toFixed(2)}</td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={5} className="py-4 px-3 text-center text-muted-foreground text-xs">
-                    Standard billing invoice (Total: ₹{Number(invoice.total || 0).toFixed(2)})
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Calculation, Payment & Status Summary */}
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {/* Left Column: Bank / UPI Details and Notes */}
-          <div className="space-y-2.5">
-            {Boolean(paymentInfo?.upi_id || paymentInfo?.bank_name || paymentInfo?.account_number) && (
-              <div className="rounded-lg border border-border/70 p-2.5 bg-muted/15 text-xs">
-                <div className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-primary mb-1.5">
-                  <Landmark size={11} />
-                  <span>PAYMENT DETAILS / BANK TRANSFER</span>
-                </div>
-                <div className="space-y-1 text-[10.5px]">
-                  {paymentInfo?.upi_id && (
-                    <div className="flex items-center justify-between gap-1 border-b border-border/30 pb-0.5">
-                      <span className="font-semibold text-muted-foreground">UPI ID:</span>
-                      <span className="mono font-bold text-foreground">{paymentInfo.upi_id}</span>
-                    </div>
-                  )}
-                  {paymentInfo?.upi_number && (
-                    <div className="flex items-center justify-between gap-1 border-b border-border/30 pb-0.5">
-                      <span className="font-semibold text-muted-foreground">UPI Mobile:</span>
-                      <span className="mono font-bold text-foreground">{paymentInfo.upi_number}</span>
-                    </div>
-                  )}
-                  {paymentInfo?.bank_name && (
-                    <div className="flex items-center justify-between gap-1 border-b border-border/30 pb-0.5">
-                      <span className="font-semibold text-muted-foreground">Bank Name:</span>
-                      <span className="font-bold text-foreground">{paymentInfo.bank_name}</span>
-                    </div>
-                  )}
-                  {paymentInfo?.account_holder_name && (
-                    <div className="flex items-center justify-between gap-1 border-b border-border/30 pb-0.5">
-                      <span className="font-semibold text-muted-foreground">A/C Name:</span>
-                      <span className="font-semibold text-foreground truncate max-w-[150px]">{paymentInfo.account_holder_name}</span>
-                    </div>
-                  )}
-                  {paymentInfo?.account_number && (
-                    <div className="flex items-center justify-between gap-1 border-b border-border/30 pb-0.5">
-                      <span className="font-semibold text-muted-foreground">A/C No:</span>
-                      <span className="mono font-bold text-foreground">{paymentInfo.account_number}</span>
-                    </div>
-                  )}
-                  {paymentInfo?.ifsc_code && (
-                    <div className="flex items-center justify-between gap-1 border-b border-border/30 pb-0.5">
-                      <span className="font-semibold text-muted-foreground">IFSC Code:</span>
-                      <span className="mono font-bold text-foreground">{paymentInfo.ifsc_code}</span>
-                    </div>
-                  )}
-                  {paymentInfo?.account_type && (
-                    <div className="flex items-center justify-between gap-1 border-b border-border/30 pb-0.5">
-                      <span className="font-semibold text-muted-foreground">A/C Type:</span>
-                      <span className="text-foreground">{paymentInfo.account_type}</span>
-                    </div>
-                  )}
-                  {paymentInfo?.branch_name && (
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="font-semibold text-muted-foreground">Branch:</span>
-                      <span className="text-foreground truncate max-w-[150px]">{paymentInfo.branch_name}</span>
-                    </div>
-                  )}
-                </div>
-                {paymentInfo?.payment_instructions && (
-                  <p className="mt-1.5 text-[9.5px] text-muted-foreground italic border-t border-border/30 pt-1">
-                    * {paymentInfo.payment_instructions}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Notes */}
-            <div className="rounded-lg border border-border/50 p-2.5 bg-muted/10 text-xs">
-              <div className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">NOTES & TERMS</div>
-              <div className="mt-1 text-[11px] text-muted-foreground whitespace-pre-line leading-relaxed">
-                {invoice.notes?.split('\n').filter((l: string) => !l.startsWith('Time:') && !l.startsWith('Notifications:')).join('\n') || 'Thank you for your business.'}
-              </div>
-            </div>
-          </div>
-
-          {/* Right Column: Grand Total Breakdown */}
-          <div className="flex flex-col justify-between">
-            <div className="space-y-1.5 rounded-lg border border-border/60 bg-muted/20 p-3 text-xs">
-              <div className="flex justify-between text-muted-foreground">
-                <span>Subtotal:</span>
-                <span className="mono font-semibold text-foreground">₹{Number(invoice.total || 0).toFixed(2)}</span>
-              </div>
-
-              <div className="flex justify-between border-t border-border/50 pt-1.5 font-black text-foreground">
-                <span>Grand Total:</span>
-                <span className="mono text-primary text-base font-extrabold">₹{Number(invoice.total || 0).toFixed(2)}</span>
-              </div>
-
-            </div>
-          </div>
-        </div>
-
-        {/* Footer & Signature */}
-        <div className="mt-6 flex items-end justify-between border-t border-border/50 pt-4 text-[10px] text-muted-foreground">
-          <div>
-            <p>Computer generated invoice receipt.</p>
-          </div>
-
-          <div className="text-right">
-            <div className="h-6 border-b border-border/80 w-28 ml-auto" />
-            <div className="mt-1 font-semibold text-foreground">Authorized Seal</div>
-          </div>
-        </div>
+      {/* Printable Invoice Sheet - Authentic A4 Document Paper Sheet */}
+      <div
+        id="invoice-download-container"
+        className={`invoice-sheet overflow-hidden border border-slate-200/90 bg-white text-slate-900 shadow-2xl rounded-sm print:m-0 print:w-full print:border-none print:shadow-none print:p-0 transition-all duration-300 ${
+          activePrintSize === '58mm' ? 'p-3 text-[10px] min-h-[120mm]' :
+          activePrintSize === '80mm' ? 'p-4 text-xs min-h-[140mm]' :
+          activePrintSize === 'A5' ? 'p-5 sm:p-7 min-h-[210mm]' :
+          activePrintSize === 'Letter' ? 'p-6 sm:p-9 min-h-[279mm]' :
+          'p-6 sm:p-10 min-h-[297mm]'
+        }`}
+      >
+        <InvoiceDocumentSheet
+          invoice={invoice}
+          business={business}
+          customer={customer}
+          items={items}
+          paymentInfo={paymentInfo}
+          templateSettings={templateSettings}
+          isPaid={isPaid}
+          timeStr={timeStr}
+          notifString={notifString}
+        />
       </div>
 
       {/* Item Returns & Refunds Section */}
@@ -5736,6 +5795,9 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
   const [showModal, setShowModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showBarcodeModal, setShowBarcodeModal] = useState(false);
+  const [showUnitSettingsModal, setShowUnitSettingsModal] = useState(false);
+  const [showSearchBarcodeModal, setShowSearchBarcodeModal] = useState(false);
+  const [enabledUnitCodes, setEnabledUnitCodes] = useState<string[]>(() => getStoredEnabledCodes());
   const [noteModalData, setNoteModalData] = useState<Row | null>(null);
   const [noteText, setNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
@@ -5743,6 +5805,7 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
   const [initialBarcode, setInitialBarcode] = useState('');
   const [viewData, setViewData] = useState<Row | null>(null);
   const [deleteData, setDeleteData] = useState<Row | null>(null);
+  useBodyScrollLock(Boolean(showModal || showViewModal || showBarcodeModal || showUnitSettingsModal || showSearchBarcodeModal || noteModalData || deleteData));
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState<Record<string, any>>({});
 
@@ -5780,6 +5843,8 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
       buying_price: '',
       price: '',
       stock_quantity: '0',
+      unit: 'pcs',
+      unit_value: '1',
       allow_custom_price: false,
       is_returnable: true,
       restock_on_return: true,
@@ -5812,6 +5877,8 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
         buying_price: '',
         price: '',
         stock_quantity: '0',
+        unit: 'pcs',
+        unit_value: '1',
         allow_custom_price: false,
         is_returnable: true,
         restock_on_return: true,
@@ -5851,7 +5918,8 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
     let restockOnReturn = row.restock_on_return !== false;
     let returnWindowUnit = row.return_window_unit || 'days';
     let returnWindowValue = row.return_window_value !== undefined ? String(row.return_window_value) : (row.return_window_days !== undefined ? String(row.return_window_days) : '7');
-    
+    let rowUnit = row.unit || (isServ ? 'service' : 'pcs');
+    let rowUnitValue = row.unit_value !== undefined && row.unit_value !== null ? String(row.unit_value) : (row.net_weight_volume !== undefined ? String(row.net_weight_volume) : '');
     let showInCatalog = row.show_in_catalog !== false && row.show_in_catalog !== 0 && row.show_in_catalog !== '0' && row.show_in_catalog !== 'false';
     
     if (row.notes && (row.notes.startsWith('{') || row.notes.startsWith('['))) {
@@ -5869,6 +5937,8 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
         if (meta.return_window_unit) returnWindowUnit = meta.return_window_unit;
         if (meta.return_window_value !== undefined) returnWindowValue = String(meta.return_window_value);
         if (meta.show_in_catalog !== undefined) showInCatalog = Boolean(meta.show_in_catalog);
+        if (meta.unit) rowUnit = meta.unit;
+        if (meta.unit_value !== undefined && meta.unit_value !== null) rowUnitValue = String(meta.unit_value);
       } catch (e) {}
     }
 
@@ -5887,6 +5957,8 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
       price: row.price !== undefined ? String(row.price) : '',
       stock_quantity: row.stock_quantity !== undefined ? String(row.stock_quantity) : '0',
       image_url: rowImgUrl,
+      unit: rowUnit,
+      unit_value: rowUnitValue,
       allow_custom_price: allowCustomPrice,
       is_returnable: isReturnable,
       restock_on_return: restockOnReturn,
@@ -5939,6 +6011,10 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
       }
       if (!isService && (formData.stock_quantity === undefined || formData.stock_quantity === null || String(formData.stock_quantity).trim() === '')) {
         toast.warning('Total Stock Quantity is required for physical products.');
+        return;
+      }
+      if (!isService && (formData.unit_value === undefined || formData.unit_value === null || String(formData.unit_value).trim() === '')) {
+        toast.warning('Base Content / Pack Size is required. Please enter a quantity (e.g. 1, 100, 250).');
         return;
       }
     }
@@ -6018,11 +6094,15 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
           }
         }
         
+        const selectedUnit = isService ? (formData.unit || 'service') : (formData.unit || 'pcs');
+        const selectedUnitValue = formData.unit_value ? String(formData.unit_value).trim() : '';
+
         const payload: Record<string, any> = {};
         payload.name = formData.name.trim();
         payload.price = sellingPrice;
         payload.stock_quantity = stockQty;
-        payload.unit = isService ? 'service' : 'pcs';
+        payload.unit = selectedUnit;
+        payload.unit_value = selectedUnitValue || null;
         payload.type = isService ? 'service' : 'physical';
         payload.buying_price = buyingPrice;
         payload.description = formData.description || '';
@@ -6050,6 +6130,8 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
           buying_price: buyingPrice,
           price: sellingPrice,
           stock_quantity: stockQty,
+          unit: selectedUnit,
+          unit_value: selectedUnitValue,
           allow_custom_price: allowCustomPrice,
           is_returnable: isReturnable,
           restock_on_return: restockOnReturn,
@@ -6085,6 +6167,16 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
       title={isCustomer ? 'Customers' : 'Products'} 
       actionLabel={isCustomer ? 'New Customer' : 'New Product'} 
       action={openAddModal} 
+      extraAction={!isCustomer ? (
+        <button
+          type="button"
+          onClick={() => setShowUnitSettingsModal(true)}
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-border bg-card text-muted-foreground shadow-2xs transition-all hover:border-primary/50 hover:bg-muted hover:text-primary cursor-pointer"
+          title="Product & Hardware Control Settings"
+        >
+          <SettingsIcon size={18} />
+        </button>
+      ) : undefined}
     />
 
     {/* Search & Filter Bar */}
@@ -6100,18 +6192,31 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
               ? "Search customers by name, phone number, email address, or notes..."
               : "Search products by name, barcode, SKU, or category..."
           }
-          className="w-full rounded-2xl bg-card border border-border/80 pl-10 pr-10 py-3 text-xs sm:text-sm font-semibold placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 shadow-2xs transition-all"
+          className={`w-full rounded-2xl bg-card border border-border/80 pl-10 ${!isCustomer ? 'pr-40 sm:pr-48' : 'pr-10'} py-3 text-xs sm:text-sm font-semibold placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 shadow-2xs transition-all`}
         />
-        {search && (
-          <button
-            type="button"
-            onClick={() => setSearch('')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
-            title="Clear search"
-          >
-            <X size={15} />
-          </button>
-        )}
+        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
+              title="Clear search"
+            >
+              <X size={15} />
+            </button>
+          )}
+          {!isCustomer && (
+            <button
+              type="button"
+              onClick={() => setShowSearchBarcodeModal(true)}
+              className="px-3.5 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-extrabold rounded-xl bg-primary/10 text-primary border border-primary/30 hover:bg-primary hover:text-primary-foreground flex items-center gap-2 transition-all cursor-pointer shadow-xs shrink-0 active:scale-95"
+              title="Scan Barcode with Camera / Scanner to Find Product"
+            >
+              <ScanLine size={17} />
+              <span>Scan Barcode</span>
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
@@ -6243,6 +6348,16 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
                                     <span>Barcode: {pBarcode}</span>
                                   </span>
                                 ) : null}
+                                {(() => {
+                                  const pUnit = row.unit || (isService ? 'service' : 'pcs');
+                                  const pUnitVal = row.unit_value || row.net_weight_volume || '';
+                                  if (isService) return null;
+                                  return (
+                                    <span className="mono font-bold bg-muted/80 text-foreground px-2 py-0.5 rounded-md border border-border/60 uppercase">
+                                      Unit: {pUnitVal ? `${pUnitVal} ${pUnit}` : pUnit}
+                                    </span>
+                                  );
+                                })()}
                               </>
                             );
                           })()}
@@ -6419,7 +6534,7 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
     {/* Add / Edit Modal */}
     {showModal && (
       <div className="fixed inset-0 z-50 flex items-end justify-center bg-sidebar/40 backdrop-blur-xs p-0 sm:items-center sm:p-5 print:hidden">
-        <form noValidate onSubmit={handleSubmit} className="w-full max-w-lg max-h-[90dvh] overflow-y-auto rounded-t-2xl border border-border bg-card p-5 shadow-float relative sm:rounded-2xl sm:p-7 animate-in fade-in-0 slide-in-from-bottom-3 duration-200">
+        <form noValidate onSubmit={handleSubmit} className="w-full max-w-3xl max-h-[90dvh] overflow-y-auto rounded-t-2xl border border-border bg-card p-5 shadow-float relative sm:rounded-2xl sm:p-7 animate-in fade-in-0 slide-in-from-bottom-3 duration-200">
           <div className="mb-5 flex items-center justify-between pb-3 border-b border-border/60">
             <div className="flex items-center gap-2.5">
               <div className="grid h-8 w-8 place-items-center rounded-xl bg-primary/10 text-primary">
@@ -6637,16 +6752,6 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
                     <label className="block text-xs font-bold text-foreground">
                       {formData.type === 'service' ? "Service Image" : "Product Image"} <span className="text-muted-foreground font-normal">(Optional, Max 5 MB)</span>
                     </label>
-                    {formData.image_url && (
-                      <button
-                        type="button"
-                        onClick={() => setFormData({ ...formData, image_url: '' })}
-                        className="text-[11px] font-extrabold text-destructive hover:underline flex items-center gap-1 cursor-pointer"
-                      >
-                        <Trash2 size={12} />
-                        <span>Remove Image</span>
-                      </button>
-                    )}
                   </div>
 
                   {formData.image_url ? (
@@ -6795,17 +6900,49 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
                   </div>
                 )}
 
-                {/* 7. Total Stock (Physical Product only) */}
+                {/* 7. Total Stock & Unit Measurement (Physical Product only) */}
                 {formData.type !== 'service' && (
-                  <div className="space-y-3 pt-1">
-                    <AppField 
-                      label="Total Stock Quantity *" 
-                      type="number" 
-                      value={formData.stock_quantity !== undefined ? formData.stock_quantity : ''} 
-                      onChange={(v) => setFormData({...formData, stock_quantity: v})} 
-                      placeholder="e.g. 10, 50, 100" 
-                      required
-                    />
+                  <div className="space-y-4 pt-1">
+                    <div className="grid gap-3.5 sm:grid-cols-3">
+                      <AppField 
+                        label="Total Stock Quantity *" 
+                        type="number" 
+                        value={formData.stock_quantity !== undefined ? formData.stock_quantity : ''} 
+                        onChange={(v) => setFormData({...formData, stock_quantity: v})} 
+                        placeholder="e.g. 10, 50, 100" 
+                        required
+                      />
+
+                      <label className="block text-xs font-bold">
+                        Unit of Measurement (Unit Type) *
+                        <CustomDropdown
+                          value={formData.unit || 'pcs'}
+                          onChange={(v) => setFormData({ ...formData, unit: v })}
+                          placeholder="Select unit type (e.g. Liter, Pcs, Kg)"
+                          options={getDropdownOptionsForUnits(enabledUnitCodes, formData.unit)}
+                        />
+                      </label>
+
+                      <AppField 
+                        label="Base Content / Pack Size *" 
+                        type="text" 
+                        value={formData.unit_value !== undefined ? formData.unit_value : ''} 
+                        onChange={(v) => setFormData({...formData, unit_value: v})} 
+                        placeholder={
+                          formData.unit === 'litre' || formData.unit === 'l' ? "e.g. 1, 2, 5 (for 1L, 5L)" :
+                          formData.unit === 'ml' ? "e.g. 250, 500, 750 (for 250ml)" :
+                          formData.unit === 'kg' ? "e.g. 1, 5, 10 (for 10kg)" :
+                          formData.unit === 'g' ? "e.g. 100, 250, 500 (for 100g price)" :
+                          formData.unit === 'ft' ? "e.g. 10, 20, 50 (for 10 ft)" :
+                          formData.unit === 'sqft' ? "e.g. 100, 500, 1000 (for 100 sq ft)" :
+                          formData.unit === 'yd' ? "e.g. 2, 5, 10 (for 5 yd)" :
+                          formData.unit === 'plate' ? "e.g. 1, 2, 5 (for 1 Plate)" :
+                          "e.g. 250, 500, 10"
+                        } 
+                        required
+                        hint="Base quantity/portion size that price applies to (e.g. 100g, 1L, 1 Plate, 250ml)."
+                      />
+                    </div>
 
                     {/* Toggle Switch: Allow Product Return */}
                     <label className={`flex cursor-pointer items-start justify-between gap-3 rounded-xl border p-3.5 transition-colors select-none ${
@@ -7303,6 +7440,26 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
         </div>
       </div>
     )}
+    {/* Unit Settings Modal */}
+    {!isCustomer && (
+      <UnitSettingsModal
+        isOpen={showUnitSettingsModal}
+        onClose={() => setShowUnitSettingsModal(false)}
+        onSaveSuccess={() => setEnabledUnitCodes(getStoredEnabledCodes())}
+      />
+    )}
+    {/* Product Barcode Search Modal */}
+    {!isCustomer && (
+      <ProductBarcodeSearchModal
+        isOpen={showSearchBarcodeModal}
+        onClose={() => setShowSearchBarcodeModal(false)}
+        products={table.data}
+        onSelectProductForSearch={(code) => setSearch(code)}
+        onOpenAddProductWithBarcode={openAddModalWithBarcode}
+        onEditProduct={editRow}
+        onViewProduct={(p) => { setViewData(p); setShowViewModal(true); }}
+      />
+    )}
   </>;
 }
 
@@ -7319,6 +7476,7 @@ function Settings() {
     phone: '',
     address: '',
     currency: 'INR',
+    logo_url: '',
     invoice_prefix: 'INV',
     default_due_days: '30',
     turnover: '',
@@ -7356,6 +7514,7 @@ function Settings() {
   const [showNewPassword, setShowNewPassword] = useState(false);
 
   const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  useBodyScrollLock(Boolean(showChangePasswordModal || showDeleteAccountModal));
   const [deleteOtpInput, setDeleteOtpInput] = useState('');
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
@@ -7473,6 +7632,7 @@ function Settings() {
           const resolvedIfscCode = settingRow?.ifsc_code || bizRow?.ifsc_code || localCache.ifsc_code || paymentCache.ifsc_code || userMeta.ifsc_code || '';
           const resolvedAccountType = settingRow?.account_type || bizRow?.account_type || localCache.account_type || paymentCache.account_type || userMeta.account_type || 'Current';
           const resolvedBranchName = settingRow?.branch_name || bizRow?.branch_name || localCache.branch_name || paymentCache.branch_name || userMeta.branch_name || '';
+          const resolvedLogoUrl = bizRow?.logo_url || userMeta.logo_url || localCache.logo_url || '';
           const resolvedPaymentInstructions = settingRow?.payment_instructions || bizRow?.payment_instructions || localCache.payment_instructions || paymentCache.payment_instructions || userMeta.payment_instructions || '';
 
           setForm({
@@ -7482,6 +7642,7 @@ function Settings() {
             phone: resolvedPhone,
             address: resolvedAddress,
             currency: bizRow?.currency || settingRow?.currency || 'INR',
+            logo_url: resolvedLogoUrl,
             invoice_prefix: resolvedPrefix,
             default_due_days: resolvedDueDays,
             turnover: resolvedTurnover,
@@ -7571,6 +7732,7 @@ function Settings() {
             tax_rate: form.tax_rate,
             invoice_template: form.invoice_template,
             invoice_print_size: form.invoice_print_size,
+            logo_url: form.logo_url || null,
             upi_id: form.upi_id.trim(),
             upi_number: form.upi_number.trim(),
             bank_name: form.bank_name.trim(),
@@ -7598,6 +7760,7 @@ function Settings() {
             employees: form.employees,
             gstin: form.gstin.trim(),
             business_name: form.name.trim(),
+            logo_url: form.logo_url || null,
             enable_tax: form.enable_tax,
             tax_name: form.tax_name || 'Tax',
             tax_rate: form.tax_rate,
@@ -7636,6 +7799,7 @@ function Settings() {
             turnover: form.turnover,
             employees: form.employees,
             gstin: form.gstin.trim(),
+            logo_url: form.logo_url || null,
             upi_id: form.upi_id.trim(),
             bank_name: form.bank_name.trim(),
             account_number: form.account_number.trim(),
@@ -7705,6 +7869,7 @@ function Settings() {
         }
       }
 
+      window.dispatchEvent(new CustomEvent('billingmaster_business_updated'));
       setSaved(true);
       setTimeout(() => setSaved(false), 4000);
     } catch (err) {
@@ -7751,6 +7916,97 @@ function Settings() {
               <p className="mt-1 text-xs text-muted-foreground">
                 This information appears on your invoices, receipts, and reports.
               </p>
+            </div>
+
+            {/* Business Logo Upload Section */}
+            <div className="mb-6 flex flex-col items-center justify-center sm:flex-row sm:items-center sm:justify-start gap-4 rounded-2xl border border-border/80 bg-muted/20 p-4 shadow-xs">
+              <div className="relative group shrink-0">
+                <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl border-2 border-dashed border-primary/30 bg-background shadow-inner transition-all group-hover:border-primary/60 overflow-hidden">
+                  {form.logo_url ? (
+                    <img
+                      src={form.logo_url}
+                      alt="Business Logo"
+                      className="h-full w-full object-contain p-1.5 bg-white dark:bg-zinc-900"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center text-muted-foreground transition-colors group-hover:text-primary">
+                      <Store className="h-8 w-8 stroke-[1.5]" />
+                    </div>
+                  )}
+                  <label className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/50 text-white opacity-0 transition-opacity group-hover:opacity-100 backdrop-blur-[2px]">
+                    <Camera className="h-5 w-5" />
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/svg+xml,image/gif"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
+                        if (file.size > MAX_SIZE) {
+                          toast.error('Logo file size exceeds 5MB limit. Please choose a smaller image.');
+                          e.target.value = '';
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onload = (evt) => {
+                          const rawUrl = evt.target?.result as string;
+                          if (!rawUrl) return;
+                          setForm(prev => ({ ...prev, logo_url: rawUrl }));
+                        };
+                        reader.readAsDataURL(file);
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex-1 text-center sm:text-left space-y-1">
+                <div className="flex items-center justify-center sm:justify-start gap-2">
+                  <span className="text-xs font-bold text-foreground">Business / Profile Logo</span>
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">Displays on Header, Profile & Invoices</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  {form.logo_url ? 'Logo uploaded & ready to save' : 'Upload logo to display on app header, dropdown profile, invoices & receipts (PNG/JPG up to 5MB)'}
+                </p>
+                <div className="pt-1 flex items-center justify-center sm:justify-start gap-2">
+                  <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-bold text-foreground shadow-xs hover:bg-muted transition-all">
+                    <Upload className="h-3.5 w-3.5 text-primary" />
+                    <span>{form.logo_url ? 'Change Logo' : 'Upload Logo'}</span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/svg+xml,image/gif"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
+                        if (file.size > MAX_SIZE) {
+                          toast.error('Logo file size exceeds 5MB limit. Please choose a smaller image.');
+                          e.target.value = '';
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onload = (evt) => {
+                          const rawUrl = evt.target?.result as string;
+                          if (!rawUrl) return;
+                          setForm(prev => ({ ...prev, logo_url: rawUrl }));
+                        };
+                        reader.readAsDataURL(file);
+                      }}
+                    />
+                  </label>
+                  {form.logo_url && (
+                    <button
+                      type="button"
+                      onClick={() => setForm(prev => ({ ...prev, logo_url: '' }))}
+                      className="inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10 transition-all cursor-pointer"
+                    >
+                      Remove Logo
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
 
             <div className="grid gap-5 sm:grid-cols-2">
@@ -8226,9 +8482,12 @@ function Settings() {
                   </div>
                   <input
                     type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
                     required
                     value={otpInput}
-                    onChange={(e) => setOtpInput(e.target.value)}
+                    onChange={(e) => setOtpInput(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
                     placeholder="Enter 6-digit OTP (e.g. 123456)"
                     className="input-shell w-full px-3 py-2 text-xs font-mono tracking-wider"
                   />
@@ -8375,9 +8634,12 @@ function Settings() {
                 </div>
                 <input
                   type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
                   required
                   value={deleteOtpInput}
-                  onChange={(e) => setDeleteOtpInput(e.target.value)}
+                  onChange={(e) => setDeleteOtpInput(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
                   placeholder="Enter 6-digit OTP (e.g. 123456)"
                   className="input-shell w-full px-3 py-2 text-xs font-mono tracking-wider border-destructive/40 focus:border-destructive"
                 />
@@ -8421,8 +8683,29 @@ function Auth({ mode }: { mode: 'login' | 'signup' }) {
   const [step, setStep] = useState<'form' | 'otp'>('form');
   const [otp, setOtp] = useState('');
 
+  // Reset form states when mode changes between login and signup so values are not persisted/shared
+  useEffect(() => {
+    setEmail('');
+    setPassword('');
+    setName('');
+    setPhone('');
+    setError('');
+    setLoading(false);
+    setStep('form');
+    setOtp('');
+    setShowForgotModal(false);
+    setForgotEmail('');
+    setForgotNewPassword('');
+    setForgotConfirmPassword('');
+    setForgotOtp('');
+    setForgotStep('email');
+    setForgotError('');
+    setForgotLoading(false);
+  }, [mode]);
+
   // Forgot password states
   const [showForgotModal, setShowForgotModal] = useState(false);
+  useBodyScrollLock(showForgotModal);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotNewPassword, setForgotNewPassword] = useState('');
   const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
@@ -8512,8 +8795,60 @@ function Auth({ mode }: { mode: 'login' | 'signup' }) {
                 </div>
               </>
             )}
-            {step === 'otp' && <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-center"><div className="mb-4 text-xs text-muted-foreground">We sent a 6-digit code to <strong>{email}</strong></div><AppField label="Enter OTP" value={otp} onChange={setOtp} required test="input-signup-otp" /></div>}
-            <button disabled={loading || !supabaseConfigured} className="btn-primary mt-2 min-h-12 w-full rounded-xl text-sm font-extrabold disabled:opacity-50" data-testid="button-auth-submit">{loading ? 'Working…' : step === 'form' && mode === 'signup' ? 'Continue' : mode === 'login' ? 'Sign in' : 'Verify & Create account'}</button>
+            {step === 'otp' && (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-center">
+                  <div className="mb-4 text-xs text-muted-foreground">
+                    We sent a 6-digit code to <strong>{email}</strong>{' '}
+                    <button
+                      type="button"
+                      onClick={() => { setStep('form'); setError(''); }}
+                      className="text-primary font-bold hover:underline ml-1"
+                    >
+                      (Change)
+                    </button>
+                  </div>
+                  <AppField
+                    label="Enter OTP"
+                    value={otp}
+                    onChange={(v) => setOtp(v.replace(/[^0-9]/g, '').slice(0, 6))}
+                    required
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    test="input-signup-otp"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => { setStep('form'); setError(''); }}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-border px-4 py-3 text-xs font-bold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  >
+                    <ArrowLeft size={14} /> Back
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading || !supabaseConfigured}
+                    className="btn-primary flex-1 min-h-11 rounded-xl text-xs font-extrabold disabled:opacity-50"
+                    data-testid="button-auth-submit"
+                  >
+                    {loading ? 'Working…' : 'Verify & Create account'}
+                  </button>
+                </div>
+              </div>
+            )}
+            {step === 'form' && (
+              <button
+                type="submit"
+                disabled={loading || !supabaseConfigured}
+                className="btn-primary mt-2 min-h-12 w-full rounded-xl text-sm font-extrabold disabled:opacity-50"
+                data-testid="button-auth-submit"
+              >
+                {loading ? 'Working…' : mode === 'signup' ? 'Continue' : 'Sign in'}
+              </button>
+            )}
           </form>
         </div>
         <p className="mt-8 text-center text-[13px] text-muted-foreground">{mode === 'login' ? 'New here? ' : 'Already have an account? '}<Link href={mode === 'login' ? '/signup' : '/login'} className="font-bold text-foreground hover:underline">{mode === 'login' ? 'Create an account' : 'Sign in'}</Link></p>
@@ -8562,7 +8897,16 @@ function Auth({ mode }: { mode: 'login' | 'signup' }) {
                   Verification code generated for <strong>{forgotEmail}</strong>.<br />
                   <span className="font-mono text-primary font-bold">Verification Code: 123456</span>
                 </div>
-                <AppField label="Verification Code" value={forgotOtp} onChange={setForgotOtp} required placeholder="123456" />
+                <AppField
+                  label="Verification Code"
+                  value={forgotOtp}
+                  onChange={(v) => setForgotOtp(v.replace(/[^0-9]/g, '').slice(0, 6))}
+                  required
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  placeholder="123456"
+                />
                 <div className="flex justify-end gap-2 pt-2">
                   <button type="button" onClick={() => setForgotStep('email')} className="rounded-xl px-3 py-2 text-xs font-bold text-muted-foreground hover:bg-muted">Back</button>
                   <button type="submit" className="btn-primary rounded-xl px-5 py-2 text-xs font-bold">Verify Code</button>
@@ -8611,6 +8955,38 @@ function Auth({ mode }: { mode: 'login' | 'signup' }) {
   );
 }
 
+const INDIAN_BUSINESS_CATEGORIES = [
+  { label: 'Other / Others', value: 'Others', hint: 'Select if your business type is not listed' },
+  { label: 'Grocery / Kirana & Supermarket', value: 'Grocery & Kirana', hint: 'FMCG, provisions, daily essentials' },
+  { label: 'Apparel, Clothing & Garments', value: 'Apparel & Garments', hint: 'Readymade garments, boutique, fashion' },
+  { label: 'Electronics, Mobiles & Hardware', value: 'Electronics & Mobiles', hint: 'Smartphones, computers, repair & appliances' },
+  { label: 'Pharmacy, Medical & Healthcare', value: 'Pharmacy & Medical', hint: 'Chemist, medical store, diagnostic' },
+  { label: 'Hardware, Electricals & Plumbing', value: 'Hardware & Electricals', hint: 'Paints, sanitaryware, tools, wiring' },
+  { label: 'Jewelry, Gold & Ornaments', value: 'Jewelry & Ornaments', hint: 'Gold, silver, diamond, imitation jewelry' },
+  { label: 'Restaurant, Cafe & Food Services', value: 'Restaurant & Catering', hint: 'Dine-in, takeaway, bakery, sweet shop' },
+  { label: 'Footwear & Leather Goods', value: 'Footwear & Leather', hint: 'Shoes, bags, belts, luggage' },
+  { label: 'Cosmetics, Beauty & Personal Care', value: 'Cosmetics & Salon', hint: 'Makeup, skincare, salon & spa' },
+  { label: 'Furniture & Home Decor', value: 'Furniture & Home Decor', hint: 'Furnishings, wooden furniture, lighting' },
+  { label: 'Automobile, Spare Parts & Garage', value: 'Automobile & Spares', hint: 'Auto parts, 2-wheeler/4-wheeler service' },
+  { label: 'Stationery, Books & Printing', value: 'Stationery & Printing', hint: 'Paper, office supplies, print shop' },
+  { label: 'Textile, Fabrics & Tailoring', value: 'Textile & Tailoring', hint: 'Sarees, suiting, custom tailoring' },
+  { label: 'Agriculture, Seeds & Fertilizers', value: 'Agriculture & Fertilizers', hint: 'Farm tools, pesticides, animal feed' },
+  { label: 'Construction, Cement & Tiles', value: 'Construction & Building', hint: 'Building materials, marble, cement' },
+  { label: 'Fruits, Vegetables & Dairy', value: 'Fruits, Veg & Dairy', hint: 'Fresh produce, milk, dairy products' },
+  { label: 'Meat, Poultry & Fish', value: 'Meat & Poultry', hint: 'Fresh meat, chicken, seafood' },
+  { label: 'Opticals & Eyewear', value: 'Opticals & Eyewear', hint: 'Glasses, lenses, sunglasses' },
+  { label: 'Gifts, Toys & Party Supplies', value: 'Gifts & Toys', hint: 'Novelties, toys, event decoration' },
+  { label: 'IT, Software & Digital Services', value: 'IT & Digital Services', hint: 'Web design, software, digital marketing' },
+  { label: 'Professional Services (CA, Legal)', value: 'Professional Services', hint: 'Accounting, legal, consulting' },
+  { label: 'Logistics, Transport & Courier', value: 'Logistics & Transport', hint: 'Cargo, shipping, local delivery' },
+  { label: 'Wholesale & Distributorship', value: 'Wholesale & Distribution', hint: 'B2B distribution, bulk trader' },
+  { label: 'Manufacturing & Industrial', value: 'Manufacturing', hint: 'Production, fabrication, factory' },
+  { label: 'Education, Coaching & Training', value: 'Education & Coaching', hint: 'Tuition, skill center, academy' },
+  { label: 'Hotel, Lodge & Hospitality', value: 'Hospitality & Hotel', hint: 'Rooms, guest house, resort' },
+  { label: 'Real Estate & Property', value: 'Real Estate', hint: 'Broking, construction, renting' },
+  { label: 'General Services & Others', value: 'General Business', hint: 'Multi-category or other business' },
+];
+
 function Onboarding() {
   const [, setLocation] = useLocation(); 
   const [onboardingStep, setOnboardingStep] = useState<'shop' | 'gst' | 'payment'>('shop');
@@ -8619,6 +8995,8 @@ function Onboarding() {
   const [gstin, setGstin] = useState('');
   const [name, setName] = useState(''); 
   const [address, setAddress] = useState('');
+  const [category, setCategory] = useState('');
+  const [customCategory, setCustomCategory] = useState('');
   const [turnover, setTurnover] = useState('');
   const [employees, setEmployees] = useState('');
   const [currency, setCurrency] = useState('INR'); 
@@ -8647,6 +9025,7 @@ function Onboarding() {
         setCatalogHandle(meta.business_name.toLowerCase().replace(/[^a-z0-9_-]/g, ''));
       }
       if (meta.address) setAddress(meta.address);
+      if (meta.category) setCategory(meta.category);
       if (meta.turnover) setTurnover(meta.turnover);
       if (meta.employees) setEmployees(meta.employees);
       if (meta.logo_url) setLogoUrl(meta.logo_url);
@@ -8662,6 +9041,14 @@ function Onboarding() {
     e.preventDefault();
     if (!name.trim()) {
       setError('Please enter your business name.');
+      return;
+    }
+    if (!address.trim()) {
+      setError('Please enter your business address.');
+      return;
+    }
+    if (!category.trim()) {
+      setError('Please select your business category.');
       return;
     }
     if (!catalogHandle.trim()) {
@@ -8715,6 +9102,7 @@ function Onboarding() {
             email: userEmail,
             phone: userPhone,
             address: address.trim(),
+            category: category.trim(),
             turnover,
             employees,
             currency: currency || 'INR',
@@ -8737,6 +9125,7 @@ function Onboarding() {
           data: {
             business_name: name.trim(),
             address: address.trim(),
+            category: category.trim(),
             turnover,
             employees,
             full_name: memberName,
@@ -8936,8 +9325,28 @@ function Onboarding() {
                 </div>
               </div>
 
-              <AppField label="Business name" value={name} onChange={setName} test="input-onboarding-business" required />
-              <AppField label="Business address" value={address} onChange={setAddress} test="input-onboarding-address" />
+              <AppField label="Business name" value={name} onChange={setName} test="input-onboarding-business" required placeholder="Enter business or shop name" />
+              <AppField label="Business address" value={address} onChange={setAddress} test="input-onboarding-address" required placeholder="Enter full shop or office address" />
+
+              <label className="block text-xs font-bold">
+                Business Category <span className="text-destructive ml-0.5">*</span>
+                <CustomDropdown
+                  value={category}
+                  onChange={setCategory}
+                  placeholder="Select business category"
+                  options={INDIAN_BUSINESS_CATEGORIES}
+                  testId="select-onboarding-category"
+                />
+              </label>
+
+              {category === 'Others' && (
+                <AppField
+                  label="Specify Custom Business Category"
+                  value={customCategory}
+                  onChange={setCustomCategory}
+                  placeholder="Enter your custom business category (e.g. Dairy, Handicrafts, etc.)"
+                />
+              )}
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-xs font-bold">
@@ -9300,9 +9709,10 @@ function Protected({ children }: { children: ReactNode }) { return <Shell>{child
 
 function PlanCheckoutWrapper() {
   const [business, setBusiness] = useState<Row | null>(null);
+  const [targetPlan, setTargetPlan] = useState<any | null>(null);
 
   useEffect(() => {
-    async function loadBiz() {
+    async function loadData() {
       try {
         const impersonatedBid = getImpersonatedBusinessId();
         const session = auth.session() || (await auth.getSession());
@@ -9311,16 +9721,32 @@ function PlanCheckoutWrapper() {
           const profiles = await db.list<Row>('profiles', { id: session.user.id });
           if (profiles[0]?.business_id) bid = profiles[0].business_id;
         }
+        let currentBiz: any = null;
         if (bid) {
           const bizes = await db.list<Row>('businesses', { id: bid });
-          if (bizes.length > 0) setBusiness(bizes[0]);
+          if (bizes.length > 0) {
+            currentBiz = bizes[0];
+            setBusiness(currentBiz);
+          }
+        }
+
+        const res = await fetch('/api/admin/plans');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.data && Array.isArray(json.data) && json.data.length > 0) {
+            const bizPlanName = (currentBiz?.plan_name || '').toLowerCase().trim();
+            const matched = json.data.find(
+              (p: any) => (p.name || '').toLowerCase().trim() === bizPlanName || (p.code || '').toLowerCase().trim() === bizPlanName
+            ) || json.data.find((p: any) => p.code === 'STARTER' || p.code === 'PRO') || json.data[0];
+            setTargetPlan(matched);
+          }
         }
       } catch (e) {}
     }
-    void loadBiz();
+    void loadData();
   }, []);
 
-  return <PlanCheckout business={business} onBack={() => window.location.href = '/plan'} />;
+  return <PlanCheckout business={business} plan={targetPlan} onBack={() => window.location.href = '/plan'} />;
 }
 
 function KhataBookWrapper() {
@@ -9337,8 +9763,8 @@ function ScrollToTop() {
 function Router() {
   return <RoutedErrorBoundary><ScrollToTop /><Switch>
     <Route path="/" component={Home} />
-    <Route path="/login"><Auth mode="login" /></Route>
-    <Route path="/signup"><Auth mode="signup" /></Route>
+    <Route path="/login"><Auth key="login" mode="login" /></Route>
+    <Route path="/signup"><Auth key="signup" mode="signup" /></Route>
     <Route path="/onboarding" component={Onboarding} />
     <Route path="/catalog/:id" component={PublicCatalog} />
     <Route path="/catalog" component={PublicCatalog} />

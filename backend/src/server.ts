@@ -17,6 +17,7 @@ import {
   getAdminOverviewStats,
   getAdminPlans,
   createOrUpdateAdminPlan,
+  deleteAdminPlan,
   getAdminBusinesses,
   updateAdminBusiness,
   deleteAdminBusiness,
@@ -35,7 +36,12 @@ import {
   deleteAdminCoupon,
   validateCoupon,
   getMerchantSubscriptionQueue,
+  cancelQueuedSubscriptionItem,
+  syncAllBusinessesSubscriptionState,
+  getAdminUpiSettings,
+  updateAdminUpiSettings,
 } from './controllers/adminController.js';
+import { testEmailConnection, sendEmailCampaign } from './controllers/emailController.js';
 
 dotenv.config();
 
@@ -69,6 +75,7 @@ app.put('/api/auth/user', updateUser);
 app.get('/api/admin/stats', getAdminOverviewStats);
 app.get('/api/admin/plans', getAdminPlans);
 app.post('/api/admin/plans', createOrUpdateAdminPlan);
+app.delete('/api/admin/plans/:id', deleteAdminPlan);
 app.get('/api/admin/businesses', getAdminBusinesses);
 app.put('/api/admin/businesses/:id', updateAdminBusiness);
 app.delete('/api/admin/businesses/:id', deleteAdminBusiness);
@@ -80,6 +87,9 @@ app.post('/api/admin/feature-flags/toggle', toggleAdminFeatureFlag);
 app.get('/api/admin/audit-logs', getAdminAuditLogs);
 app.get('/api/admin/billing-requests', getAdminBillingRequests);
 app.post('/api/admin/billing-requests/:id/respond', respondAdminBillingRequest);
+app.get('/api/admin/upi-settings', getAdminUpiSettings);
+app.post('/api/admin/upi-settings', updateAdminUpiSettings);
+app.get('/api/upi-settings', getAdminUpiSettings);
 
 // Coupon Routes
 app.get('/api/admin/coupons', getAdminCoupons);
@@ -91,6 +101,11 @@ app.post('/api/coupons/validate', validateCoupon);
 app.post('/api/billing-requests', createBillingRequest);
 app.get('/api/billing-requests/my', getMerchantBillingRequests);
 app.get('/api/subscription-queue/my', getMerchantSubscriptionQueue);
+app.delete('/api/subscription-queue/:queueId', cancelQueuedSubscriptionItem);
+
+// Email Marketing Routes (Nodemailer)
+app.post('/api/email/test-connection', testEmailConnection);
+app.post('/api/email/send-campaign', sendEmailCampaign);
 
 
 // RPC Routes
@@ -108,6 +123,10 @@ app.delete('/api/db/:table/:id', removeRecord);
 initDb().then((connected) => {
   if (connected) {
     console.log('[Server] MySQL initialized and ready.');
+    syncAllBusinessesSubscriptionState();
+    setInterval(() => {
+      syncAllBusinessesSubscriptionState();
+    }, 15 * 60 * 1000);
   } else {
     console.log('[Server] Running with mock/local store fallbacks until MySQL database connection is established.');
   }

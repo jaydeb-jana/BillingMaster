@@ -12,6 +12,7 @@ import {
   CAExportSummary
 } from '@/services/caExportEngine';
 import { toast } from 'sonner';
+import { useBodyScrollLock } from '@/lib/useScrollReset';
 
 interface CATaxExportModalProps {
   isOpen: boolean;
@@ -20,6 +21,7 @@ interface CATaxExportModalProps {
 }
 
 export function CATaxExportModal({ isOpen, onClose, businessName = 'BillingMaster Enterprise' }: CATaxExportModalProps) {
+  useBodyScrollLock(isOpen);
   const [financialYear, setFinancialYear] = useState<string>('2025 - 2026');
   const [periodPreset, setPeriodPreset] = useState<'FULL' | 'Q1' | 'Q2' | 'Q3' | 'Q4' | 'CUSTOM'>('FULL');
   const [startDate, setStartDate] = useState<string>('2025-04-01');

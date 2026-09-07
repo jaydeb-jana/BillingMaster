@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { db, getSupabaseErrorMessage, getProductBarcode, generateInternalSku } from '@/lib/api';
 import { useLocation } from 'wouter';
+import { useBodyScrollLock } from '@/lib/useScrollReset';
 
 type ProductRow = Record<string, any>;
 
@@ -87,6 +88,7 @@ export function BarcodeVerifierModal({
   onEditProduct,
   initialBarcode = '',
 }: BarcodeVerifierModalProps) {
+  useBodyScrollLock(isOpen);
   const [, setLocation] = useLocation();
   const [targetProduct, setTargetProduct] = useState<ProductRow | null>(initialTargetProduct || null);
   const [activeTab, setActiveTab] = useState<'scan' | 'manual'>('scan');

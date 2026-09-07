@@ -4,7 +4,7 @@ import {
   Store, Search, Phone, MessageSquare, AlertCircle, CheckCircle2,
   Package, X, Share2, Filter, ShoppingBag, ArrowLeft, Check, Copy, ShieldCheck,
   TrendingUp, BarChart3, Calendar, Zap, Award, Clock, Barcode, ScanLine,
-  MapPinOff, RefreshCw, Sun, Moon, Navigation
+  MapPinOff, RefreshCw, Sun, Moon, Navigation, Ban
 } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid
@@ -261,6 +261,7 @@ export function PublicCatalog() {
   const [storeLat, setStoreLat] = useState<number | null>(null);
   const [storeLng, setStoreLng] = useState<number | null>(null);
   const [isLocationRestricted, setIsLocationRestricted] = useState<boolean>(false);
+  const [isStoreDisabled, setIsStoreDisabled] = useState<boolean>(false);
   const [visitorDist, setVisitorDist] = useState<number | null>(null);
   const [checkingLocation, setCheckingLocation] = useState<boolean>(false);
 
@@ -382,12 +383,14 @@ export function PublicCatalog() {
             const bizSetting = (rawSettings || []).find((s: any) => String(s.business_id || '') === bizIdStr) || rawSettings?.[0];
 
             if (bizSetting) {
+              const catalogEnabled = bizSetting.is_catalog_enabled !== undefined && bizSetting.is_catalog_enabled !== null ? Boolean(Number(bizSetting.is_catalog_enabled)) : true;
               const sr = bizSetting.show_sales_rate !== undefined && bizSetting.show_sales_rate !== null ? Boolean(Number(bizSetting.show_sales_rate)) : true;
               const bc = bizSetting.show_barcodes !== undefined && bizSetting.show_barcodes !== null ? Boolean(Number(bizSetting.show_barcodes)) : true;
               const rad = bizSetting.location_radius_km ? Number(bizSetting.location_radius_km) : 0;
               const lat = bizSetting.store_lat !== undefined && bizSetting.store_lat !== null ? Number(bizSetting.store_lat) : null;
               const lng = bizSetting.store_lng !== undefined && bizSetting.store_lng !== null ? Number(bizSetting.store_lng) : null;
 
+              setIsStoreDisabled(!catalogEnabled);
               setShowSalesRate(sr);
               setShowBarcodes(bc);
               setLocationRadiusKm(rad);
@@ -562,16 +565,39 @@ export function PublicCatalog() {
               No store currently exists with the catalog link <span className="font-mono text-primary font-bold bg-primary/10 px-2 py-0.5 rounded-md border border-primary/20">/catalog/{params?.id}</span>. You may have clicked an invalid link or the store handle may have been updated.
             </p>
           </div>
+        </div>
+      </div>
+    );
+  }
 
-          <div className="pt-2 flex flex-col gap-2.5 sm:flex-row sm:justify-center">
-            <Link
-              href="/"
-              className="btn-primary rounded-xl px-6 py-3 text-xs font-extrabold shadow-md flex items-center justify-center gap-2"
-            >
-              <ArrowLeft size={16} />
-              <span>Return to BillingMaster</span>
-            </Link>
+  // Store Closed / Disabled view
+  if (!loading && isStoreDisabled) {
+    return (
+      <div className={`min-h-[100dvh] bg-background text-foreground flex items-center justify-center p-4 animate-fade-in font-sans ${isCatalogDark ? 'dark' : ''}`}>
+        <div className="card-shell max-w-md w-full p-7 sm:p-9 text-center shadow-2xl border border-border rounded-3xl space-y-6">
+          <div className="mx-auto w-20 h-20 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center border border-rose-500/20 shadow-inner">
+            <Store size={40} className="stroke-[1.75]" />
           </div>
+
+          <div className="space-y-2.5">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-rose-500/15 text-rose-600 border border-rose-500/30">
+              <Ban size={13} />
+              <span>Store Temporarily Closed</span>
+            </div>
+            <h1 className="text-xl sm:text-2xl font-black text-foreground tracking-tight">
+              {businessName}
+            </h1>
+            <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed max-w-md mx-auto">
+              The owner has temporarily disabled online catalog browsing. Please check back later or contact the merchant directly.
+            </p>
+          </div>
+
+          {businessPhone && (
+            <div className="p-3.5 rounded-2xl bg-muted/50 border border-border flex items-center justify-center gap-2 text-xs font-bold text-foreground">
+              <Phone size={14} className="text-primary" />
+              <span>Contact Store: {businessPhone}</span>
+            </div>
+          )}
         </div>
       </div>
     );

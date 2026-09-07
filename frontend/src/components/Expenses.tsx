@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useBodyScrollLock } from '@/lib/useScrollReset';
 import {
   Wallet, Plus, Trash2, Pencil, Search, Calendar, Clock,
   Tag, X, ChevronDown, Check, Store, Users, Truck, Megaphone, Receipt, Coffee,
@@ -250,6 +251,7 @@ export function Expenses() {
   const [showModal, setShowModal] = useState(false);
   const [editingExpense, setEditingExpense] = useState<ExpenseItem | null>(null);
   const [deleteConfirmItem, setDeleteConfirmItem] = useState<ExpenseItem | null>(null);
+  useBodyScrollLock(Boolean(showModal || deleteConfirmItem));
 
   // Top Date Range Filter State - Default: 1st of Current Month to Today's Date
   const [startDate, setStartDate] = useState<string>(getFirstDayOfCurrentMonth);

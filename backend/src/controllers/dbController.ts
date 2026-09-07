@@ -18,6 +18,12 @@ const ALLOWED_TABLES = new Set([
   'purchase_items',
   'stock_transactions',
   'expenses',
+  'khata_entries',
+  'returns',
+  'billing_requests',
+  'coupons',
+  'coupon_usages',
+  'subscription_queue',
 ]);
 
 const GLOBAL_TABLES = new Set(['businesses', 'profiles', 'settings', 'invoice_items', 'purchase_items']);

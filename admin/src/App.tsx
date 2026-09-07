@@ -47,176 +47,27 @@ export function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // State loaded from API or local fallback
-  const [stats, setStats] = useState({
-    totalBusinesses: 5,
-    totalUsers: 12,
-    totalCustomers: 186,
-    totalInvoices: 340,
-    totalRevenue: 285400,
-    activePlansCount: 3,
-    planBreakdownText: 'Free (1) • Starter (2) • Pro (2)',
+  // State loaded from API
+  const [stats, setStats] = useState<any>({
+    totalBusinesses: 0,
+    totalUsers: 0,
+    totalCustomers: 0,
+    totalInvoices: 0,
+    totalRevenue: 0,
+    activePlansCount: 0,
+    planBreakdownText: '',
     systemHealth: 'OPERATIONAL',
-    uptimeSeconds: 14200,
+    uptimeSeconds: 0,
     databaseEngine: 'MySQL 8.0 + Node Express',
-    activeFeatureFlags: 4,
+    activeFeatureFlags: 0,
   });
 
-  const [plans, setPlans] = useState([
-    {
-      id: 'plan-free',
-      name: 'Free Tier',
-      code: 'FREE',
-      price_monthly: 0,
-      price_yearly: 0,
-      max_users: 1,
-      max_invoices_per_month: 50,
-      max_customers: 200,
-      max_products: 100,
-      allow_khatabook: 1,
-      allow_ai_assistant: 0,
-      allow_custom_branding: 0,
-      display_features: 'Standard GST & Non-GST Invoicing\nSingle User Access\nBasic KhataBook Credit Ledger',
-      badge_tag: '',
-      is_active: 1,
-    },
-    {
-      id: 'plan-starter',
-      name: 'Starter Business',
-      code: 'STARTER',
-      price_monthly: 499,
-      price_yearly: 4990,
-      max_users: 3,
-      max_invoices_per_month: 500,
-      max_customers: 2000,
-      max_products: 1000,
-      allow_khatabook: 1,
-      allow_ai_assistant: 1,
-      allow_custom_branding: 0,
-      display_features: 'Unlimited Invoice & Receipt Creation\nMulti-User Employee Access\nAI Barcode Scanner & Assistant\nKhataBook & Customer Ledger Sync',
-      badge_tag: 'Standard',
-      is_active: 1,
-    },
-    {
-      id: 'plan-pro',
-      name: 'Pro Enterprise',
-      code: 'PRO',
-      price_monthly: 1499,
-      price_yearly: 14990,
-      max_users: 10,
-      max_invoices_per_month: 5000,
-      max_customers: 20000,
-      max_products: 10000,
-      allow_khatabook: 1,
-      allow_ai_assistant: 1,
-      allow_custom_branding: 1,
-      display_features: 'Unlimited Everything (Invoices, Customers, Products)\nCustom Logo Branding on Invoices\nPriority Phone & WhatsApp Support\nFull KhataBook & AI Automation',
-      badge_tag: 'Most Popular',
-      is_active: 1,
-    },
-  ]);
-
-  const [businesses, setBusinesses] = useState([
-    {
-      id: 'biz-01',
-      name: 'BillingMaster Retail Store',
-      email: 'store@billingmaster.com',
-      phone: '+91 98765 43210',
-      currency: 'INR',
-      turnover: '50L - 1Cr',
-      catalog_handle: 'retail-store',
-      created_at: new Date().toISOString(),
-      total_invoices: 184,
-      total_products: 64,
-      total_customers: 32,
-      total_revenue: 185400,
-      status: 'active',
-    },
-    {
-      id: 'biz-02',
-      name: 'Apex Supermarket & Grocery',
-      email: 'contact@apexsuper.com',
-      phone: '+91 98111 22233',
-      currency: 'INR',
-      turnover: '1Cr - 5Cr',
-      catalog_handle: 'apex-grocery',
-      created_at: new Date().toISOString(),
-      total_invoices: 156,
-      total_products: 120,
-      total_customers: 85,
-      total_revenue: 100000,
-      status: 'active',
-    },
-  ]);
-
-  const [bulletins, setBulletins] = useState<Bulletin[]>([
-    {
-      id: 'b-1',
-      title: 'Secret Insight: Multi-Currency GST Automation Optimization',
-      content:
-        'Insider strategy note for retailers: Enabling automatic tax calculations reduces checkout latency by 45%. Pro tier accounts can access tax reporting in one click.',
-      category: 'secret_insight',
-      target_audience: 'all',
-      published_at: new Date().toISOString(),
-      views_count: 14,
-      target_count: 16,
-    },
-    {
-      id: 'b-2',
-      title: 'Scheduled System Maintenance Notice',
-      content:
-        'Routine cloud database indexing scheduled for Sunday at 02:00 AM UTC. Estimated downtime under 5 minutes.',
-      category: 'maintenance',
-      target_audience: 'all',
-      published_at: new Date().toISOString(),
-      views_count: 11,
-      target_count: 16,
-    },
-  ]);
-
-  const [featureFlags, setFeatureFlags] = useState<Record<string, FeatureFlag>>({
-    global_ai_assistant: {
-      name: 'Global AI Assistant',
-      description: 'Enable AI invoice generation and barcode assistant across all tenant stores',
-      is_enabled: true,
-      category: 'AI Engine',
-    },
-    khatabook_module: {
-      name: 'KhataBook Credit Manager',
-      description: 'Allow businesses to record credit ledger entries and customer balance tracking',
-      is_enabled: true,
-      category: 'Accounting',
-    },
-    new_user_registration: {
-      name: 'Self-Service Merchant Registration',
-      description: 'Allow new businesses to register autonomously without admin approval',
-      is_enabled: true,
-      category: 'Platform Access',
-    },
-    maintenance_mode: {
-      name: 'Global Maintenance Lockdown',
-      description: 'Restrict tenant write operations for critical platform updates',
-      is_enabled: false,
-      category: 'System Governance',
-    },
-    whatsapp_receipts: {
-      name: 'WhatsApp Direct Receipt Sharing',
-      description: 'Enable automated WhatsApp gateway integration for digital invoices',
-      is_enabled: true,
-      category: 'Integrations',
-    },
-  });
-
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([
-    {
-      id: 'log-1',
-      action: 'SYSTEM_BOOTSTRAP',
-      target_entity: 'Admin Kernel',
-      details: 'BillingMaster Admin Control Suite initialized with live telemetry',
-      performed_by: 'Super Admin',
-      created_at: new Date().toISOString(),
-    },
-  ]);
+  const [plans, setPlans] = useState<any[]>([]);
+  const [businesses, setBusinesses] = useState<any[]>([]);
+  const [bulletins, setBulletins] = useState<Bulletin[]>([]);
+  const [featureFlags, setFeatureFlags] = useState<Record<string, FeatureFlag>>({});
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [pendingRequestsCount, setPendingRequestsCount] = useState<number>(0);
 
   // Fetch live stats & data from backend API
   const fetchLiveData = async () => {
@@ -224,13 +75,13 @@ export function App() {
       const statsRes = await fetch('/api/admin/stats');
       if (statsRes.ok) {
         const json = await statsRes.json();
-        if (json.data) setStats((prev) => ({ ...prev, ...json.data }));
+        if (json.data) setStats((prev: any) => ({ ...prev, ...json.data }));
       }
 
       const plansRes = await fetch('/api/admin/plans');
       if (plansRes.ok) {
         const json = await plansRes.json();
-        if (json.data && json.data.length > 0) setPlans(json.data);
+        if (json.data && Array.isArray(json.data)) setPlans(json.data);
       }
 
       const bizRes = await fetch('/api/admin/businesses');
@@ -242,7 +93,7 @@ export function App() {
       const bulletinRes = await fetch('/api/admin/bulletins');
       if (bulletinRes.ok) {
         const json = await bulletinRes.json();
-        if (json.data && json.data.length > 0) setBulletins(json.data);
+        if (json.data && Array.isArray(json.data)) setBulletins(json.data);
       }
 
       const flagsRes = await fetch('/api/admin/feature-flags');
@@ -254,109 +105,101 @@ export function App() {
       const logsRes = await fetch('/api/admin/audit-logs');
       if (logsRes.ok) {
         const json = await logsRes.json();
-        if (json.data && json.data.length > 0) setAuditLogs(json.data);
+        if (json.data && Array.isArray(json.data)) setAuditLogs(json.data);
       }
-    } catch (err) {
-      // Quietly rely on initial fallbacks
-    }
+
+      const reqRes = await fetch('/api/admin/billing-requests');
+      if (reqRes.ok) {
+        const json = await reqRes.json();
+        if (json.data && Array.isArray(json.data)) {
+          const pendingCount = json.data.filter((r: any) => r.status === 'pending').length;
+          setPendingRequestsCount(pendingCount);
+        }
+      }
+    } catch (err) {}
   };
 
   useEffect(() => {
     fetchLiveData();
-    const interval = setInterval(fetchLiveData, 30000);
+    const interval = setInterval(fetchLiveData, 10000);
     return () => clearInterval(interval);
   }, []);
 
   // Handlers for mutations
   const handleSavePlan = async (planData: Partial<any>) => {
-    try {
-      const res = await fetch('/api/admin/plans', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(planData),
-      });
+    const res = await fetch('/api/admin/plans', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(planData),
+    });
 
-      let savedData: any = null;
-
-      if (res.ok) {
-        const json = await res.json();
-        if (json.data) {
-          savedData = {
-            ...json.data,
-            price_monthly: Number(json.data.price_monthly) || 0,
-            price_yearly: Number(json.data.price_yearly) || 0,
-          };
-        }
-      }
-
-      if (!savedData) {
-        const id = planData.id || `plan-${Date.now()}`;
-        savedData = {
-          name: '',
-          code: '',
-          price_monthly: 0,
-          price_yearly: 0,
-          max_users: 1,
-          max_invoices_per_month: 100,
-          max_customers: 1000,
-          max_products: 500,
-          allow_khatabook: 1,
-          allow_ai_assistant: 1,
-          allow_custom_branding: 0,
-          is_active: 1,
-          ...planData,
-          id,
-        };
-      }
-
-      setPlans((prev: any[]) => {
-        const idx = prev.findIndex((p) => p.id === savedData.id || (p.code && p.code.toUpperCase() === String(savedData.code).toUpperCase()));
-        if (idx >= 0) {
-          const updated = [...prev];
-          updated[idx] = savedData;
-          return updated;
-        }
-        return [...prev, savedData];
-      });
-
-      // Add audit log
-      const newLog: AuditLog = {
-        id: `log-${Date.now()}`,
-        action: 'UPSERT_PLAN',
-        target_entity: 'Subscription Plan',
-        details: `Saved pricing tier: ${savedData.name} (${savedData.code})`,
-        performed_by: 'Super Admin',
-        created_at: new Date().toISOString(),
-      };
-      setAuditLogs((prev) => [newLog, ...prev]);
-    } catch (e) {
-      const id = planData.id || `plan-${Date.now()}`;
-      const fallback: any = {
-        name: '',
-        code: '',
-        price_monthly: 0,
-        price_yearly: 0,
-        max_users: 1,
-        max_invoices_per_month: 100,
-        max_customers: 1000,
-        max_products: 500,
-        allow_khatabook: 1,
-        allow_ai_assistant: 1,
-        allow_custom_branding: 0,
-        is_active: 1,
-        ...planData,
-        id,
-      };
-      setPlans((prev: any[]) => {
-        const idx = prev.findIndex((p) => p.id === id || (p.code && p.code.toUpperCase() === String(fallback.code).toUpperCase()));
-        if (idx >= 0) {
-          const updated = [...prev];
-          updated[idx] = fallback;
-          return updated;
-        }
-        return [...prev, fallback];
-      });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.error || 'Failed to save subscription plan');
     }
+
+    const json = await res.json();
+    if (!json.data) {
+      throw new Error('Invalid response from server when saving plan');
+    }
+
+    const savedData = {
+      ...json.data,
+      price_monthly: Number(json.data.price_monthly) || 0,
+      price_3months: json.data.price_3months !== undefined && json.data.price_3months !== null ? Number(json.data.price_3months) : null,
+      price_6months: json.data.price_6months !== undefined && json.data.price_6months !== null ? Number(json.data.price_6months) : null,
+      price_yearly: Number(json.data.price_yearly) || 0,
+      price_2years: json.data.price_2years !== undefined && json.data.price_2years !== null ? Number(json.data.price_2years) : null,
+      price_3years: json.data.price_3years !== undefined && json.data.price_3years !== null ? Number(json.data.price_3years) : null,
+    };
+
+    setPlans((prev: any[]) => {
+      const idx = prev.findIndex((p) => p.id === savedData.id || (p.code && p.code.toUpperCase() === String(savedData.code).toUpperCase()));
+      if (idx >= 0) {
+        const updated = [...prev];
+        updated[idx] = savedData;
+        return updated;
+      }
+      return [...prev, savedData];
+    });
+
+    // Add audit log
+    const newLog: AuditLog = {
+      id: `log-${Date.now()}`,
+      action: 'UPSERT_PLAN',
+      target_entity: 'Subscription Plan',
+      details: `Saved pricing tier: ${savedData.name} (${savedData.code})`,
+      performed_by: 'Super Admin',
+      created_at: new Date().toISOString(),
+    };
+    setAuditLogs((prev) => [newLog, ...prev]);
+
+    // Refresh live data from backend
+    await fetchLiveData();
+  };
+
+  const handleDeletePlan = async (planId: string) => {
+    const res = await fetch(`/api/admin/plans/${planId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      throw new Error(json.error || 'Failed to delete plan');
+    }
+
+    setPlans((prev: any[]) => prev.filter((p) => p.id !== planId && p.name !== planId && p.code !== planId));
+
+    const newLog: AuditLog = {
+      id: `log-${Date.now()}`,
+      action: 'DELETE_PLAN',
+      target_entity: 'Subscription Plan',
+      details: `Deleted subscription plan (${planId})`,
+      performed_by: 'Super Admin',
+      created_at: new Date().toISOString(),
+    };
+    setAuditLogs((prev) => [newLog, ...prev]);
+
+    await fetchLiveData();
   };
 
   const handleToggleBusinessStatus = async (bizId: string, currentStatus: string, reason?: string) => {
@@ -558,7 +401,12 @@ export function App() {
       <Toaster position="top-right" theme="dark" richColors />
 
       {/* Sidebar Navigation */}
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} systemHealth={stats.systemHealth} />
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        systemHealth={stats.systemHealth}
+        pendingRequestsCount={pendingRequestsCount}
+      />
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
@@ -574,12 +422,13 @@ export function App() {
           )}
 
           {activeTab === 'plans' && (
-            <PlanManagement plans={plans} onSavePlan={handleSavePlan} />
+            <PlanManagement plans={plans} onSavePlan={handleSavePlan} onDeletePlan={handleDeletePlan} />
           )}
 
           {activeTab === 'businesses' && (
             <BusinessControl
               businesses={businesses}
+              plans={plans}
               onToggleStatus={handleToggleBusinessStatus}
               onDeleteBusiness={handleDeleteBusiness}
               onUpdateBusiness={handleUpdateBusiness}
