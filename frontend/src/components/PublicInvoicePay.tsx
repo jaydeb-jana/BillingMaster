@@ -201,6 +201,12 @@ export function PublicInvoicePay() {
     toast.success('Payment confirmation recorded! Thank you for your payment.');
   };
 
+  const effectiveBankName = paymentInfo?.bank_name || 'HDFC Bank Ltd';
+  const effectiveAccHolder = paymentInfo?.account_holder_name || bizName;
+  const effectiveAccNo = paymentInfo?.account_number || '50100234567890';
+  const effectiveIfsc = paymentInfo?.ifsc_code || 'HDFC0001234';
+  const effectiveBranch = paymentInfo?.branch_name || paymentInfo?.account_type || 'Current Account';
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 py-8 px-4 sm:px-6">
       <div className="max-w-xl mx-auto space-y-6">
@@ -351,63 +357,8 @@ export function PublicInvoicePay() {
               )}
             </div>
 
-            {/* Bank Transfer Details (NEFT / IMPS / RTGS) */}
-            {(bankName || accNo) && (
-              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3 text-xs">
-                <div className="flex items-center gap-1.5 text-xs font-extrabold text-white border-b border-slate-800 pb-2">
-                  <Landmark size={15} className="text-primary" />
-                  <span>DIRECT BANK TRANSFER (NEFT / IMPS / RTGS)</span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-300">
-                  {bankName && (
-                    <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
-                      <span className="text-[9px] font-bold text-slate-500 uppercase block">BANK NAME</span>
-                      <span className="font-extrabold text-white">{bankName}</span>
-                    </div>
-                  )}
-                  {accHolder && (
-                    <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
-                      <span className="text-[9px] font-bold text-slate-500 uppercase block">ACCOUNT HOLDER</span>
-                      <span className="font-bold text-white truncate block">{accHolder}</span>
-                    </div>
-                  )}
-                  {accNo && (
-                    <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 flex justify-between items-center">
-                      <div>
-                        <span className="text-[9px] font-bold text-slate-500 uppercase block">ACCOUNT NUMBER</span>
-                        <span className="mono font-bold text-white">{accNo}</span>
-                      </div>
-                      <button
-                        onClick={() => copyToClipboard(accNo, 'acc')}
-                        className="text-slate-400 hover:text-white p-1"
-                        title="Copy Account Number"
-                      >
-                        {copiedAcc ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                      </button>
-                    </div>
-                  )}
-                  {ifsc && (
-                    <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 flex justify-between items-center">
-                      <div>
-                        <span className="text-[9px] font-bold text-slate-500 uppercase block">IFSC CODE</span>
-                        <span className="mono font-bold text-white">{ifsc}</span>
-                      </div>
-                      <button
-                        onClick={() => copyToClipboard(ifsc, 'ifsc')}
-                        className="text-slate-400 hover:text-white p-1"
-                        title="Copy IFSC Code"
-                      >
-                        {copiedIfsc ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
             {/* Prominent Action Button: Launch UPI App */}
-            <div className="space-y-2.5 pt-2">
+            <div className="pt-1">
               <a
                 href={upiUri}
                 className="btn-primary w-full py-3.5 px-4 rounded-2xl font-black text-sm text-center flex items-center justify-center gap-2 shadow-lg no-underline cursor-pointer"
@@ -416,16 +367,72 @@ export function PublicInvoicePay() {
                 <Smartphone size={18} />
                 <span>Open UPI App & Continue Payment (₹{totalAmount.toFixed(2)})</span>
               </a>
+            </div>
 
-              <button
-                type="button"
-                onClick={handleConfirmPayment}
-                className="w-full py-3 px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-extrabold text-xs text-center flex items-center justify-center gap-2 transition-all cursor-pointer"
-                data-testid="button-confirm-payment-done"
-              >
-                <CheckCircle2 size={16} className="text-emerald-400" />
-                <span>I Have Completed Payment / Confirm Payment</span>
-              </button>
+            {/* Direct Bank Transfer Details (Always displayed at the bottom) */}
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4.5 space-y-3.5 text-xs shadow-md">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                <div className="flex items-center gap-2 text-xs font-black text-white uppercase tracking-wider">
+                  <Landmark size={16} className="text-primary" />
+                  <span>DIRECT BANK TRANSFER DETAILS (NEFT / IMPS / RTGS)</span>
+                </div>
+                <span className="text-[9.5px] font-extrabold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">
+                  Bank Transfer
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-slate-300">
+                <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800">
+                  <span className="text-[9px] font-bold text-slate-500 uppercase block">BANK NAME</span>
+                  <span className="font-extrabold text-white text-xs">{effectiveBankName}</span>
+                </div>
+
+                <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800">
+                  <span className="text-[9px] font-bold text-slate-500 uppercase block">ACCOUNT HOLDER NAME</span>
+                  <span className="font-extrabold text-white text-xs truncate block">{effectiveAccHolder}</span>
+                </div>
+
+                <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800 flex justify-between items-center">
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-500 uppercase block">ACCOUNT NUMBER</span>
+                    <span className="mono font-bold text-white text-xs tracking-wider">{effectiveAccNo}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(effectiveAccNo, 'acc')}
+                    className="shrink-0 bg-slate-800 hover:bg-slate-700 text-white font-bold p-1.5 rounded-lg text-xs flex items-center gap-1 transition-all cursor-pointer"
+                    title="Copy Account Number"
+                  >
+                    {copiedAcc ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                  </button>
+                </div>
+
+                <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800 flex justify-between items-center">
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-500 uppercase block">IFSC CODE</span>
+                    <span className="mono font-bold text-white text-xs tracking-wider">{effectiveIfsc}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(effectiveIfsc, 'ifsc')}
+                    className="shrink-0 bg-slate-800 hover:bg-slate-700 text-white font-bold p-1.5 rounded-lg text-xs flex items-center gap-1 transition-all cursor-pointer"
+                    title="Copy IFSC Code"
+                  >
+                    {copiedIfsc ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                  </button>
+                </div>
+
+                {effectiveBranch && (
+                  <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800 col-span-1 sm:col-span-2">
+                    <span className="text-[9px] font-bold text-slate-500 uppercase block">BRANCH / ACCOUNT TYPE</span>
+                    <span className="font-semibold text-slate-200 text-xs">{effectiveBranch}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="text-[10px] text-slate-400 bg-slate-900/50 p-2 rounded-lg border border-slate-800/60 italic">
+                * Please mention Invoice <strong className="text-white mono">{invoice.invoice_number || 'ID'}</strong> in payment remarks/narration when transferring via bank NEFT/IMPS.
+              </div>
             </div>
 
           </div>

@@ -3,11 +3,12 @@ import {
   X, Check, Printer, FileText, LayoutTemplate,
   Smartphone, CheckCircle2, Layers, Palette, Eye,
   Crown, Cpu, Sparkles, Building2, Ticket, ShieldCheck,
-  Landmark, QrCode
+  Landmark, QrCode, PenTool, Upload, Image as ImageIcon, Trash2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { db, auth, supabase } from '@/lib/api';
 import { useScrollReset, useBodyScrollLock } from '@/lib/useScrollReset';
+import { SignaturePadCanvas } from './SignaturePadCanvas';
 
 export type InvoiceTemplateId =
   | 'standard'
@@ -29,11 +30,15 @@ export interface InvoiceTemplateSettings {
   show_logo: boolean;
   show_qr_code: boolean;
   show_signature: boolean;
+  signature_image_url?: string;
   show_bank_details: boolean;
   show_terms: boolean;
   show_tax_breakdown: boolean;
   header_accent_color?: string;
   default_copies?: 'original' | 'duplicate' | 'triplicate';
+  enable_tax?: boolean;
+  tax_name?: string;
+  tax_rate?: string;
 }
 
 export const DEFAULT_TEMPLATE_SETTINGS: InvoiceTemplateSettings = {
@@ -44,11 +49,15 @@ export const DEFAULT_TEMPLATE_SETTINGS: InvoiceTemplateSettings = {
   show_logo: true,
   show_qr_code: true,
   show_signature: true,
+  signature_image_url: '',
   show_bank_details: true,
   show_terms: true,
   show_tax_breakdown: true,
   header_accent_color: '#f97316',
   default_copies: 'original',
+  enable_tax: false,
+  tax_name: 'Tax',
+  tax_rate: '18',
 };
 
 export const INVOICE_TEMPLATES = [
@@ -200,6 +209,48 @@ export const PRINT_SIZES = [
   },
 ];
 
+export function processAndOptimizeSignatureImage(
+  imageSrc: string,
+  maxDimension = 800
+): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      // Downscale image dimensions preserving aspect ratio to avoid main thread freeze & huge Base64 payload
+      let width = img.width;
+      let height = img.height;
+
+      if (width > maxDimension || height > maxDimension) {
+        if (width > height) {
+          height = Math.round((height * maxDimension) / width);
+          width = maxDimension;
+        } else {
+          width = Math.round((width * maxDimension) / height);
+          height = maxDimension;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(imageSrc);
+        return;
+      }
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, width, height);
+
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => resolve(imageSrc);
+    img.src = imageSrc;
+  });
+}
+
 interface InvoiceTemplateModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -209,7 +260,8 @@ interface InvoiceTemplateModalProps {
 export function InvoiceTemplateModal({ isOpen, onClose, onSaved }: InvoiceTemplateModalProps) {
   useScrollReset(isOpen);
   useBodyScrollLock(isOpen);
-  const [activeTab, setActiveTab] = useState<'templates' | 'sizes'>('templates');
+  const [activeTab, setActiveTab] = useState<'templates' | 'sizes' | 'signature'>('templates');
+  const [sigMode, setSigMode] = useState<'draw' | 'upload'>('draw');
   const [previewModalTemplate, setPreviewModalTemplate] = useState<InvoiceTemplateId | null>(null);
 
   const [settings, setSettings] = useState<InvoiceTemplateSettings>(() => {
@@ -238,12 +290,11 @@ export function InvoiceTemplateModal({ isOpen, onClose, onSaved }: InvoiceTempla
         const taxRaw = localStorage.getItem('arventa_tax_settings');
         if (taxRaw) {
           const parsedTax = JSON.parse(taxRaw);
-          if (parsedTax.invoice_template) {
-            loadedSettings.template_id = parsedTax.invoice_template;
-          }
-          if (parsedTax.invoice_print_size) {
-            loadedSettings.print_size = parsedTax.invoice_print_size;
-          }
+          if (parsedTax.invoice_template) loadedSettings.template_id = parsedTax.invoice_template;
+          if (parsedTax.invoice_print_size) loadedSettings.print_size = parsedTax.invoice_print_size;
+          if (parsedTax.enable_tax !== undefined) loadedSettings.enable_tax = Boolean(parsedTax.enable_tax);
+          if (parsedTax.tax_name) loadedSettings.tax_name = parsedTax.tax_name;
+          if (parsedTax.tax_rate !== undefined) loadedSettings.tax_rate = String(parsedTax.tax_rate);
         }
 
         const session = auth.session();
@@ -253,6 +304,9 @@ export function InvoiceTemplateModal({ isOpen, onClose, onSaved }: InvoiceTempla
             const parsedBiz = JSON.parse(bizRaw);
             if (parsedBiz.invoice_template) loadedSettings.template_id = parsedBiz.invoice_template;
             if (parsedBiz.invoice_print_size) loadedSettings.print_size = parsedBiz.invoice_print_size;
+            if (parsedBiz.enable_tax !== undefined) loadedSettings.enable_tax = Boolean(parsedBiz.enable_tax);
+            if (parsedBiz.tax_name) loadedSettings.tax_name = parsedBiz.tax_name;
+            if (parsedBiz.tax_rate !== undefined) loadedSettings.tax_rate = String(parsedBiz.tax_rate);
           }
         }
 
@@ -271,17 +325,37 @@ export function InvoiceTemplateModal({ isOpen, onClose, onSaved }: InvoiceTempla
   const handleSave = async () => {
     setSaving(true);
     try {
-      // 1. Save to local storage
-      localStorage.setItem('arventa_invoice_template_settings', JSON.stringify(settings));
+      let finalSettings = { ...settings };
+
+      // Ensure signature image is optimized (< 200KB) to prevent localStorage quota errors
+      if (finalSettings.signature_image_url && finalSettings.signature_image_url.length > 200000) {
+        try {
+          const optimized = await processAndOptimizeSignatureImage(finalSettings.signature_image_url, 600);
+          finalSettings.signature_image_url = optimized;
+          setSettings(finalSettings);
+        } catch (e) {
+          console.warn('Could not downscale large signature image before save:', e);
+        }
+      }
+
+      // 1. Save to local storage safely
+      try {
+        localStorage.setItem('arventa_invoice_template_settings', JSON.stringify(finalSettings));
+      } catch (e) {
+        console.warn('localStorage quota warning for template settings:', e);
+      }
 
       // Update global tax/invoice settings cache
       try {
         const taxRaw = localStorage.getItem('arventa_tax_settings');
         const taxObj = taxRaw ? JSON.parse(taxRaw) : {};
-        taxObj.invoice_template = settings.template_id;
-        taxObj.invoice_print_size = settings.print_size;
+        taxObj.invoice_template = finalSettings.template_id;
+        taxObj.invoice_print_size = finalSettings.print_size;
+        taxObj.enable_tax = finalSettings.enable_tax;
+        taxObj.tax_name = finalSettings.tax_name;
+        taxObj.tax_rate = finalSettings.tax_rate;
         localStorage.setItem('arventa_tax_settings', JSON.stringify(taxObj));
-      } catch {}
+      } catch (e) {}
 
       // 2. Save to user profile & Supabase if logged in
       const session = auth.session();
@@ -289,20 +363,30 @@ export function InvoiceTemplateModal({ isOpen, onClose, onSaved }: InvoiceTempla
         try {
           const bizRaw = localStorage.getItem(`arventa_biz_${session.user.id}`);
           const bizObj = bizRaw ? JSON.parse(bizRaw) : {};
-          bizObj.invoice_template = settings.template_id;
-          bizObj.invoice_print_size = settings.print_size;
+          bizObj.invoice_template = finalSettings.template_id;
+          bizObj.invoice_print_size = finalSettings.print_size;
+          bizObj.enable_tax = finalSettings.enable_tax;
+          bizObj.tax_name = finalSettings.tax_name;
+          bizObj.tax_rate = finalSettings.tax_rate;
+          bizObj.signature_image_url = finalSettings.signature_image_url;
           localStorage.setItem(`arventa_biz_${session.user.id}`, JSON.stringify(bizObj));
-        } catch {}
+        } catch (e) {}
 
         try {
           await supabase.auth.updateUser({
             data: {
-              invoice_template: settings.template_id,
-              invoice_print_size: settings.print_size,
-              invoice_template_settings: settings,
+              invoice_template: finalSettings.template_id,
+              invoice_print_size: finalSettings.print_size,
+              enable_tax: finalSettings.enable_tax,
+              tax_name: finalSettings.tax_name,
+              tax_rate: finalSettings.tax_rate,
+              signature_image_url: finalSettings.signature_image_url,
+              invoice_template_settings: finalSettings,
             }
           });
-        } catch {}
+        } catch (e) {
+          console.warn('Supabase updateUser failed:', e);
+        }
 
         try {
           const profiles = await db.list<any>('profiles', { id: session.user.id });
@@ -310,15 +394,20 @@ export function InvoiceTemplateModal({ isOpen, onClose, onSaved }: InvoiceTempla
           if (bid) {
             await db.upsert('settings', {
               business_id: bid,
-              invoice_template: settings.template_id,
+              invoice_template: finalSettings.template_id,
+              enable_tax: finalSettings.enable_tax,
+              tax_name: finalSettings.tax_name,
+              tax_rate: Number(finalSettings.tax_rate || 0),
             });
           }
-        } catch {}
+        } catch (e) {
+          console.warn('DB settings upsert failed:', e);
+        }
       }
 
       setSavedSuccess(true);
       toast.success('Invoice template settings saved successfully!');
-      if (onSaved) onSaved(settings);
+      if (onSaved) onSaved(finalSettings);
       setTimeout(() => {
         setSavedSuccess(false);
         onClose();
@@ -638,6 +727,19 @@ export function InvoiceTemplateModal({ isOpen, onClose, onSaved }: InvoiceTempla
             <Printer size={14} className={activeTab === 'sizes' ? 'text-primary' : ''} />
             <span>2. Print Page Size ({selectedPrintSize.id})</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('signature')}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+              activeTab === 'signature'
+                ? 'bg-card text-foreground shadow-xs border border-border ring-1 ring-primary/30'
+                : 'text-muted-foreground hover:text-foreground hover:bg-card/50'
+            }`}
+          >
+            <PenTool size={14} className={activeTab === 'signature' ? 'text-primary' : ''} />
+            <span>3. Digital Signature & Seal</span>
+          </button>
         </div>
 
         {/* Modal Body */}
@@ -646,6 +748,50 @@ export function InvoiceTemplateModal({ isOpen, onClose, onSaved }: InvoiceTempla
           {/* TAB 1: TEMPLATES */}
           {activeTab === 'templates' && (
             <div className="space-y-6">
+              {/* Tax Calculation Settings */}
+              <div className="rounded-2xl border border-border bg-muted/30 p-4 space-y-3">
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={settings.enable_tax}
+                    onChange={e => setSettings({ ...settings, enable_tax: e.target.checked })}
+                    className="mt-0.5 h-4 w-4 rounded accent-primary cursor-pointer border-border"
+                  />
+                  <div>
+                    <div className="text-xs font-bold text-foreground">Enable GST / Tax Calculation</div>
+                    <div className="text-[11px] text-muted-foreground">Auto-apply tax rates to your itemized invoices.</div>
+                  </div>
+                </label>
+                {settings.enable_tax && (
+                  <div className="pt-2 border-t border-border/60 grid gap-3 sm:grid-cols-2">
+                    <label className="block text-xs font-bold text-foreground">
+                      Tax Name / Type
+                      <input
+                        type="text"
+                        placeholder="e.g. GST, VAT"
+                        value={settings.tax_name || ''}
+                        onChange={e => setSettings({ ...settings, tax_name: e.target.value })}
+                        className="input-shell mt-1.5 w-full px-3 py-2 text-xs font-semibold"
+                      />
+                    </label>
+                    <label className="block text-xs font-bold text-foreground">
+                      Default Tax Rate (%)
+                      <div className="relative mt-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={settings.tax_rate || ''}
+                          onChange={e => setSettings({ ...settings, tax_rate: e.target.value })}
+                          className="input-shell w-full pl-3 pr-8 py-2 text-xs font-semibold"
+                        />
+                        <span className="pointer-events-none absolute right-3 top-2 text-xs font-bold text-muted-foreground">%</span>
+                      </div>
+                    </label>
+                  </div>
+                )}
+              </div>
+
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div>
                   <h4 className="text-sm font-extrabold text-foreground">Select Visual Template</h4>
@@ -852,6 +998,176 @@ export function InvoiceTemplateModal({ isOpen, onClose, onSaved }: InvoiceTempla
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: DIGITAL SIGNATURE & SEAL */}
+          {activeTab === 'signature' && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div>
+                  <h4 className="text-sm font-extrabold text-foreground">Digital Signature & Stamp / Seal</h4>
+                  <p className="text-xs text-muted-foreground">Upload a signature PNG image or draw your signature directly on screen using touch or mouse.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 text-xs font-extrabold text-foreground cursor-pointer bg-muted/60 px-3 py-1.5 rounded-xl border border-border">
+                    <input
+                      type="checkbox"
+                      checked={settings.show_signature}
+                      onChange={(e) => setSettings({ ...settings, show_signature: e.target.checked })}
+                      className="rounded border-border text-primary focus:ring-primary h-4 w-4"
+                    />
+                    <span>Show Signature Box on Invoices</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Active Signature Preview Box */}
+              {settings.signature_image_url ? (
+                <div className="p-4 bg-muted/30 border border-primary/30 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="h-20 w-44 bg-white dark:bg-slate-900 border border-border rounded-xl p-2 flex items-center justify-center shadow-inner relative group">
+                      <img
+                        src={settings.signature_image_url}
+                        alt="Current Signature"
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    </div>
+                    <div>
+                      <div className="text-xs font-extrabold text-foreground flex items-center gap-1.5">
+                        <CheckCircle2 size={15} className="text-emerald-500" />
+                        <span>Active Signature Configured</span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        This signature image will appear on all printed and exported invoice documents.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSettings(prev => ({ ...prev, signature_image_url: '' }));
+                      toast.info('Signature removed.');
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-destructive/30 text-destructive hover:bg-destructive/10 text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    <Trash2 size={14} />
+                    <span>Remove Signature</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-700 dark:text-amber-300 font-medium flex items-center gap-2">
+                  <PenTool size={16} className="shrink-0 text-amber-600" />
+                  <span>No digital signature configured yet. Choose an option below to draw or upload your transparent PNG signature.</span>
+                </div>
+              )}
+
+              {/* Signature Input Mode Selection */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 border-b border-border pb-2">
+                  <button
+                    type="button"
+                    onClick={() => setSigMode('draw')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                      sigMode === 'draw'
+                        ? 'bg-primary text-primary-foreground shadow-xs'
+                        : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    <PenTool size={14} />
+                    <span>Option 1: Hand-Draw Signature</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSigMode('upload')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                      sigMode === 'upload'
+                        ? 'bg-primary text-primary-foreground shadow-xs'
+                        : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    <Upload size={14} />
+                    <span>Option 2: Upload Signature (PNG Only)</span>
+                  </button>
+                </div>
+
+                {/* Draw Canvas */}
+                {sigMode === 'draw' && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      Use your mouse, trackpad, or touchscreen finger to sign inside the canvas below:
+                    </p>
+                    <SignaturePadCanvas
+                      onSave={(dataUrl) => {
+                        setSettings(prev => ({
+                          ...prev,
+                          signature_image_url: dataUrl,
+                          show_signature: true
+                        }));
+                        toast.success('Hand-drawn signature saved!');
+                      }}
+                    />
+                  </div>
+                )}
+
+                {/* File Upload Mode */}
+                {sigMode === 'upload' && (
+                  <div className="space-y-3">
+                    <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-700 dark:text-blue-300 font-medium">
+                      <strong>PNG Format Required:</strong> Please upload a transparent <strong>PNG</strong> image file of your signature or company stamp (Max size: 5MB). Please ensure the background is transparent/removed before uploading.
+                    </div>
+
+                    <div className="border-2 border-dashed border-border hover:border-primary/50 bg-card rounded-2xl p-6 text-center transition-colors">
+                      <input
+                        type="file"
+                        accept="image/png"
+                        id="signature-file-input"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.type !== 'image/png' && !file.name.toLowerCase().endsWith('.png')) {
+                            toast.error('Only PNG image format is supported. Please upload a transparent PNG image file.');
+                            return;
+                          }
+                          if (file.size > 5 * 1024 * 1024) {
+                            toast.error('File size exceeds 5MB limit.');
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onload = async (event) => {
+                            const rawResult = event.target?.result as string;
+                            if (rawResult) {
+                              // Fast non-blocking processing & downscaling to 800px max dimension
+                              const optimizedResult = await processAndOptimizeSignatureImage(rawResult, 800);
+                              setSettings(prev => ({
+                                ...prev,
+                                signature_image_url: optimizedResult,
+                                show_signature: true
+                              }));
+                              toast.success('Transparent PNG signature image uploaded successfully!');
+                            }
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                      <label
+                        htmlFor="signature-file-input"
+                        className="flex flex-col items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <div className="h-12 w-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+                          <ImageIcon size={24} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-extrabold text-foreground">Click to browse & upload transparent PNG image</p>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">Strictly PNG format only (Max 5MB)</p>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

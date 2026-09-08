@@ -43,6 +43,7 @@ import {
   type InvoiceTemplateSettings
 } from '@/components/InvoiceTemplateModal';
 import { InvoiceDocumentSheet } from '@/components/InvoiceDocumentSheet';
+import { InvoiceBarcodeSearchModal } from '@/components/InvoiceBarcodeSearchModal';
 import { getStoredEnabledCodes, getDropdownOptionsForUnits } from '@/constants/unitOptions';
 import { UnitSettingsModal } from '@/components/UnitSettingsModal';
 
@@ -2058,10 +2059,17 @@ function InvoiceRow({ row, customerName }: { row: Row; customerName?: string }) 
   );
 }
 
+type InvoiceDatePreset = 'all' | 'today' | '7days' | '30days' | 'this_month' | 'last_month' | 'this_year' | 'custom';
+
 function Invoices() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [deleteInvoiceData, setDeleteInvoiceData] = useState<Row | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [datePreset, setDatePreset] = useState<InvoiceDatePreset>('all');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
 
   const invoices = usePaginatedTable<Row>('invoices', { order: 'created_at.desc' }, 40);
   const customers = useTable<Row>('customers', { limit: 200 });
@@ -2075,7 +2083,63 @@ function Invoices() {
     return map;
   }, [customers.data]);
 
-  const filtered = invoices.data;
+  const applyDatePreset = (preset: InvoiceDatePreset) => {
+    setDatePreset(preset);
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
+    if (preset === 'today') {
+      setStartDate(todayStr);
+      setEndDate(todayStr);
+    } else if (preset === '7days') {
+      const past = new Date();
+      past.setDate(past.getDate() - 7);
+      setStartDate(past.toISOString().split('T')[0]);
+      setEndDate(todayStr);
+    } else if (preset === '30days') {
+      const past = new Date();
+      past.setDate(past.getDate() - 30);
+      setStartDate(past.toISOString().split('T')[0]);
+      setEndDate(todayStr);
+    } else if (preset === 'this_month') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+      setStartDate(firstDay);
+      setEndDate(todayStr);
+    } else if (preset === 'last_month') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
+      const lastDay = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0];
+      setStartDate(firstDay);
+      setEndDate(lastDay);
+    } else if (preset === 'this_year') {
+      const firstDay = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0];
+      setStartDate(firstDay);
+      setEndDate(todayStr);
+    } else if (preset === 'all') {
+      setStartDate('');
+      setEndDate('');
+    }
+  };
+
+  const filtered = useMemo(() => {
+    return invoices.data.filter((inv) => {
+      if (statusFilter !== 'all') {
+        const status = (inv.status || '').toLowerCase();
+        if (statusFilter === 'paid' && !(status === 'paid' || status === 'complete' || status === 'khata' || status === 'pay_later')) return false;
+        if (statusFilter === 'pending' && !(status === 'pending' || status === 'unpaid' || status === 'due' || status === 'draft')) return false;
+        if (statusFilter === 'returned' && !(status === 'returned' || status === 'partially_returned' || status === 'partial_returned')) return false;
+        if (statusFilter === 'cancelled' && status !== 'cancelled') return false;
+      }
+      if (startDate || endDate) {
+        if (!inv.created_at) return false;
+        const invDateStr = inv.created_at.split('T')[0];
+        if (startDate && invDateStr < startDate) return false;
+        if (endDate && invDateStr > endDate) return false;
+      }
+      return true;
+    });
+  }, [invoices.data, statusFilter, startDate, endDate]);
+
+  const activeFilterCount = (statusFilter !== 'all' ? 1 : 0) + (startDate || endDate ? 1 : 0);
 
   const handleDeleteInvoice = async () => {
     if (!deleteInvoiceData) return;
@@ -2099,7 +2163,124 @@ function Invoices() {
         <Search className="absolute left-3 top-3 text-muted-foreground" size={17} />
         <input value={search} onChange={(e) => invoices.setSearch(e.target.value)} placeholder="Search invoice number or customer" className="input-shell w-full pl-10 pr-3 text-sm" data-testid="input-search-invoices" />
       </div>
-      <button className="input-shell inline-flex items-center justify-center gap-2 px-3 text-xs font-bold text-muted-foreground hover:text-foreground" data-testid="button-filter-invoices"><SlidersHorizontal size={15} /> Filters</button>
+      <div className="relative">
+        <button
+          onClick={() => setShowFilterDropdown((prev) => !prev)}
+          className={`input-shell inline-flex items-center justify-center gap-2 px-3 text-xs font-bold transition-colors ${
+            activeFilterCount > 0
+              ? 'border-primary text-primary bg-primary/10'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+          data-testid="button-filter-invoices"
+        >
+          <SlidersHorizontal size={15} />
+          <span>Filters</span>
+          {activeFilterCount > 0 && (
+            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
+              {activeFilterCount}
+            </span>
+          )}
+          <ChevronDown size={14} className={`transition-transform ${showFilterDropdown ? 'rotate-180' : ''}`} />
+        </button>
+
+        {showFilterDropdown && (
+          <div className="absolute right-0 top-full mt-2 z-50 w-80 rounded-xl border border-border bg-card p-4 shadow-xl text-xs space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-border pb-2">
+              <span className="font-bold text-foreground flex items-center gap-1.5">
+                <Filter size={14} /> Filter Invoices
+              </span>
+              {activeFilterCount > 0 && (
+                <button
+                  onClick={() => {
+                    setStatusFilter('all');
+                    applyDatePreset('all');
+                  }}
+                  className="text-[11px] text-primary font-medium hover:underline"
+                >
+                  Reset all
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                Payment Status
+              </label>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="input-shell w-full text-xs py-1.5"
+              >
+                <option value="all">All Statuses</option>
+                <option value="paid">Paid / Complete</option>
+                <option value="pending">Pending / Unpaid</option>
+                <option value="returned">Returned / Refunded</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                Time Period
+              </label>
+              <select
+                value={datePreset}
+                onChange={(e) => applyDatePreset(e.target.value as InvoiceDatePreset)}
+                className="input-shell w-full text-xs py-1.5"
+              >
+                <option value="all">All Time</option>
+                <option value="today">Today</option>
+                <option value="7days">Last 7 Days</option>
+                <option value="30days">Last 30 Days</option>
+                <option value="this_month">This Month</option>
+                <option value="last_month">Last Month</option>
+                <option value="this_year">This Year</option>
+                <option value="custom">Custom Range</option>
+              </select>
+
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <div>
+                  <label className="block text-[10px] font-semibold text-muted-foreground mb-0.5">
+                    From Date
+                  </label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => {
+                      setStartDate(e.target.value);
+                      setDatePreset('custom');
+                    }}
+                    className="input-shell w-full px-2 py-1.5 text-xs font-medium rounded-md"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-muted-foreground mb-0.5">
+                    To Date
+                  </label>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => {
+                      setEndDate(e.target.value);
+                      setDatePreset('custom');
+                    }}
+                    className="input-shell w-full px-2 py-1.5 text-xs font-medium rounded-md"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-border flex justify-end">
+              <button
+                onClick={() => setShowFilterDropdown(false)}
+                className="px-3 py-1.5 bg-primary text-primary-foreground font-semibold rounded-md text-xs hover:bg-primary/90 transition-colors"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
     <section className="card-shell overflow-hidden">
       <div className="hidden grid-cols-[1fr_1fr_0.9fr_0.9fr_110px_90px] gap-4 border-b border-border/70 bg-muted/30 px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground sm:grid">
@@ -2241,11 +2422,15 @@ function Invoices() {
       </div>
     )}
 
-    {settingsOpen && <InvoiceQuickSettings onClose={() => setSettingsOpen(false)} />}
+    {settingsOpen && <InvoiceTemplateModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />}
   </>;
 }
 
 function InvoiceQuickSettings({ onClose }: { onClose: () => void }) {
+  return <InvoiceTemplateModal isOpen={true} onClose={onClose} />;
+}
+
+function LegacyInvoiceQuickSettings({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState<Record<string, any>>({
     enable_tax: false,
     tax_name: 'Tax',

@@ -2,9 +2,77 @@ import React from 'react';
 import {
   Phone, MapPin, ShieldCheck, Landmark, Check, Clock, X,
   Building2, Crown, Cpu, Sparkles, Ticket, QrCode, FileText, CheckCircle2,
-  ExternalLink
+  ExternalLink, Barcode
 } from 'lucide-react';
 import { InvoiceTemplateId, InvoiceTemplateSettings } from './InvoiceTemplateModal';
+
+const CODE39_MAP: Record<string, string> = {
+  '0': '000110100', '1': '100100001', '2': '001100001', '3': '101100000', '4': '000110001',
+  '5': '100110000', '6': '001110000', '7': '000100101', '8': '100100100', '9': '001100100',
+  'A': '100001001', 'B': '001001001', 'C': '101001000', 'D': '000011001', 'E': '100011000',
+  'F': '001011000', 'G': '000001101', 'H': '100001100', 'I': '001001100', 'J': '000011100',
+  'K': '100000011', 'L': '001000011', 'M': '101000010', 'N': '000010011', 'O': '100010010',
+  'P': '001010010', 'Q': '000000111', 'R': '100000110', 'S': '001000110', 'T': '000010110',
+  'U': '110000001', 'V': '011000001', 'W': '111000000', 'X': '010010001', 'Y': '110010000',
+  'Z': '011010000', '-': '010000101', '.': '110000100', ' ': '011000100', '$': '010101000',
+  '/': '010100010', '+': '010001010', '%': '000101010', '*': '010010100'
+};
+
+export function InvoiceBarcode({
+  value = '',
+  height = 36,
+  showText = true,
+  className = ''
+}: {
+  value: string;
+  height?: number;
+  showText?: boolean;
+  className?: string;
+}) {
+  const cleanVal = (value || 'INV-0001').toUpperCase().replace(/[^0-9A-Z\-\.\ \$\/\+\%]/g, '') || 'INV-0001';
+  const encodedText = `*${cleanVal}*`;
+
+  let totalWidth = 0;
+  const elements: { isBar: boolean; width: number; x: number }[] = [];
+
+  for (let i = 0; i < encodedText.length; i++) {
+    const char = encodedText[i];
+    const pattern = CODE39_MAP[char] || CODE39_MAP['-'];
+    for (let j = 0; j < 9; j++) {
+      const isBar = j % 2 === 0;
+      const isWide = pattern[j] === '1';
+      const width = isWide ? 3 : 1;
+      elements.push({ isBar, width, x: totalWidth });
+      totalWidth += width;
+    }
+    // Inter-character space
+    elements.push({ isBar: false, width: 1, x: totalWidth });
+    totalWidth += 1;
+  }
+
+  return (
+    <div className={`inline-flex flex-col items-center justify-center ${className}`}>
+      <svg
+        viewBox={`0 0 ${totalWidth} ${height}`}
+        className="w-full h-auto max-h-12"
+        preserveAspectRatio="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <rect width={totalWidth} height={height} fill="#ffffff" />
+        {elements.map((el, idx) =>
+          el.isBar ? (
+            <rect key={idx} x={el.x} y={0} width={el.width} height={height} fill="#000000" />
+          ) : null
+        )}
+      </svg>
+      {showText && (
+        <span className="mono font-mono font-bold text-[10px] tracking-wider text-slate-800 mt-0.5">
+          {cleanVal}
+        </span>
+      )}
+    </div>
+  );
+}
 
 interface InvoiceDocumentSheetProps {
   invoice: any;
@@ -57,38 +125,49 @@ export function InvoiceDocumentSheet({
 
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(paymentPageUrl)}`;
 
-  // Interactive Online Payment QR Block
+  // Interactive Online Payment QR & Invoice Barcode Block
   const renderOnlinePaymentQrBlock = () => (
-    <div className="flex items-center gap-3 bg-slate-50/90 p-2.5 rounded-lg border border-slate-200 text-xs">
-      <a
-        href={paymentPageUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="shrink-0 bg-white p-1 rounded border border-slate-300 hover:opacity-90 transition-opacity"
-        title="Scan or click to open online payment page"
-      >
-        <img src={qrImageUrl} alt="Scan to Pay Online" className="w-16 h-16 object-contain" />
-      </a>
-      <div className="space-y-0.5 min-w-0">
-        <div className="flex items-center gap-1 text-[9.5px] font-black text-slate-800 uppercase tracking-wider">
-          <QrCode size={12} className="text-orange-600" />
-          <span>ONLINE PAYMENT & BILL QR</span>
-        </div>
-        <div className="text-[10.5px] font-extrabold text-slate-900 leading-tight">
-          Scan QR Code to Pay Online or View Bill
-        </div>
-        <div className="text-[9.5px] text-slate-500 truncate">
-          Instant UPI Apps (GPay, PhonePe, Paytm) & Bank Transfer
-        </div>
+    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-50/90 p-2.5 rounded-lg border border-slate-200 text-xs">
+      <div className="flex items-center gap-3 flex-1 min-w-0">
         <a
           href={paymentPageUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-[9.5px] font-extrabold text-orange-600 hover:underline flex items-center gap-0.5 mt-0.5 no-underline truncate"
+          className="shrink-0 bg-white p-1 rounded border border-slate-300 hover:opacity-90 transition-opacity"
+          title="Scan or click to open online payment page"
         >
-          <span className="truncate">{paymentPageUrl}</span>
-          <ExternalLink size={9} className="shrink-0" />
+          <img src={qrImageUrl} alt="Scan to Pay Online" className="w-16 h-16 object-contain" />
         </a>
+        <div className="space-y-0.5 min-w-0">
+          <div className="flex items-center gap-1 text-[9.5px] font-black text-slate-800 uppercase tracking-wider">
+            <QrCode size={12} className="text-orange-600" />
+            <span>ONLINE PAYMENT & BILL QR</span>
+          </div>
+          <div className="text-[10.5px] font-extrabold text-slate-900 leading-tight">
+            Scan QR Code to Pay Online or View Bill
+          </div>
+          <div className="text-[9.5px] text-slate-500 truncate">
+            Instant UPI Apps (GPay, PhonePe, Paytm) & Bank Transfer
+          </div>
+          <a
+            href={paymentPageUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[9.5px] font-extrabold text-orange-600 hover:underline flex items-center gap-0.5 mt-0.5 no-underline truncate"
+          >
+            <span className="truncate">{paymentPageUrl}</span>
+            <ExternalLink size={9} className="shrink-0" />
+          </a>
+        </div>
+      </div>
+
+      {/* Invoice Barcode Block */}
+      <div className="shrink-0 flex flex-col items-center justify-center p-2 rounded border border-slate-300/80 bg-white text-center sm:border-l sm:pl-3">
+        <div className="text-[8.5px] font-black text-slate-600 uppercase tracking-wider mb-1 flex items-center gap-1">
+          <Barcode size={12} className="text-slate-800" />
+          <span>INVOICE BARCODE</span>
+        </div>
+        <InvoiceBarcode value={invNumber} height={32} className="max-w-[170px]" />
       </div>
     </div>
   );
@@ -144,12 +223,27 @@ export function InvoiceDocumentSheet({
   );
 
   // Footer seal helper
-  const renderSignatureSeal = (title = 'Authorized Seal & Signatory') => (
-    <div className="text-right shrink-0">
-      <div className="h-7 border-b border-slate-400 w-32 ml-auto" />
-      <div className="mt-1 font-bold text-xs text-slate-800">{title}</div>
-    </div>
-  );
+  const renderSignatureSeal = (title = 'Authorized Seal & Signatory') => {
+    const showSig = templateSettings?.show_signature !== false;
+    const sigUrl = templateSettings?.signature_image_url;
+
+    return (
+      <div className="text-right shrink-0">
+        {showSig && sigUrl ? (
+          <div className="mb-1 flex justify-end">
+            <img
+              src={sigUrl}
+              alt="Authorized Digital Signature"
+              className="h-16 sm:h-20 max-w-[240px] min-h-[50px] object-contain"
+            />
+          </div>
+        ) : (
+          <div className="h-8 border-b border-slate-400 w-36 ml-auto mb-1" />
+        )}
+        <div className="font-bold text-xs text-slate-800">{title}</div>
+      </div>
+    );
+  };
 
   /* =========================================================================
      1. GST TAX PRO TEMPLATE
@@ -422,9 +516,12 @@ export function InvoiceDocumentSheet({
             <div>Thank you for choosing {bizName}. Modern borderless invoice format.</div>
             {renderOnlinePaymentQrBlock()}
           </div>
-          <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl text-right min-w-[200px]">
-            <div className="text-[10px] font-black uppercase tracking-wider text-blue-600">GRAND TOTAL</div>
-            <div className="mono text-2xl font-black text-blue-600 mt-0.5">₹{subtotal.toFixed(2)}</div>
+          <div className="flex flex-col items-end gap-3">
+            <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl text-right min-w-[200px]">
+              <div className="text-[10px] font-black uppercase tracking-wider text-blue-600">GRAND TOTAL</div>
+              <div className="mono text-2xl font-black text-blue-600 mt-0.5">₹{subtotal.toFixed(2)}</div>
+            </div>
+            {renderSignatureSeal('Authorized Signatory')}
           </div>
         </div>
       </div>
@@ -476,9 +573,14 @@ export function InvoiceDocumentSheet({
           <div className="text-[9px] font-bold">SCAN TO PAY ONLINE</div>
         </div>
 
+        {/* Digital Signature Seal for POS */}
+        <div className="flex justify-end pt-1">
+          {renderSignatureSeal('Authorized Store Seal')}
+        </div>
+
         {/* Thermal Barcode Footer */}
         <div className="text-center pt-1 space-y-1">
-          <div className="text-xs tracking-widest text-slate-500 font-bold">||||| ||||||| |||| |||||||| |||||</div>
+          <InvoiceBarcode value={invNumber} height={32} className="my-1 mx-auto" />
           <div className="text-[9px] text-slate-500">Thank you! Visit again!</div>
         </div>
       </div>
@@ -702,10 +804,7 @@ export function InvoiceDocumentSheet({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
           {renderOnlinePaymentQrBlock()}
-          <div className="text-right text-[10px] text-slate-500">
-            <div>[STATUS_LOG: TRANSACTION_COMPLETE_OK]</div>
-            <div>AUTH_SIGN: CYBER_SEAL</div>
-          </div>
+          {renderSignatureSeal('Authorized Cyber Seal')}
         </div>
       </div>
     );
@@ -850,10 +949,7 @@ export function InvoiceDocumentSheet({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
           {renderOnlinePaymentQrBlock()}
-          <div className="text-right text-[10px] text-slate-500">
-            <div>Dispatch Voucher Copy</div>
-            <div>Receiver Sign: _______________</div>
-          </div>
+          {renderSignatureSeal('Authorized Dispatch Signatory')}
         </div>
       </div>
     );
