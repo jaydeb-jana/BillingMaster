@@ -8,7 +8,7 @@ import {
   Sliders, MessageSquare, Send, Building2, Mail,
   Receipt, Calendar, CalendarDays, CalendarRange, TrendingUp,
   BarChart3, Layers, Users, Package, Box, Filter, LayoutTemplate,
-  FileSpreadsheet, History as HistoryIcon
+  FileSpreadsheet, History as HistoryIcon, Calculator, Store
 } from 'lucide-react';
 import { db, auth, getBusinessId } from '@/lib/api';
 import { useScrollReset, resetScrollRef, useBodyScrollLock } from '@/lib/useScrollReset';
@@ -655,6 +655,134 @@ export function MoreHub({ onNavigate }: MoreHubProps) {
         </div>
       </div>
 
+      {/* SECTION: Toolkit – Growth & Commercial Utilities */}
+      <div className="space-y-2.5">
+        <h2 className="text-xs font-black text-muted-foreground uppercase tracking-wider px-1">Toolkit & Growth Utilities</h2>
+        <div className="rounded-2xl border border-border/80 bg-card divide-y divide-border/50 overflow-hidden shadow-xs">
+          {/* Store Catalog & Online Presence */}
+          <div
+            onClick={() => setLocation('/for-you')}
+            className="group flex items-center justify-between p-4 hover:bg-muted/40 transition-all cursor-pointer bg-gradient-to-r from-primary/5 via-transparent to-transparent"
+          >
+            <div className="flex items-center gap-3.5 min-w-0 flex-1">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary group-hover:scale-105 transition-transform">
+                <Store size={20} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs sm:text-sm font-extrabold text-foreground">Store Catalog & Online Presence</h4>
+                  <span className="rounded-md bg-primary/10 text-primary border border-primary/20 text-[9px] font-black px-1.5 py-0.5 uppercase tracking-wide">New</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-0.5">Public catalog, QR code, geofencing, handle & WhatsApp share</p>
+              </div>
+            </div>
+            <ChevronRight size={18} className="shrink-0 text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
+          </div>
+
+          {/* Smart GST & Margin Calculator */}
+          <div
+            onClick={() => setLocation('/for-you')}
+            className="group flex items-center justify-between p-4 hover:bg-muted/40 transition-all cursor-pointer"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:scale-105 transition-transform">
+                <Calculator size={20} />
+              </div>
+              <div>
+                <h4 className="text-xs sm:text-sm font-extrabold text-foreground">Smart GST & Margin Calculator</h4>
+                <p className="text-[11px] text-muted-foreground">Real-time GST inclusive/exclusive, profit margin & markup</p>
+              </div>
+            </div>
+            <ChevronRight size={18} className="text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
+          </div>
+
+          {/* HSN & GST Tax Directory */}
+          <div
+            onClick={() => setLocation('/for-you')}
+            className="group flex items-center justify-between p-4 hover:bg-muted/40 transition-all cursor-pointer"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 group-hover:scale-105 transition-transform">
+                <FileSpreadsheet size={20} />
+              </div>
+              <div>
+                <h4 className="text-xs sm:text-sm font-extrabold text-foreground">HSN & GST Tax Slab Directory</h4>
+                <p className="text-[11px] text-muted-foreground">Official GST rates, HSN/SAC code lookup for all goods</p>
+              </div>
+            </div>
+            <ChevronRight size={18} className="text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
+          </div>
+
+          {/* Customer Loyalty & Rewards */}
+          <div
+            onClick={() => setLocation('/for-you')}
+            className="group flex items-center justify-between p-4 hover:bg-muted/40 transition-all cursor-pointer"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-pink-500/10 text-pink-600 dark:text-pink-400 group-hover:scale-105 transition-transform">
+                <Gift size={20} />
+              </div>
+              <div>
+                <h4 className="text-xs sm:text-sm font-extrabold text-foreground">Customer Loyalty & Rewards Engine</h4>
+                <p className="text-[11px] text-muted-foreground">Points, milestones & offer campaigns for repeat customers</p>
+              </div>
+            </div>
+            <ChevronRight size={18} className="text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
+          </div>
+
+          {/* WhatsApp & SMS Marketing */}
+          <div
+            onClick={() => setLocation('/for-you')}
+            className="group flex items-center justify-between p-4 hover:bg-muted/40 transition-all cursor-pointer"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-green-500/10 text-green-600 dark:text-green-400 group-hover:scale-105 transition-transform">
+                <MessageSquare size={20} />
+              </div>
+              <div>
+                <h4 className="text-xs sm:text-sm font-extrabold text-foreground">WhatsApp & SMS Marketing</h4>
+                <p className="text-[11px] text-muted-foreground">Bulk campaigns, invoice sharing & customer messaging</p>
+              </div>
+            </div>
+            <ChevronRight size={18} className="text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
+          </div>
+
+          {/* Email Marketing Studio */}
+          <div
+            onClick={() => setLocation('/for-you')}
+            className="group flex items-center justify-between p-4 hover:bg-muted/40 transition-all cursor-pointer"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 group-hover:scale-105 transition-transform">
+                <Mail size={20} />
+              </div>
+              <div>
+                <h4 className="text-xs sm:text-sm font-extrabold text-foreground">Email Marketing Studio</h4>
+                <p className="text-[11px] text-muted-foreground">Gmail SMTP campaigns, templates & multi-account dispatch</p>
+              </div>
+            </div>
+            <ChevronRight size={18} className="text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
+          </div>
+
+          {/* Growth Analytics & Reports */}
+          <div
+            onClick={() => setLocation('/for-you')}
+            className="group flex items-center justify-between p-4 hover:bg-muted/40 transition-all cursor-pointer"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400 group-hover:scale-105 transition-transform">
+                <TrendingUp size={20} />
+              </div>
+              <div>
+                <h4 className="text-xs sm:text-sm font-extrabold text-foreground">Growth Analytics & Forecasting</h4>
+                <p className="text-[11px] text-muted-foreground">Revenue trends, product velocity & customer LTV insights</p>
+              </div>
+            </div>
+            <ChevronRight size={18} className="text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
+          </div>
+        </div>
+      </div>
+
       {/* SECTION 2: Others Group */}
       <div className="space-y-2.5">
         <h2 className="text-xs font-black text-muted-foreground uppercase tracking-wider px-1">Others & Hardware</h2>
@@ -711,6 +839,7 @@ export function MoreHub({ onNavigate }: MoreHubProps) {
           </div>
         </div>
       </div>
+
 
       {/* Floating Bottom Help Trigger */}
       <div className="flex justify-center pt-4">

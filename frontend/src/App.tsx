@@ -43,7 +43,6 @@ import {
   type InvoiceTemplateSettings
 } from '@/components/InvoiceTemplateModal';
 import { InvoiceDocumentSheet } from '@/components/InvoiceDocumentSheet';
-import { InvoiceBarcodeSearchModal } from '@/components/InvoiceBarcodeSearchModal';
 import { getStoredEnabledCodes, getDropdownOptionsForUnits } from '@/constants/unitOptions';
 import { UnitSettingsModal } from '@/components/UnitSettingsModal';
 
@@ -294,7 +293,6 @@ const navItems: { href: string; label: string; icon: Icon }[] = [
   { href: '/products', label: 'Products', icon: Package },
   { href: '/khatabook', label: 'Khata Book', icon: BookOpen },
   { href: '/plan', label: 'Plan', icon: Crown },
-  { href: '/for-you', label: 'Toolkit', icon: Sparkles },
   { href: '/expenses', label: 'Expenses', icon: Wallet },
   { href: '/reports', label: 'Reports', icon: BarChart3 },
   { href: '/more', label: 'More', icon: MoreHorizontal },
@@ -2070,6 +2068,12 @@ function Invoices() {
   const [datePreset, setDatePreset] = useState<InvoiceDatePreset>('all');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
+  const [showScanner, setShowScanner] = useState(false);
+  const [scannerError, setScannerError] = useState<string | null>(null);
+  const [scannerLoading, setScannerLoading] = useState(false);
+  const scannerRef = useRef<any>(null);
+  const scannerDivId = 'invoice-barcode-scanner-div';
+  const [, navigateTo] = useLocation();
 
   const invoices = usePaginatedTable<Row>('invoices', { order: 'created_at.desc' }, 40);
   const customers = useTable<Row>('customers', { limit: 200 });
@@ -2082,6 +2086,80 @@ function Invoices() {
     });
     return map;
   }, [customers.data]);
+
+  // Start / stop barcode scanner
+  const startScanner = async () => {
+    setScannerError(null);
+    setScannerLoading(true);
+    try {
+      const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
+      const html5QrCode = new Html5Qrcode(scannerDivId, {
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.QR_CODE,
+        ],
+        verbose: false,
+      });
+      scannerRef.current = html5QrCode;
+
+      await html5QrCode.start(
+        { facingMode: 'environment' },
+        { fps: 12, qrbox: { width: 260, height: 120 } },
+        (decodedText: string) => {
+          // Match against invoice numbers in loaded data
+          const matched = invoices.data.find(
+            (inv) => (inv.invoice_number || '').trim().toLowerCase() === decodedText.trim().toLowerCase()
+          );
+          stopScanner();
+          if (matched && matched.id) {
+            toast.success(`Invoice found: ${matched.invoice_number}`);
+            navigateTo(`/invoices/${matched.id}`);
+          } else {
+            // Try searching
+            invoices.setSearch(decodedText.trim());
+            toast.info(`Searching for: ${decodedText.trim()}`);
+            setShowScanner(false);
+          }
+        },
+        () => {}
+      );
+      setScannerLoading(false);
+    } catch (err: any) {
+      setScannerLoading(false);
+      setScannerError(err?.message || 'Camera access denied. Please allow camera permission.');
+    }
+  };
+
+  const stopScanner = () => {
+    if (scannerRef.current) {
+      scannerRef.current.stop().catch(() => {}).finally(() => {
+        scannerRef.current = null;
+      });
+    }
+    setShowScanner(false);
+    setScannerError(null);
+  };
+
+  useEffect(() => {
+    if (showScanner) {
+      // Small delay for modal DOM to mount before starting scanner
+      const t = setTimeout(() => startScanner(), 300);
+      return () => clearTimeout(t);
+    }
+  }, [showScanner]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (scannerRef.current) {
+        scannerRef.current.stop().catch(() => {});
+      }
+    };
+  }, []);
 
   const applyDatePreset = (preset: InvoiceDatePreset) => {
     setDatePreset(preset);
@@ -2158,11 +2236,70 @@ function Invoices() {
 
   return <>
     <PageHeader eyebrow="Cash flow" title="Invoices" description="Move from sale to paid, without losing the thread." actionLabel="New invoice" actionHref="/invoices/new" onSettingsClick={() => setSettingsOpen(true)} />
+
+    {/* Scanner Modal */}
+    {showScanner && (
+      <div className="fixed inset-0 z-[200] bg-black/80 flex flex-col items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) stopScanner(); }}>
+        <div className="bg-card w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl border border-border">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
+            <div className="flex items-center gap-2 font-bold text-sm text-foreground">
+              <Barcode size={18} className="text-primary" />
+              Scan Invoice Barcode
+            </div>
+            <button onClick={stopScanner} className="rounded-full p-1.5 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+              <X size={16} />
+            </button>
+          </div>
+
+          {/* Scanner viewport */}
+          <div className="bg-black relative min-h-[280px] flex items-center justify-center">
+            <div id={scannerDivId} className="w-full" />
+            {scannerLoading && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-white text-sm">
+                <RefreshCw size={22} className="animate-spin text-primary" />
+                <span className="text-xs font-medium">Starting camera...</span>
+              </div>
+            )}
+            {scannerError && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center p-4">
+                <AlertCircle size={28} className="text-destructive" />
+                <p className="text-xs text-white font-medium">{scannerError}</p>
+                <button onClick={() => { setScannerError(null); startScanner(); }} className="mt-1 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-bold">
+                  Retry
+                </button>
+              </div>
+            )}
+            {/* Scan guide overlay */}
+            {!scannerError && !scannerLoading && (
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                <div className="border-2 border-primary/70 rounded-lg w-64 h-20 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
+              </div>
+            )}
+          </div>
+
+          <div className="px-4 py-3 text-center text-[11px] text-muted-foreground bg-muted/20">
+            Point camera at the invoice barcode. The invoice will open automatically.
+          </div>
+        </div>
+      </div>
+    )}
+
     <div className="mb-4 flex flex-col gap-3 sm:flex-row">
       <div className="relative flex-1">
         <Search className="absolute left-3 top-3 text-muted-foreground" size={17} />
         <input value={search} onChange={(e) => invoices.setSearch(e.target.value)} placeholder="Search invoice number or customer" className="input-shell w-full pl-10 pr-3 text-sm" data-testid="input-search-invoices" />
       </div>
+      {/* Barcode Scanner Button */}
+      <button
+        onClick={() => setShowScanner(true)}
+        title="Scan invoice barcode to find invoice"
+        className="input-shell inline-flex items-center justify-center gap-2 px-3 text-xs font-bold text-muted-foreground hover:text-primary hover:border-primary transition-colors"
+        data-testid="button-scan-invoice-barcode"
+      >
+        <ScanLine size={16} />
+        <span className="hidden sm:inline">Scan</span>
+      </button>
       <div className="relative">
         <button
           onClick={() => setShowFilterDropdown((prev) => !prev)}
