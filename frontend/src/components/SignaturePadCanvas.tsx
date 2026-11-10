@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 interface SignaturePadCanvasProps {
   initialImage?: string;
   onSave: (dataUrl: string) => void;
-  onClear: () => void;
+  onClear?: () => void;
 }
 
 export function SignaturePadCanvas({ initialImage, onSave, onClear }: SignaturePadCanvasProps) {
@@ -105,7 +105,7 @@ export function SignaturePadCanvas({ initialImage, onSave, onClear }: SignatureP
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     setHasDrawn(false);
-    onClear();
+    onClear?.();
     toast.info('Signature canvas reset.');
   };
 

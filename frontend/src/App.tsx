@@ -307,7 +307,7 @@ const mobileNavItems: { href: string; label: string; icon: Icon }[] = [
   { href: '/plan', label: 'Plan', icon: Crown },
 ];
 
-function AppField({ label, value, onChange, type = 'text', required, test, placeholder, inputMode, pattern, maxLength }: { label: string; value: any; onChange: (v: string) => void; type?: string; required?: boolean; test?: string; placeholder?: string; inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode']; pattern?: string; maxLength?: number }) {
+function AppField({ label, value, onChange, type = 'text', required, test, placeholder, inputMode, pattern, maxLength, hint }: { label: string; value: any; onChange: (v: string) => void; type?: string; required?: boolean; test?: string; placeholder?: string; inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode']; pattern?: string; maxLength?: number; hint?: string }) {
   const [showPassword, setShowPassword] = useState(false);
   const isPassword = type === 'password';
   const effectiveType = isPassword ? (showPassword ? 'text' : 'password') : type;
@@ -339,6 +339,7 @@ function AppField({ label, value, onChange, type = 'text', required, test, place
           </button>
         )}
       </div>
+      {hint && <p className="text-[11px] text-muted-foreground mt-1 font-normal">{hint}</p>}
     </label>
   );
 }
@@ -3373,7 +3374,7 @@ function InvoiceNew() {
     try {
       const isCompany = newCustomerForm.customer_type === 'company';
       if (!newCustomerForm.name || !newCustomerForm.name.trim()) {
-        setNewCustomerForm(old => ({ ...old, _error: isCompany ? 'Company Name is required' : 'Customer Name is required' }));
+        setNewCustomerForm(old => ({ ...old, _error: isCompany ? 'Business Name is required' : 'Customer Name is required' }));
         return;
       }
       if (!newCustomerForm.phone) {
@@ -3759,7 +3760,7 @@ function InvoiceNew() {
         })() : (
           <>
             <Search className="absolute left-3 top-2.5 text-muted-foreground" size={16} />
-            <input value={customerQuery} onChange={(e) => { setCustomerQuery(e.target.value); setCustomerDropdown(true); }} onFocus={() => setCustomerDropdown(true)} onBlur={() => setTimeout(() => setCustomerDropdown(false), 250)} placeholder="Search customer/company name, or enter 10-digit phone to create" className="input-shell min-h-10 w-full pl-10 pr-3 text-sm" data-testid="input-customer-search" />
+            <input value={customerQuery} onChange={(e) => { setCustomerQuery(e.target.value); setCustomerDropdown(true); }} onFocus={() => setCustomerDropdown(true)} onBlur={() => setTimeout(() => setCustomerDropdown(false), 250)} placeholder="Search customer/business name, or enter 10-digit phone to create" className="input-shell min-h-10 w-full pl-10 pr-3 text-sm" data-testid="input-customer-search" />
             {customerDropdown && (
               <div className="absolute top-full left-0 right-0 z-20 mt-1 max-h-56 overflow-auto rounded-xl border border-border bg-card shadow-float">
                 {customers.loading ? (
@@ -4422,7 +4423,7 @@ function InvoiceNew() {
           {newCustomerForm._error && <div className="mb-4 rounded-lg bg-destructive/10 p-3 text-xs font-semibold text-destructive">{newCustomerForm._error}</div>}
 
           <div className="space-y-4">
-            {/* 1. Entity Type Selector (Individual / Person vs. Company / Business) */}
+            {/* 1. Entity Type Selector (Individual / Person vs. Business) */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-xs font-bold text-foreground">Entity Type *</label>
@@ -4458,7 +4459,7 @@ function InvoiceNew() {
                   } ${newCustomerForm.id ? 'cursor-not-allowed opacity-75' : ''}`}
                 >
                   <Building2 size={16} />
-                  <span>Company / Business</span>
+                  <span>Business</span>
                 </button>
               </div>
             </div>
@@ -4466,15 +4467,15 @@ function InvoiceNew() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <AppField 
-                  label={newCustomerForm.customer_type === 'company' ? "Company Name *" : "Customer Name *"} 
+                  label={newCustomerForm.customer_type === 'company' ? "Business Name" : "Customer Name"} 
                   value={newCustomerForm.name || ''} 
                   onChange={(v) => setNewCustomerForm({ ...newCustomerForm, name: v })} 
-                  placeholder={newCustomerForm.customer_type === 'company' ? "e.g. Alpha Corp, Global Tech Pvt Ltd" : "e.g. John Doe, Rahul Sharma"} 
+                  placeholder={newCustomerForm.customer_type === 'company' ? "e.g. Apex Enterprises, Global Traders" : "e.g. John Doe, Rahul Sharma"} 
                   required 
                 />
               </div>
               <AppField 
-                label={newCustomerForm.customer_type === 'company' ? "Company Phone Number *" : "Phone Number *"} 
+                label={newCustomerForm.customer_type === 'company' ? "Business Phone Number" : "Phone Number"} 
                 type="tel" 
                 value={newCustomerForm.phone || ''} 
                 onChange={(v) => setNewCustomerForm({ ...newCustomerForm, phone: v })} 
@@ -4482,22 +4483,22 @@ function InvoiceNew() {
                 required 
               />
               <AppField 
-                label={newCustomerForm.customer_type === 'company' ? "Company Email Address" : "Email Address"} 
+                label={newCustomerForm.customer_type === 'company' ? "Business Email Address" : "Email Address"} 
                 type="email" 
                 value={newCustomerForm.email || ''} 
                 onChange={(v) => setNewCustomerForm({ ...newCustomerForm, email: v })} 
-                placeholder={newCustomerForm.customer_type === 'company' ? "e.g. contact@company.com" : "e.g. john@example.com"} 
+                placeholder={newCustomerForm.customer_type === 'company' ? "e.g. contact@business.com" : "e.g. john@example.com"} 
               />
               <div className="sm:col-span-2">
                 <AppField 
-                  label={newCustomerForm.customer_type === 'company' ? "Company Address" : "Address"} 
+                  label={newCustomerForm.customer_type === 'company' ? "Business Address" : "Address"} 
                   value={newCustomerForm.address || ''} 
                   onChange={(v) => setNewCustomerForm({ ...newCustomerForm, address: v })} 
                   placeholder={newCustomerForm.customer_type === 'company' ? "e.g. 123 Industrial Area, City, State, PIN" : "e.g. 123 Main Street, City, State, PIN"} 
                 />
               </div>
 
-              {/* GSTIN / GST Number Field (Company / Business only) */}
+              {/* GSTIN / GST Number Field (Business only) */}
               {newCustomerForm.customer_type === 'company' && (
                 <div className="sm:col-span-2 pt-2 border-t border-border/60">
                   <GSTVerificationInput
@@ -6312,7 +6313,7 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.name.trim()) {
-      toast.warning(isCustomer ? 'Please enter the customer / company name.' : 'Please enter the product or service name.');
+      toast.warning(isCustomer ? (formData.customer_type === 'company' ? 'Please enter the business name.' : 'Please enter the customer name.') : 'Please enter the product or service name.');
       return;
     }
     if (isCustomer && !formData.phone) {
@@ -6861,7 +6862,7 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
           <div className="mb-5 flex items-center justify-between pb-3 border-b border-border/60">
             <div className="flex items-center gap-2.5">
               <div className="grid h-8 w-8 place-items-center rounded-xl bg-primary/10 text-primary">
-                {isCustomer ? <Users size={18} /> : (formData.type === 'service' ? <Sparkles size={18} /> : <Package size={18} />)}
+                {isCustomer ? (formData.customer_type === 'company' ? <Building2 size={18} /> : <Users size={18} />) : (formData.type === 'service' ? <Sparkles size={18} /> : <Package size={18} />)}
               </div>
               <h3 className="text-base font-extrabold text-foreground">{formData.id ? 'Edit' : 'Add'} {isCustomer ? 'Customer / Business' : (formData.type === 'service' ? 'Virtual Service' : 'Product')}</h3>
             </div>
@@ -6871,7 +6872,7 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
           <div className="space-y-4">
             {isCustomer ? (
               <div className="space-y-4">
-                {/* Entity Type Selector (Individual / Person vs. Company / Business) */}
+                {/* Entity Type Selector (Individual / Person vs. Business) */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <label className="block text-xs font-bold">Entity Type *</label>
@@ -6907,7 +6908,7 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
                       } ${formData.id ? 'cursor-not-allowed opacity-75' : ''}`}
                     >
                       <Building2 size={16} />
-                      <span>Company / Business</span>
+                      <span>Business</span>
                     </button>
                   </div>
                 </div>
@@ -6915,15 +6916,15 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="sm:col-span-2">
                     <AppField 
-                      label={formData.customer_type === 'company' ? "Company Name *" : "Customer Name *"} 
+                      label={formData.customer_type === 'company' ? "Business Name" : "Customer Name"} 
                       value={formData.name || ''} 
                       onChange={(v) => setFormData({...formData, name: v})} 
-                      placeholder={formData.customer_type === 'company' ? "e.g. Alpha Corp, Global Tech Pvt Ltd" : "e.g. John Doe, Rahul Sharma"} 
+                      placeholder={formData.customer_type === 'company' ? "e.g. Apex Enterprises, Global Traders" : "e.g. John Doe, Rahul Sharma"} 
                       required 
                     />
                   </div>
                   <AppField 
-                    label={formData.customer_type === 'company' ? "Company Phone Number *" : "Phone Number *"} 
+                    label={formData.customer_type === 'company' ? "Business Phone Number" : "Phone Number"} 
                     type="tel" 
                     value={formData.phone || ''} 
                     onChange={(v) => setFormData({...formData, phone: v})} 
@@ -6931,22 +6932,22 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
                     required 
                   />
                   <AppField 
-                    label={formData.customer_type === 'company' ? "Company Email" : "Email Address"} 
+                    label={formData.customer_type === 'company' ? "Business Email Address" : "Email Address"} 
                     type="email" 
                     value={formData.email || ''} 
                     onChange={(v) => setFormData({...formData, email: v})} 
-                    placeholder={formData.customer_type === 'company' ? "e.g. contact@company.com" : "e.g. john@example.com"} 
+                    placeholder={formData.customer_type === 'company' ? "e.g. contact@business.com" : "e.g. john@example.com"} 
                   />
                   <div className="sm:col-span-2">
                     <AppField 
-                      label={formData.customer_type === 'company' ? "Company Address" : "Address"} 
+                      label={formData.customer_type === 'company' ? "Business Address" : "Address"} 
                       value={formData.address || ''} 
                       onChange={(v) => setFormData({...formData, address: v})} 
                       placeholder={formData.customer_type === 'company' ? "e.g. 123 Industrial Area, City, State, PIN" : "e.g. 123 Main Street, City, State, PIN"} 
                     />
                   </div>
 
-                  {/* GSTIN / GST Number Field (Company / Business only) */}
+                  {/* GSTIN / GST Number Field (Business only) */}
                   {formData.customer_type === 'company' && (
                     <div className="sm:col-span-2 pt-2 border-t border-border/60">
                       <GSTVerificationInput

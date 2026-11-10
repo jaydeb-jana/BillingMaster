@@ -391,6 +391,18 @@ function LocationMapPickerModal({
   );
 }
 
+export interface GmailAccountConfig {
+  id: string;
+  senderName: string;
+  user: string;
+  pass: string;
+  host: string;
+  port: number;
+  secure: boolean;
+  isDefault?: boolean;
+  isVerified?: boolean;
+}
+
 export interface EmailTemplateConfig {
   id: string;
   name: string;
@@ -708,6 +720,10 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
     `Dear Valued Customer,\n\nWe are delighted to share our latest product arrivals and exclusive promotions at ${businessName}.\n\nVisit our store or contact us directly to explore our curated catalog with exclusive seasonal savings!\n\nBest regards,\n${businessName}\nPhone: ${businessPhone}`
   );
   const [emailCopied, setEmailCopied] = useState<boolean>(false);
+  const [testEmailRecipient, setTestEmailRecipient] = useState<string>('');
+  const [isSendingTestEmail, setIsSendingTestEmail] = useState<boolean>(false);
+  const [selectedRecipients, setSelectedRecipients] = useState<string[]>([]);
+  const [isSendingCampaign, setIsSendingCampaign] = useState<boolean>(false);
 
   // Multiple Gmail Accounts State & Persistence
   const [gmailAccounts, setGmailAccounts] = useState<GmailAccountConfig[]>(() => {
@@ -962,7 +978,7 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
     setSmtpHost(acc.host || 'smtp.gmail.com');
     setSmtpPort(acc.port || 465);
     setSmtpSecure(acc.secure !== false);
-    setSmtpVerified(acc.isVerified);
+    setSmtpVerified(Boolean(acc.isVerified));
     setIsAddingEmail(true);
   };
 
@@ -979,7 +995,7 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
 
     setIsTestingConnection(true);
     try {
-      const res = await request('/api/email/test-connection', {
+      const res = await request<any>('/api/email/test-connection', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1144,7 +1160,7 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
 
     setTestingAccId(acc.id);
     try {
-      const res = await request('/api/email/send-campaign', {
+      const res = await request<any>('/api/email/send-campaign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1193,7 +1209,7 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
 
     setIsSendingTestEmail(true);
     try {
-      const res = await request('/api/email/send-campaign', {
+      const res = await request<any>('/api/email/send-campaign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1269,7 +1285,7 @@ export function ForYouHub({ onNavigate }: ForYouHubProps) {
     const primarySender = accountsToUse[0] || gmailAccounts[0];
 
     try {
-      const res = await request('/api/email/send-campaign', {
+      const res = await request<any>('/api/email/send-campaign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
