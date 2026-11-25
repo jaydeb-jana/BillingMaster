@@ -26,6 +26,7 @@ import { AnimatedValue } from '@/components/AnimatedValue';
 import { KhataBook } from '@/components/KhataBook';
 import { BarcodeVerifierModal } from '@/components/BarcodeVerifierModal';
 import { ProductBarcodeSearchModal } from '@/components/ProductBarcodeSearchModal';
+import { InvoiceBarcodeScanModal } from '@/components/InvoiceBarcodeScanModal';
 import { Reports } from '@/components/Reports';
 import { Expenses } from '@/components/Expenses';
 import { GSTVerificationInput } from '@/components/GSTVerificationInput';
@@ -45,6 +46,7 @@ import {
 import { InvoiceDocumentSheet } from '@/components/InvoiceDocumentSheet';
 import { getStoredEnabledCodes, getDropdownOptionsForUnits } from '@/constants/unitOptions';
 import { UnitSettingsModal } from '@/components/UnitSettingsModal';
+import { safeStopHtml5Qrcode, stopAllVideoElementStreams } from '@/lib/camera';
 
 const queryClient = new QueryClient();
 type Row = Record<string, any>;
@@ -311,10 +313,11 @@ function AppField({ label, value, onChange, type = 'text', required, test, place
   const [showPassword, setShowPassword] = useState(false);
   const isPassword = type === 'password';
   const effectiveType = isPassword ? (showPassword ? 'text' : 'password') : type;
+  const cleanLabel = label.replace(/\s*\*+\s*$/, '').trim();
 
   return (
     <label className="block text-xs font-bold">
-      {label} {required && <span className="text-destructive ml-0.5">*</span>}
+      {cleanLabel} {required && <span className="text-destructive ml-0.5">*</span>}
       <div className="relative mt-2">
         <input
           type={effectiveType}
@@ -429,12 +432,12 @@ function CustomDropdown({
         aria-haspopup="listbox"
         aria-expanded={open}
       >
-        <span className={selectedOption ? 'font-medium text-foreground' : 'text-muted-foreground'}>
+        <span className={`truncate text-left flex-1 mr-2 ${selectedOption ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>
           {selectedOption ? selectedOption.label : placeholder}
         </span>
         <ChevronDown
           size={16}
-          className={`text-muted-foreground transition-transform duration-200 ${
+          className={`shrink-0 text-muted-foreground transition-transform duration-200 ${
             open ? 'rotate-180 text-primary' : ''
           }`}
         />
@@ -443,7 +446,7 @@ function CustomDropdown({
       {open && (
         <div
           role="listbox"
-          className="absolute top-full left-0 z-50 mt-1.5 max-h-72 w-full overflow-y-auto rounded-xl border border-border/80 bg-card p-1.5 text-card-foreground shadow-xl ring-1 ring-black/5 animate-in fade-in-0 zoom-in-95"
+          className="absolute top-full left-0 z-50 mt-1.5 max-h-80 w-full min-w-[320px] sm:min-w-[400px] max-w-[92vw] overflow-y-auto rounded-2xl border border-border bg-card p-1.5 text-card-foreground shadow-2xl ring-1 ring-black/5 animate-in fade-in-0 zoom-in-95"
         >
           {options.length > 6 && (
             <div className="sticky top-0 z-10 bg-card p-1 pb-1.5 mb-1 border-b border-border/60">
@@ -475,16 +478,16 @@ function CustomDropdown({
                     onChange(opt.value);
                     setOpen(false);
                   }}
-                  className={`relative flex w-full cursor-pointer select-none items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm transition-colors duration-150 ${
+                  className={`relative flex w-full cursor-pointer select-none items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors duration-150 ${
                     isSelected
                       ? 'bg-primary/10 font-semibold text-primary'
                       : 'text-foreground hover:bg-muted/80'
                   }`}
                 >
-                  <div className="min-w-0 flex-1 pr-4">
-                    <div className="truncate">{opt.label}</div>
+                  <div className="min-w-0 flex-1 pr-3">
+                    <div className="font-semibold text-xs sm:text-sm text-foreground leading-snug">{opt.label}</div>
                     {opt.hint && (
-                      <div className="text-[11px] font-normal text-muted-foreground">{opt.hint}</div>
+                      <div className="text-[11px] font-medium text-muted-foreground mt-0.5 leading-normal">{opt.hint}</div>
                     )}
                   </div>
                   {isSelected && (
@@ -2073,6 +2076,7 @@ function Invoices() {
   const [scannerError, setScannerError] = useState<string | null>(null);
   const [scannerLoading, setScannerLoading] = useState(false);
   const scannerRef = useRef<any>(null);
+  const isScannerCancelledRef = useRef(false);
   const scannerDivId = 'invoice-barcode-scanner-div';
   const [, navigateTo] = useLocation();
 
@@ -2089,9 +2093,29 @@ function Invoices() {
   }, [customers.data]);
 
   // Start / stop barcode scanner
+  const stopScanner = async () => {
+    isScannerCancelledRef.current = true;
+    setShowScanner(false);
+    setScannerLoading(false);
+    setScannerError(null);
+
+    stopAllVideoElementStreams(scannerDivId);
+    if (scannerRef.current) {
+      const s = scannerRef.current;
+      scannerRef.current = null;
+      await safeStopHtml5Qrcode(s, scannerDivId);
+    }
+    stopAllVideoElementStreams(scannerDivId);
+  };
+
   const startScanner = async () => {
     setScannerError(null);
     setScannerLoading(true);
+    isScannerCancelledRef.current = false;
+    await stopScanner();
+    isScannerCancelledRef.current = false;
+    setScannerLoading(true);
+
     try {
       const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
       const html5QrCode = new Html5Qrcode(scannerDivId, {
@@ -2115,7 +2139,7 @@ function Invoices() {
           const matched = invoices.data.find(
             (inv) => (inv.invoice_number || '').trim().toLowerCase() === decodedText.trim().toLowerCase()
           );
-          stopScanner();
+          void stopScanner();
           if (matched && matched.id) {
             toast.success(`Invoice found: ${matched.invoice_number}`);
             navigateTo(`/invoices/${matched.id}`);
@@ -2123,11 +2147,20 @@ function Invoices() {
             // Try searching
             invoices.setSearch(decodedText.trim());
             toast.info(`Searching for: ${decodedText.trim()}`);
-            setShowScanner(false);
           }
         },
         () => {}
       );
+
+      // Check if user closed modal while camera was starting
+      if (isScannerCancelledRef.current || !showScanner) {
+        await safeStopHtml5Qrcode(html5QrCode, scannerDivId);
+        stopAllVideoElementStreams(scannerDivId);
+        scannerRef.current = null;
+        setScannerLoading(false);
+        return;
+      }
+
       setScannerLoading(false);
     } catch (err: any) {
       setScannerLoading(false);
@@ -2135,30 +2168,31 @@ function Invoices() {
     }
   };
 
-  const stopScanner = () => {
-    if (scannerRef.current) {
-      scannerRef.current.stop().catch(() => {}).finally(() => {
-        scannerRef.current = null;
-      });
-    }
-    setShowScanner(false);
-    setScannerError(null);
-  };
-
   useEffect(() => {
+    let t: any = null;
     if (showScanner) {
+      isScannerCancelledRef.current = false;
       // Small delay for modal DOM to mount before starting scanner
-      const t = setTimeout(() => startScanner(), 300);
-      return () => clearTimeout(t);
+      t = setTimeout(() => {
+        if (!isScannerCancelledRef.current) {
+          void startScanner();
+        }
+      }, 300);
+    } else {
+      void stopScanner();
     }
+    return () => {
+      isScannerCancelledRef.current = true;
+      if (t) clearTimeout(t);
+      void stopScanner();
+    };
   }, [showScanner]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {});
-      }
+      isScannerCancelledRef.current = true;
+      void stopScanner();
     };
   }, []);
 
@@ -2204,9 +2238,9 @@ function Invoices() {
       if (statusFilter !== 'all') {
         const status = (inv.status || '').toLowerCase();
         if (statusFilter === 'paid' && !(status === 'paid' || status === 'complete' || status === 'khata' || status === 'pay_later')) return false;
-        if (statusFilter === 'pending' && !(status === 'pending' || status === 'unpaid' || status === 'due' || status === 'draft')) return false;
+        if (statusFilter === 'pending' && !(status === 'pending' || status === 'unpaid' || status === 'due' || status === 'draft' || status === 'sent')) return false;
         if (statusFilter === 'returned' && !(status === 'returned' || status === 'partially_returned' || status === 'partial_returned')) return false;
-        if (statusFilter === 'cancelled' && status !== 'cancelled') return false;
+        if (statusFilter === 'cancelled' && !status.includes('cancel')) return false;
       }
       if (startDate || endDate) {
         if (!inv.created_at) return false;
@@ -2431,10 +2465,12 @@ function Invoices() {
               const timeMatch = row.notes?.match(/Time:\s*([0-9:]+\s*(?:AM|PM)?)/i);
               const timeStr = timeMatch ? ` ${timeMatch[1]}` : '';
               const custName = customerMap.get(row.customer_id) || (row.customer_id ? 'Customer' : 'Walk-in customer');
-              const isReturnedRow = row.status === 'returned';
-              const isPartiallyReturnedRow = row.status === 'partially_returned' || row.status === 'partial_returned';
-              const isPaidRow = row.status === 'paid' || row.status === 'complete' || row.status === 'khata' || row.status === 'pay_later';
-              const isCancelledRow = row.status === 'cancelled';
+              const statusLower = (row.status || '').toLowerCase();
+              const isReturnedRow = statusLower === 'returned';
+              const isPartiallyReturnedRow = statusLower === 'partially_returned' || statusLower === 'partial_returned';
+              const isPaidRow = statusLower === 'paid' || statusLower === 'complete' || statusLower === 'khata' || statusLower === 'pay_later';
+              const isCancelledRow = statusLower.includes('cancel');
+              const isPendingRow = !isPaidRow && !isCancelledRow && !isReturnedRow && !isPartiallyReturnedRow;
               return (
                 <div
                   key={row.id || index}
@@ -2449,6 +2485,30 @@ function Invoices() {
                       <span>{row.invoice_number || 'Unnumbered'}</span>
                       <span className="text-[10px] text-primary">→</span>
                     </Link>
+                    {/* Status badge for mobile devices */}
+                    <div className="sm:hidden">
+                      {isReturnedRow ? (
+                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide whitespace-nowrap bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/25">
+                          Returned
+                        </span>
+                      ) : isPartiallyReturnedRow ? (
+                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide whitespace-nowrap bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/25">
+                          Partial Return
+                        </span>
+                      ) : isPaidRow ? (
+                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide whitespace-nowrap bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+                          Paid
+                        </span>
+                      ) : isCancelledRow ? (
+                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide whitespace-nowrap bg-destructive/15 text-destructive border border-destructive/25">
+                          Cancelled
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide whitespace-nowrap bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25">
+                          Pending
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <span className="text-xs font-semibold text-muted-foreground truncate">{custName}</span>
                   <span className="text-xs text-muted-foreground">{row.issue_date ? `${row.issue_date}${timeStr}` : '—'}</span>
@@ -2487,15 +2547,17 @@ function Invoices() {
                       <Eye size={14} />
                     </Link>
 
-                    {/* Edit Button */}
-                    <Link 
-                      href={`/invoices/new?edit=${row.id}`} 
-                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground transition-all hover:bg-muted hover:text-primary active:scale-95 shadow-2xs border border-border/60 no-underline" 
-                      title="Edit Invoice"
-                      data-testid={`button-edit-invoice-${row.id}`}
-                    >
-                      <Pencil size={14} />
-                    </Link>
+                    {/* Edit Button - ONLY for Pending invoices */}
+                    {isPendingRow && (
+                      <Link 
+                        href={`/invoices/new?edit=${row.id}`} 
+                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground transition-all hover:bg-muted hover:text-primary active:scale-95 shadow-2xs border border-border/60 no-underline" 
+                        title="Edit Invoice"
+                        data-testid={`button-edit-invoice-${row.id}`}
+                      >
+                        <Pencil size={14} />
+                      </Link>
+                    )}
 
                     {/* Delete Button */}
                     <button 
@@ -3133,7 +3195,7 @@ function LegacyInvoiceQuickSettings({ onClose }: { onClose: () => void }) {
 function InvoiceNew() {
   const [, setLocation] = useLocation();
   const products = useTable<Row>('products', { order: 'name.asc' });
-  const customers = useTable<Row>('customers', { order: 'name.asc' });
+  const customers = useTable<Row>('customers', { order: 'name.asc', limit: 1000 });
   const khataEntries = useTable<Row>('khata_entries');
   const [customerId, setCustomerId] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -3142,10 +3204,81 @@ function InvoiceNew() {
     }
     return '';
   });
+  const [editInvoiceId] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('edit') || '';
+    }
+    return '';
+  });
+  const [editingInvoice, setEditingInvoice] = useState<Row | null>(null);
   const [customerQuery, setCustomerQuery] = useState('');
+  const [serverCustomers, setServerCustomers] = useState<Row[]>([]);
+  const [selectedCustomerObj, setSelectedCustomerObj] = useState<Row | null>(null);
   const [customerDropdown, setCustomerDropdown] = useState(false);
   const [productDropdown, setProductDropdown] = useState(false);
-  const visibleCustomers = useMemo(() => { const q = customerQuery.toLowerCase(); return customers.data.filter(c => c.name?.toLowerCase().includes(q) || c.phone?.toLowerCase().includes(q) || c.email?.toLowerCase().includes(q)); }, [customers.data, customerQuery]);
+  const productBlurTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const customerBlurTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    const q = customerQuery.trim();
+    if (!q) {
+      setServerCustomers([]);
+      return;
+    }
+    const handler = setTimeout(async () => {
+      try {
+        const res = await db.list<Row>('customers', { search: q, limit: 50 });
+        if (Array.isArray(res)) setServerCustomers(res);
+      } catch (e) {
+        console.warn('Customer search failed:', e);
+      }
+    }, 200);
+    return () => clearTimeout(handler);
+  }, [customerQuery]);
+
+  useEffect(() => {
+    if (!customerId) {
+      setSelectedCustomerObj(null);
+      return;
+    }
+    const existing = customers.data.find(x => x.id === customerId) || serverCustomers.find(x => x.id === customerId);
+    if (existing) {
+      setSelectedCustomerObj(existing);
+    } else {
+      void db.list<Row>('customers', { id: customerId }).then(rows => {
+        if (rows && rows.length > 0) {
+          setSelectedCustomerObj(rows[0]);
+        }
+      });
+    }
+  }, [customerId, customers.data, serverCustomers]);
+
+  const currentCustomer = selectedCustomerObj || customers.data.find(x => x.id === customerId) || serverCustomers.find(x => x.id === customerId) || null;
+
+  const visibleCustomers = useMemo(() => {
+    const q = customerQuery.toLowerCase().trim();
+    const cleanQ = customerQuery.replace(/\D/g, '');
+
+    const matches = (c: Row) => {
+      if (!q) return true;
+      const nameMatch = c.name?.toLowerCase().includes(q);
+      const emailMatch = c.email?.toLowerCase().includes(q);
+      const phone = c.phone || '';
+      const phoneMatch = phone.toLowerCase().includes(q) || (cleanQ.length >= 3 && phone.replace(/\D/g, '').includes(cleanQ));
+      return Boolean(nameMatch || phoneMatch || emailMatch);
+    };
+
+    const map = new Map<string, Row>();
+    serverCustomers.forEach(c => {
+      if (c.id && matches(c)) map.set(c.id, c);
+    });
+    customers.data.forEach(c => {
+      if (c.id && matches(c)) map.set(c.id, c);
+    });
+
+    return Array.from(map.values());
+  }, [customers.data, customerQuery, serverCustomers]);
 
   const getKhataBalanceForCustomer = (cId: string) => {
     if (!cId || !khataEntries.data.length) return { due: 0, credit: 0, isZero: true, net: 0 };
@@ -3172,7 +3305,26 @@ function InvoiceNew() {
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<Row[]>([]);
   const [customItemModal, setCustomItemModal] = useState(false);
+  const [showBarcodeScannerModal, setShowBarcodeScannerModal] = useState(false);
   const [customItemForm, setCustomItemForm] = useState<any>({ name: '', price: '', quantity: 1 });
+
+  const updateItemQuantityByDelta = (productId: string | number, delta: number) => {
+    setItems((old) => {
+      return old
+        .map((it) => {
+          if (it.product_id === productId || it.id === productId) {
+            const newQ = Math.max(0, (Number(it.quantity) || 1) + delta);
+            return { ...it, quantity: newQ };
+          }
+          return it;
+        })
+        .filter((it) => Number(it.quantity) > 0);
+    });
+  };
+
+  const removeItemFromInvoice = (productId: string | number) => {
+    setItems((old) => old.filter((it) => it.product_id !== productId && it.id !== productId));
+  };
 
   const getTodayDate = () => {
     const d = new Date();
@@ -3193,8 +3345,27 @@ function InvoiceNew() {
   const [issueTime, setIssueTime] = useState(getCurrentTime());
 
   // Confirmation & Notifications state
-  const [notifyWhatsApp, setNotifyWhatsApp] = useState(false);
+  const [notifyWhatsApp, setNotifyWhatsApp] = useState(() => {
+    try {
+      const raw = localStorage.getItem('arventa_invoice_template_settings');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.enable_whatsapp_confirmation !== undefined) return Boolean(parsed.enable_whatsapp_confirmation);
+      }
+    } catch {}
+    return false;
+  });
   const [notifyPhoneCall, setNotifyPhoneCall] = useState(false);
+  const [notifySms, setNotifySms] = useState(() => {
+    try {
+      const raw = localStorage.getItem('arventa_invoice_template_settings');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.enable_sms_confirmation !== undefined) return Boolean(parsed.enable_sms_confirmation);
+      }
+    } catch {}
+    return false;
+  });
 
   const [useStoreCredit, setUseStoreCredit] = useState(false);
   const [appliedStoreCredit, setAppliedStoreCredit] = useState<string>('');
@@ -3298,6 +3469,116 @@ function InvoiceNew() {
     fetchTax();
   }, []);
 
+  useEffect(() => {
+    if (!editInvoiceId) return;
+    let active = true;
+    async function loadInvoiceData() {
+      try {
+        const invRows = await db.list<Row>('invoices', { id: editInvoiceId });
+        if (!invRows || !invRows.length) {
+          toast.error('Invoice not found for editing.');
+          return;
+        }
+        const inv = invRows[0];
+        if (!active) return;
+
+        const statusLower = String(inv.status || '').toLowerCase();
+        const isSettledOrPaid = statusLower === 'paid' || statusLower === 'complete' || statusLower === 'khata' || statusLower === 'pay_later';
+        const isCancelled = statusLower.includes('cancel');
+        const isReturned = statusLower.includes('return');
+        if (isSettledOrPaid || isCancelled || isReturned) {
+          toast.error('Only pending invoices can be edited.');
+          setLocation('/invoices');
+          return;
+        }
+
+        setEditingInvoice(inv);
+
+        if (inv.customer_id) {
+          setCustomerId(inv.customer_id);
+        }
+        if (inv.issue_date) {
+          setIssueDate(inv.issue_date);
+        }
+
+        if (inv.notes) {
+          const timeMatch = inv.notes.match(/Time:\s*([0-9:]+\s*(?:AM|PM)?)/i);
+          if (timeMatch) setIssueTime(timeMatch[1]);
+
+          const notifMatch = inv.notes.match(/Notifications:\s*([^\n]+)/i);
+          if (notifMatch) {
+            if (notifMatch[1].includes('WhatsApp')) setNotifyWhatsApp(true);
+            if (notifMatch[1].includes('Phone Call')) setNotifyPhoneCall(true);
+          }
+
+          const discMatch = inv.notes.match(/Discount applied:\s*([^\s(]+)/i);
+          if (discMatch) {
+            const raw = discMatch[1];
+            if (raw.endsWith('%')) {
+              setDiscountType('percentage');
+              setDiscountValue(raw.replace('%', ''));
+            } else {
+              setDiscountType('amount');
+              setDiscountValue(raw);
+            }
+          }
+
+          const dueMatch = inv.notes.match(/Previous Khata Due Billed:\s*\+?[₹]?([0-9.]+)/i);
+          if (dueMatch) {
+            setUsePreviousDue(true);
+            setIncludedPreviousDue(dueMatch[1]);
+          }
+
+          const creditMatch = inv.notes.match(/Store Credit \/ Wallet Redeemed:\s*-?[₹]?([0-9.]+)/i);
+          if (creditMatch) {
+            setUseStoreCredit(true);
+            setAppliedStoreCredit(creditMatch[1]);
+          }
+
+          const cleaned = inv.notes
+            .split('\n')
+            .filter((l: string) =>
+              !l.startsWith('Time:') &&
+              !l.startsWith('Notifications:') &&
+              !l.startsWith('Discount applied:') &&
+              !l.startsWith('Tax (') &&
+              !l.startsWith('Store Credit / Wallet') &&
+              !l.startsWith('Previous Khata Due') &&
+              !l.startsWith('Pay Later Note') &&
+              !l.startsWith('Payment:')
+            )
+            .join('\n')
+            .trim();
+          setNotes(cleaned);
+        }
+
+        const rawItems = await db.list<Row>('invoice_items', { invoice_id: editInvoiceId });
+        const validItems = rawItems.filter((it) => !it.invoice_id || it.invoice_id === editInvoiceId);
+
+        const prods = await db.list<Row>('products');
+        const prodMap = new Map<string, Row>();
+        prods.forEach(p => { if (p.id) prodMap.set(p.id, p); });
+
+        const mappedItems: Row[] = validItems.map((it) => {
+          const prod = prodMap.get(it.product_id);
+          return {
+            id: it.id,
+            product_id: it.product_id,
+            name: it.product_name || prod?.name || 'Item',
+            price: Number(it.unit_price ?? it.price ?? prod?.price ?? 0),
+            quantity: Number(it.quantity || 1),
+            unit: it.unit || prod?.unit || 'pcs',
+          };
+        });
+        setItems(mappedItems);
+      } catch (err) {
+        console.error('Failed to load invoice for editing:', err);
+      }
+    }
+    loadInvoiceData();
+    return () => { active = false; };
+  }, [editInvoiceId]);
+
   const [zeroStockModalProduct, setZeroStockModalProduct] = useState<Row | null>(null);
 
   const taxableAmount = Math.max(0, subtotal - finalDiscount);
@@ -3353,7 +3634,7 @@ function InvoiceNew() {
   
   const [customerModal, setCustomerModal] = useState(false);
   const [newCustomerForm, setNewCustomerForm] = useState<Row>({});
-  useBodyScrollLock(Boolean(customItemModal || zeroStockModalProduct || customerModal));
+  useBodyScrollLock(Boolean(customItemModal || zeroStockModalProduct || customerModal || showBarcodeScannerModal));
 
   const openCustomerModal = () => {
     setNewCustomerForm({
@@ -3429,6 +3710,7 @@ function InvoiceNew() {
 
         await customers.reload();
         setCustomerId((result as any).id);
+        setSelectedCustomerObj(result as any);
         toast.success('Customer saved to directory & selected!');
       } else {
         const tempId = `temp_cust_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -3440,12 +3722,26 @@ function InvoiceNew() {
 
         customers.setData((old: Row[]) => [tempCustomerObj, ...old]);
         setCustomerId(tempId);
+        setSelectedCustomerObj(tempCustomerObj);
         toast.info('Customer applied to invoice (not saved to directory).');
       }
 
       setCustomerModal(false);
-    } catch (e) {
-      setNewCustomerForm(old => ({ ...old, _error: getSupabaseErrorMessage(e, 'Could not save customer.') }));
+    } catch (e: any) {
+      const errMsg = getSupabaseErrorMessage(e, 'Could not save customer.');
+      let existingCust: Row | null = null;
+      const cleanPhone = (newCustomerForm.phone || '').replace(/\D/g, '');
+      if (cleanPhone) {
+        try {
+          const list = await db.list<Row>('customers', { search: cleanPhone, limit: 10 });
+          existingCust = list.find((c: any) => (c.phone || '').replace(/\D/g, '') === cleanPhone) || null;
+        } catch (_) {}
+      }
+      setNewCustomerForm(old => ({
+        ...old,
+        _error: errMsg,
+        _existingCustomer: existingCust,
+      }));
     } finally {
       setSaving(false);
     }
@@ -3463,6 +3759,7 @@ function InvoiceNew() {
       }
       const notifChannels = ['Email (Default)'];
       if (notifyWhatsApp) notifChannels.push('WhatsApp');
+      if (notifySms) notifChannels.push('SMS');
       if (notifyPhoneCall) notifChannels.push('Phone Call');
       notesParts.push(`Notifications: ${notifChannels.join(', ')}`);
 
@@ -3499,6 +3796,57 @@ function InvoiceNew() {
         };
       });
 
+      if (editInvoiceId && editingInvoice) {
+        let bid = await getBusinessId();
+        const invoicePayload: Record<string, any> = {
+          customer_id: customerId,
+          issue_date: issueDate || new Date().toISOString().slice(0, 10),
+          notes: finalNotes,
+          subtotal: Number(taxableAmount.toFixed(2)),
+          tax: Number(taxAmount.toFixed(2)),
+          total: Number(finalTotal.toFixed(2)),
+          tax_rate: taxEnabled ? taxRate : 0,
+        };
+        if (editingInvoice.status === 'pending' || editingInvoice.status === 'due') {
+          invoicePayload.balance = Number(finalTotal.toFixed(2));
+        }
+
+        await db.update('invoices', editInvoiceId, invoicePayload);
+
+        // Delete previous line items
+        try {
+          const oldItems = await db.list<Row>('invoice_items', { invoice_id: editInvoiceId });
+          for (const oldIt of oldItems) {
+            if (oldIt.id) {
+              try {
+                await db.remove('invoice_items', oldIt.id);
+              } catch (e) {}
+            }
+          }
+        } catch (e) {}
+
+        // Insert new line items
+        for (const item of discountedItems) {
+          try {
+            const itemPayload: Record<string, any> = {
+              invoice_id: editInvoiceId,
+              product_id: item.product_id,
+              quantity: item.quantity,
+              unit_price: item.unit_price,
+              total: Number((item.quantity * item.unit_price).toFixed(2)),
+            };
+            if (bid) itemPayload.business_id = bid;
+            await db.insert('invoice_items', itemPayload);
+          } catch (itemErr) {
+            console.warn('Could not insert updated invoice item:', itemErr);
+          }
+        }
+
+        toast.success(`Invoice ${editingInvoice.invoice_number || ''} updated successfully!`);
+        setLocation(`/invoices/${editInvoiceId}`);
+        return;
+      }
+
       let saved = false;
       let createdInvoiceId = '';
       let bid = await getBusinessId();
@@ -3512,6 +3860,12 @@ function InvoiceNew() {
             issue_date: issueDate || new Date().toISOString().slice(0, 10),
             notes: finalNotes,
             status: 'pending',
+            tax_rate: taxEnabled ? taxRate : 0,
+            subtotal: Number(taxableAmount.toFixed(2)),
+            tax: Number(taxAmount.toFixed(2)),
+            previous_due: actualPreviousDueAdded,
+            store_credit: actualStoreCreditApplied,
+            total: Number(finalTotal.toFixed(2)),
           },
           line_items: discountedItems,
           initial_payment: null,
@@ -3529,6 +3883,8 @@ function InvoiceNew() {
           invoice_number: nextInvoiceNum,
           issue_date: issueDate || new Date().toISOString().slice(0, 10),
           notes: finalNotes,
+          subtotal: Number(taxableAmount.toFixed(2)),
+          tax: Number(taxAmount.toFixed(2)),
           total: Number(finalTotal.toFixed(2)),
           status: 'pending',
           currency: 'INR',
@@ -3611,7 +3967,7 @@ function InvoiceNew() {
 
         // Record Khata Book entries for Store Credit redeemed or Previous Due billed
         try {
-          const selectedCust = customers.data.find(x => x.id === customerId);
+          const selectedCust = currentCustomer || customers.data.find(x => x.id === customerId);
           const custName = selectedCust?.name || 'Customer';
           const custPhone = selectedCust?.phone || '';
           const todayDate = issueDate || getTodayDate();
@@ -3668,7 +4024,7 @@ function InvoiceNew() {
       }
     } catch (e) { setMessage(getSupabaseErrorMessage(e, 'Could not save the invoice.')); } finally { setSaving(false); }
   };
-  return <div className="mx-auto max-w-5xl"><div className="mb-6 flex items-center gap-3"><Link href="/invoices" className="grid h-9 w-9 place-items-center rounded-lg border border-border bg-card text-muted-foreground no-underline hover:text-foreground" data-testid="link-back-invoices"><ArrowLeft size={17} /></Link><div><div className="text-[10px] font-bold uppercase tracking-[.18em] text-primary">Fast entry</div><h2 className="text-2xl font-extrabold tracking-[-.05em]">New invoice</h2></div></div>
+  return <div className="mx-auto max-w-5xl"><div className="mb-6 flex items-center gap-3"><Link href="/invoices" className="grid h-9 w-9 place-items-center rounded-lg border border-border bg-card text-muted-foreground no-underline hover:text-foreground" data-testid="link-back-invoices"><ArrowLeft size={17} /></Link><div><div className="text-[10px] font-bold uppercase tracking-[.18em] text-primary">{editInvoiceId ? 'Edit mode' : 'Fast entry'}</div><h2 className="text-2xl font-extrabold tracking-[-.05em]">{editInvoiceId ? `Edit Invoice (${editingInvoice?.invoice_number || 'INV'})` : 'New invoice'}</h2></div></div>
     {message && <div className="mb-4 rounded-xl border border-destructive/20 bg-destructive/8 p-3 text-xs font-semibold text-destructive" data-testid="status-invoice-form">{message}</div>}
     <div className="grid gap-5 lg:grid-cols-[1fr_360px]"><section className="card-shell p-5 sm:p-6">
       {/* Date & Time Picker Section */}
@@ -3713,7 +4069,7 @@ function InvoiceNew() {
       <label className="mb-2 block text-xs font-bold">Customer / Business <span className="text-accent">*</span></label>
       <div className="relative mb-6">
         {customerId ? (() => {
-          const c = customers.data.find(x => x.id === customerId);
+          const c = currentCustomer;
           const cGstin = c ? getCustomerGstin(c) : '';
           return (
             <div className="relative rounded-xl border border-border bg-muted/20 p-4">
@@ -3751,7 +4107,7 @@ function InvoiceNew() {
                 </div>
                 <div className="flex items-center gap-1">
                   <button onClick={() => { setNewCustomerForm({ ...c, gstin: getCustomerGstin(c || {}), notes: getCustomerNotes(c || {}) }); setCustomerDropdown(false); setCustomerModal(true); }} className="p-1.5 text-muted-foreground hover:bg-muted rounded-md hover:text-foreground" title="Edit Customer"><Pencil size={15} /></button>
-                  <button onClick={() => { setCustomerId(''); setCustomerQuery(''); }} className="p-1.5 text-muted-foreground hover:bg-muted rounded-md hover:text-destructive" title="Clear"><X size={15} /></button>
+                  <button onClick={() => { setCustomerId(''); setSelectedCustomerObj(null); setCustomerQuery(''); }} className="p-1.5 text-muted-foreground hover:bg-muted rounded-md hover:text-destructive" title="Clear"><X size={15} /></button>
                 </div>
               </div>
               {!c?.email && <div className="mt-4 border-t border-border/50 pt-3"><button type="button" onClick={() => { setNewCustomerForm({ ...c, gstin: getCustomerGstin(c || {}), notes: getCustomerNotes(c || {}) }); setCustomerDropdown(false); setCustomerModal(true); }} className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary/10 px-3 py-2 text-xs font-bold text-primary hover:bg-primary/20 transition-colors"><Mail size={14} /> Setup email</button></div>}
@@ -3759,8 +4115,34 @@ function InvoiceNew() {
           );
         })() : (
           <>
-            <Search className="absolute left-3 top-2.5 text-muted-foreground" size={16} />
-            <input value={customerQuery} onChange={(e) => { setCustomerQuery(e.target.value); setCustomerDropdown(true); }} onFocus={() => setCustomerDropdown(true)} onBlur={() => setTimeout(() => setCustomerDropdown(false), 250)} placeholder="Search customer/business name, or enter 10-digit phone to create" className="input-shell min-h-10 w-full pl-10 pr-3 text-sm" data-testid="input-customer-search" />
+            <Search className="absolute left-3 top-2.5 text-muted-foreground pointer-events-none" size={16} />
+            <input 
+              value={customerQuery} 
+              onChange={(e) => { 
+                setCustomerQuery(e.target.value); 
+                setCustomerDropdown(true); 
+              }} 
+              onFocus={() => {
+                if (customerBlurTimeoutRef.current) clearTimeout(customerBlurTimeoutRef.current);
+                setCustomerDropdown(true);
+              }}
+              onClick={() => {
+                if (customerBlurTimeoutRef.current) clearTimeout(customerBlurTimeoutRef.current);
+                setCustomerDropdown(true);
+              }}
+              onMouseDown={() => {
+                if (customerBlurTimeoutRef.current) clearTimeout(customerBlurTimeoutRef.current);
+                setCustomerDropdown(true);
+              }}
+              onBlur={() => {
+                customerBlurTimeoutRef.current = setTimeout(() => {
+                  setCustomerDropdown(false);
+                }, 250);
+              }}
+              placeholder="Search customer/business name, or enter 10-digit phone to create" 
+              className="input-shell min-h-10 w-full pl-10 pr-3 text-sm" 
+              data-testid="input-customer-search" 
+            />
             {customerDropdown && (
               <div className="absolute top-full left-0 right-0 z-20 mt-1 max-h-56 overflow-auto rounded-xl border border-border bg-card shadow-float">
                 {customers.loading ? (
@@ -3772,8 +4154,8 @@ function InvoiceNew() {
                       <button
                         key={c.id}
                         type="button"
-                        onMouseDown={(e) => { e.preventDefault(); setCustomerId(c.id); setCustomerDropdown(false); }}
-                        onClick={(e) => { e.preventDefault(); setCustomerId(c.id); setCustomerDropdown(false); }}
+                        onMouseDown={(e) => { e.preventDefault(); setCustomerId(c.id); setSelectedCustomerObj(c); setCustomerDropdown(false); }}
+                        onClick={(e) => { e.preventDefault(); setCustomerId(c.id); setSelectedCustomerObj(c); setCustomerDropdown(false); }}
                         className="flex w-full items-center justify-between px-3.5 py-2.5 text-left text-sm hover:bg-primary/10 transition-colors border-b border-border/40 last:border-0 cursor-pointer"
                         data-testid={`button-select-customer-${c.id}`}
                       >
@@ -3801,7 +4183,7 @@ function InvoiceNew() {
                 ) : (
   <>
     <div className="p-3 text-xs text-muted-foreground">No customers found.</div>
-    {customerQuery.length >= 10 && (
+    {customerQuery.replace(/\D/g, '').length >= 10 && (
       <button 
         type="button"
         onMouseDown={(e) => { e.preventDefault(); openCustomerModal(); }}
@@ -3821,6 +4203,16 @@ function InvoiceNew() {
   <div className="flex items-center gap-2">
     <button
       type="button"
+      onClick={() => setShowBarcodeScannerModal(true)}
+      className="flex items-center gap-1.5 rounded-lg bg-primary/10 border border-primary/20 px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary hover:text-primary-foreground transition-all cursor-pointer shadow-2xs active:scale-95"
+      title="Scan product barcode with Camera or Barcode reader"
+      data-testid="button-scan-barcode-invoice"
+    >
+      <ScanLine size={14} />
+      <span>Scan Barcode</span>
+    </button>
+    <button
+      type="button"
       onClick={() => {
         setCustomItemForm({ title: '', description: '', price: '', quantity: 1 });
         setCustomItemModal(true);
@@ -3834,18 +4226,71 @@ function InvoiceNew() {
 </div>
 
 <div className="relative mb-3">
-  <Search className="absolute left-3 top-3 text-muted-foreground" size={16} />
+  <Search className="absolute left-3 top-3 text-muted-foreground pointer-events-none" size={16} />
   <input
     value={query}
-    onChange={(e) => { setQuery(e.target.value); setProductDropdown(true); }}
-    onFocus={() => setProductDropdown(true)}
-    onBlur={() => setTimeout(() => setProductDropdown(false), 250)}
+    onChange={(e) => { 
+      setQuery(e.target.value); 
+      setProductDropdown(true); 
+    }}
+    onFocus={() => {
+      if (productBlurTimeoutRef.current) clearTimeout(productBlurTimeoutRef.current);
+      setProductDropdown(true);
+    }}
+    onClick={() => {
+      if (productBlurTimeoutRef.current) clearTimeout(productBlurTimeoutRef.current);
+      setProductDropdown(true);
+    }}
+    onMouseDown={() => {
+      if (productBlurTimeoutRef.current) clearTimeout(productBlurTimeoutRef.current);
+      setProductDropdown(true);
+    }}
+    onKeyDown={(e) => {
+      if (e.key === 'Enter') {
+        const cleanQ = query.trim().toLowerCase();
+        if (!cleanQ) return;
+        const exactMatch = products.data.find((p) => {
+          const b = (getProductBarcode(p) || '').toLowerCase();
+          const id = (getProductUniqueId(p) || '').toLowerCase();
+          const sku = (p.sku || '').toLowerCase();
+          const rawId = String(p.id || '').toLowerCase();
+          return b === cleanQ || id === cleanQ || sku === cleanQ || rawId === cleanQ;
+        });
+        if (exactMatch) {
+          e.preventDefault();
+          addItem(exactMatch);
+          setQuery('');
+          setProductDropdown(false);
+          return;
+        }
+        if (visibleProducts.length === 1) {
+          e.preventDefault();
+          addItem(visibleProducts[0]);
+          setQuery('');
+          setProductDropdown(false);
+        }
+      }
+    }}
+    onBlur={() => {
+      productBlurTimeoutRef.current = setTimeout(() => {
+        setProductDropdown(false);
+      }, 250);
+    }}
     placeholder="Type to search and add a product…"
-    className="input-shell w-full pl-10 pr-3 text-sm"
+    className="input-shell w-full pl-10 pr-10 text-sm cursor-pointer"
     data-testid="input-product-search"
   />
+  <button
+    type="button"
+    onClick={() => setShowBarcodeScannerModal(true)}
+    className="absolute right-2.5 top-2 p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors cursor-pointer"
+    title="Scan Barcode to Add Item"
+    data-testid="button-scan-addon-invoice"
+  >
+    <ScanLine size={16} />
+  </button>
   {productDropdown && (
-    <div className="absolute top-full left-0 right-0 z-20 mt-1 max-h-56 overflow-auto rounded-xl border border-border bg-card shadow-float">
+    <div className="absolute top-full left-0 right-0 z-20 mt-1 max-h-56 overflow-auto rounded-xl border border-border bg-card shadow-float custom-scrollbar">
       {products.loading ? (
         <div className="p-4 text-xs text-muted-foreground">Loading products…</div>
       ) : visibleProducts.length ? (
@@ -4097,16 +4542,52 @@ function InvoiceNew() {
           ) : null}
         </div>
 
-        {/* Khata / Store Credit & Previous Due Adjustments */}
+        {/* Bill Items Subtotal & Discount/Tax Calculation (Calculated strictly without Previous Due) */}
+        <div className="mt-4 space-y-2.5 rounded-2xl border border-border/70 bg-muted/15 p-3.5 text-xs">
+          <div className="flex justify-between text-muted-foreground">
+            <span>Items Subtotal</span>
+            <span className="mono font-semibold text-foreground">{subtotal.toFixed(2)}</span>
+          </div>
+          {finalDiscount > 0 && (
+            <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
+              <span>Discount {discountType === 'percentage' ? `(${discountValue}%)` : ''}</span>
+              <span className="mono font-semibold">-{finalDiscount.toFixed(2)}</span>
+            </div>
+          )}
+          {taxEnabled ? (
+            <div className="flex justify-between text-muted-foreground">
+              <span>{taxName} ({taxRate}%)</span>
+              <span className="mono font-semibold text-foreground">{taxAmount.toFixed(2)}</span>
+            </div>
+          ) : (
+            <div className="flex justify-between text-muted-foreground/60">
+              <span>Tax (0%)</span>
+              <span className="mono">0.00</span>
+            </div>
+          )}
+
+          {/* Current Bill Subtotal / Net Amount before previous dues */}
+          <div className="flex justify-between font-extrabold text-foreground pt-2 border-t border-border/60">
+            <span>Current Bill Amount</span>
+            <span className="mono text-sm font-black text-primary">₹{netBeforeKhata.toFixed(2)}</span>
+          </div>
+        </div>
+
+        {/* Khata / Store Credit & Previous Due Adjustments - Added at the LAST step */}
         {customerId && customerKhataBalance && !customerKhataBalance.isZero && (
-          <div className="mt-4 mb-4 space-y-2 border-t border-border/60 pt-3 text-xs">
+          <div className="mt-3.5 mb-2 space-y-2.5 border-t border-border/60 pt-3 text-xs">
             {/* Store Credit / Wallet Redemption Control */}
             {customerKhataBalance.credit > 0 && (
               <div className="rounded-xl border border-emerald-500/35 bg-emerald-500/10 p-2.5">
                 <div className="flex items-center justify-between">
-                  <span className="font-extrabold text-emerald-800 dark:text-emerald-300">
-                    Apply Store Credit / Wallet
-                  </span>
+                  <div>
+                    <span className="font-extrabold text-emerald-800 dark:text-emerald-300 block">
+                      Apply Store Credit / Wallet
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      Available Credit: ₹{customerKhataBalance.credit.toFixed(2)}
+                    </span>
+                  </div>
                   <input
                     type="checkbox"
                     checked={useStoreCredit}
@@ -4150,11 +4631,21 @@ function InvoiceNew() {
 
             {/* Previous Khata Due Inclusion Control */}
             {customerKhataBalance.due > 0 && (
-              <div className="rounded-xl border border-amber-500/35 bg-amber-500/10 p-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="font-extrabold text-amber-800 dark:text-amber-300">
-                    Add Previous Khata Due
-                  </span>
+              <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-extrabold text-amber-900 dark:text-amber-300 text-xs">
+                        Add Previous Khata Due
+                      </span>
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-200 border border-amber-500/30">
+                        Added at last (0% tax & 0% discount)
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">
+                      Unpaid due is added directly to total without any discount or percentage calculation.
+                    </p>
+                  </div>
                   <input
                     type="checkbox"
                     checked={usePreviousDue}
@@ -4164,12 +4655,12 @@ function InvoiceNew() {
                         setIncludedPreviousDue(String(customerKhataBalance.due));
                       }
                     }}
-                    className="h-4 w-4 accent-amber-600 cursor-pointer"
+                    className="h-4 w-4 mt-0.5 accent-amber-600 cursor-pointer shrink-0"
                     data-testid="toggle-use-previous-due"
                   />
                 </div>
                 {usePreviousDue && (
-                  <div className="mt-2 space-y-1">
+                  <div className="mt-2.5 space-y-1 pt-2 border-t border-amber-500/20">
                     <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                       <span>Due Amount to Add (Max: ₹{customerKhataBalance.due.toFixed(2)})</span>
                     </div>
@@ -4198,29 +4689,8 @@ function InvoiceNew() {
           </div>
         )}
 
-        <div className="mt-5 space-y-3 text-xs">
-          <div className="flex justify-between text-muted-foreground">
-            <span>Subtotal</span>
-            <span className="mono">{subtotal.toFixed(2)}</span>
-          </div>
-          {finalDiscount > 0 && (
-            <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
-              <span>Discount</span>
-              <span className="mono">-{finalDiscount.toFixed(2)}</span>
-            </div>
-          )}
-          {taxEnabled ? (
-            <div className="flex justify-between text-muted-foreground">
-              <span>{taxName} ({taxRate}%)</span>
-              <span className="mono">{taxAmount.toFixed(2)}</span>
-            </div>
-          ) : (
-            <div className="flex justify-between text-muted-foreground/60">
-              <span>Tax (0%)</span>
-              <span className="mono">0.00</span>
-            </div>
-          )}
-
+        {/* Final Payment Summary */}
+        <div className="mt-3.5 space-y-2.5 text-xs">
           {actualStoreCreditApplied > 0 && (
             <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-bold">
               <span>Store Credit Redeemed</span>
@@ -4229,16 +4699,26 @@ function InvoiceNew() {
           )}
 
           {actualPreviousDueAdded > 0 && (
-            <div className="flex justify-between text-amber-600 dark:text-amber-400 font-bold">
-              <span>Previous Khata Due Billed</span>
-              <span className="mono">+{actualPreviousDueAdded.toFixed(2)}</span>
+            <div className="flex justify-between items-center text-amber-700 dark:text-amber-300 font-bold bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/25">
+              <div>
+                <span className="block font-black text-xs">Previous Khata Due (Unpaid)</span>
+                <span className="text-[10px] font-normal text-muted-foreground">Added directly at end • No tax/discount</span>
+              </div>
+              <span className="mono text-sm font-black">+{actualPreviousDueAdded.toFixed(2)}</span>
             </div>
           )}
 
           <div className="border-t border-border pt-3">
             <div className="flex items-center justify-between">
-              <span className="font-extrabold">Total</span>
-              <span className="mono text-2xl font-medium">{finalTotal.toFixed(2)}</span>
+              <div>
+                <span className="font-extrabold text-sm text-foreground block">Total Payable</span>
+                {actualPreviousDueAdded > 0 && (
+                  <span className="text-[10px] text-muted-foreground font-medium">
+                    (Bill: ₹{netBeforeKhata.toFixed(2)} + Due: ₹{actualPreviousDueAdded.toFixed(2)})
+                  </span>
+                )}
+              </div>
+              <span className="mono text-2xl font-black text-foreground">{finalTotal.toFixed(2)}</span>
             </div>
           </div>
         </div>
@@ -4354,11 +4834,47 @@ function InvoiceNew() {
                 className="h-4 w-4 rounded border-border text-blue-600 accent-blue-600 cursor-pointer"
               />
             </label>
+
+            {/* SMS - Selectable */}
+            <label
+              className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2.5 transition-colors select-none ${
+                notifySms
+                  ? 'border-purple-500/40 bg-purple-500/10 text-foreground'
+                  : 'border-border/60 bg-background/60 hover:bg-muted/40 text-muted-foreground'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <div
+                  className={`flex h-7 w-7 items-center justify-center rounded-md ${
+                    notifySms ? 'bg-purple-500/20 text-purple-600 dark:text-purple-400' : 'bg-muted text-muted-foreground'
+                  }`}
+                >
+                  <Smartphone size={14} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-xs font-bold ${notifySms ? 'text-foreground' : ''}`}>SMS Confirmation</span>
+                    {notifySms && (
+                      <span className="rounded bg-purple-500/20 px-1.5 py-0.5 text-[9px] font-bold text-purple-600 dark:text-purple-400">
+                        Selected
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-muted-foreground">Cellular text receipt with bill link</span>
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={notifySms}
+                onChange={(e) => setNotifySms(e.target.checked)}
+                className="h-4 w-4 rounded border-border text-purple-600 accent-purple-600 cursor-pointer"
+              />
+            </label>
           </div>
         </div>
 
         <label className="mt-6 mb-2 block text-xs font-bold">Note <span className="font-normal text-muted-foreground">(optional)</span></label>
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="input-shell min-h-20 w-full resize-none p-3 text-sm" placeholder="Payment terms or a note…" data-testid="textarea-invoice-notes" /><button disabled={saving} onClick={() => void save()} className="btn-primary mt-5 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl text-sm font-extrabold disabled:opacity-50" data-testid="button-save-invoice">{saving ? 'Generating invoice…' : <><Check size={16} /> Generate & View Invoice</>}</button></aside></div>
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="input-shell min-h-20 w-full resize-none p-3 text-sm" placeholder="Payment terms or a note…" data-testid="textarea-invoice-notes" /><button disabled={saving} onClick={() => void save()} className="btn-primary mt-5 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl text-sm font-extrabold disabled:opacity-50" data-testid="button-save-invoice">{saving ? (editInvoiceId ? 'Updating invoice…' : 'Generating invoice…') : editInvoiceId ? <><Check size={16} /> Update & Save Invoice</> : <><Check size={16} /> Generate & View Invoice</>}</button></aside></div>
 
     {/* Zero Stock Warning Confirmation Modal */}
     {zeroStockModalProduct && (
@@ -4420,7 +4936,25 @@ function InvoiceNew() {
             <button type="button" onClick={() => setCustomerModal(false)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"><X size={18} /></button>
           </div>
 
-          {newCustomerForm._error && <div className="mb-4 rounded-lg bg-destructive/10 p-3 text-xs font-semibold text-destructive">{newCustomerForm._error}</div>}
+          {newCustomerForm._error && (
+            <div className="mb-4 rounded-lg bg-destructive/10 p-3 text-xs font-semibold text-destructive flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+              <span>{newCustomerForm._error}</span>
+              {newCustomerForm._existingCustomer && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomerId(newCustomerForm._existingCustomer.id);
+                    setSelectedCustomerObj(newCustomerForm._existingCustomer);
+                    setCustomerModal(false);
+                    toast.success(`Selected customer: ${newCustomerForm._existingCustomer.name}`);
+                  }}
+                  className="px-3 py-1.5 rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs font-bold shrink-0 self-start sm:self-auto cursor-pointer shadow-xs"
+                >
+                  Select {newCustomerForm._existingCustomer.name}
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="space-y-4">
             {/* 1. Entity Type Selector (Individual / Person vs. Business) */}
@@ -4567,6 +5101,17 @@ function InvoiceNew() {
         </div>
       </div>
     )}
+
+    {/* Barcode Scanner Modal for Invoice Line Items */}
+    <InvoiceBarcodeScanModal
+      isOpen={showBarcodeScannerModal}
+      onClose={() => setShowBarcodeScannerModal(false)}
+      products={products.data}
+      onAddProduct={(p, forceAllow) => addItem(p, forceAllow)}
+      onUpdateQuantity={updateItemQuantityByDelta}
+      onRemoveItem={removeItemFromInvoice}
+      items={items}
+    />
   </div>;
 }
 
@@ -4598,7 +5143,13 @@ function InvoiceDetail() {
   const [returnLogs, setReturnLogs] = useState<Row[]>([]);
   const [returningItem, setReturningItem] = useState<boolean>(false);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
-  useBodyScrollLock(Boolean(paymentModal || payLaterModal || cancelConfirmModal || returnModalItem || templateModalOpen));
+  const [whatsAppModalOpen, setWhatsAppModalOpen] = useState(false);
+  const [whatsAppTab, setWhatsAppTab] = useState<'qr' | 'message'>('qr');
+  const [whatsAppAmount, setWhatsAppAmount] = useState<string>('');
+  const [whatsAppPhone, setWhatsAppPhone] = useState<string>('');
+  const [whatsAppCustomMessage, setWhatsAppCustomMessage] = useState<string>('');
+  const [whatsAppUpiId, setWhatsAppUpiId] = useState<string>('');
+  useBodyScrollLock(Boolean(paymentModal || payLaterModal || cancelConfirmModal || returnModalItem || templateModalOpen || whatsAppModalOpen));
   const [templateSettings, setTemplateSettings] = useState<InvoiceTemplateSettings>(() => {
     try {
       const raw = localStorage.getItem('arventa_invoice_template_settings');
@@ -5029,32 +5580,32 @@ function InvoiceDetail() {
           customer_name: custName,
           customer_phone: custPhone,
           type: 'gave',
-          amount: dueAmt,
+          amount: paidAmt > 0 ? totalAmt : dueAmt,
           date: todayDate,
           time: timeNow,
           payment_mode: 'Due',
           bill_reference: invoice.invoice_number || 'INV-0001',
-          note: payLaterNote.trim() || `Invoice ${invoice.invoice_number || 'INV-0001'} Pay Later balance due`,
+          note: payLaterNote.trim() || (paidAmt > 0 ? `Invoice ${invoice.invoice_number || 'INV-0001'} Bill Total` : `Invoice ${invoice.invoice_number || 'INV-0001'} Pay Later balance due`),
         };
         await db.insert('khata_entries', gaveEntry);
-      }
 
-      // 2. If customer paid a partial amount today, also record 'got' entry in Khata Book
-      if (paidAmt > 0) {
-        const gotEntry = {
-          business_id: bizId,
-          customer_id: custId,
-          customer_name: custName,
-          customer_phone: custPhone,
-          type: 'got',
-          amount: paidAmt,
-          date: todayDate,
-          time: timeNow,
-          payment_mode: payLaterPaymentMethod,
-          bill_reference: invoice.invoice_number || 'INV-0001',
-          note: `Payment received (${payLaterPaymentMethod}) for Invoice ${invoice.invoice_number || 'INV-0001'}`,
-        };
-        await db.insert('khata_entries', gotEntry);
+        // 2. If customer paid a partial amount today, also record 'got' entry in Khata Book
+        if (paidAmt > 0) {
+          const gotEntry = {
+            business_id: bizId,
+            customer_id: custId,
+            customer_name: custName,
+            customer_phone: custPhone,
+            type: 'got',
+            amount: paidAmt,
+            date: todayDate,
+            time: timeNow,
+            payment_mode: payLaterPaymentMethod,
+            bill_reference: invoice.invoice_number || 'INV-0001',
+            note: `Payment received (${payLaterPaymentMethod}) for Invoice ${invoice.invoice_number || 'INV-0001'}`,
+          };
+          await db.insert('khata_entries', gotEntry);
+        }
       }
 
       setInvoice({ ...invoice, ...updated });
@@ -5220,41 +5771,79 @@ function InvoiceDetail() {
     }
   };
 
-  const handleWhatsAppShare = () => {
+  const openWhatsAppModal = () => {
     if (!invoice) return;
-    const isPaid = invoice.status === 'paid' || invoice.status === 'complete';
+    const cleanPhone = (customer?.phone || '').replace(/[^0-9]/g, '');
+    setWhatsAppPhone(cleanPhone);
+
+    const totalAmt = Number(invoice.total || 0);
+    const balanceAmt = invoice.balance !== undefined && invoice.balance !== null ? Number(invoice.balance) : totalAmt;
+    const initialAmount = balanceAmt > 0 ? balanceAmt.toFixed(2) : totalAmt.toFixed(2);
+    setWhatsAppAmount(initialAmount);
+    setWhatsAppUpiId(paymentInfo?.upi_id || '');
+
+    // Reset message to completely empty so user can freely type without pre-filled text
+    setWhatsAppCustomMessage('');
+    setWhatsAppTab('qr');
+    setWhatsAppModalOpen(true);
+  };
+
+  const handleSendWhatsAppQR = () => {
+    if (!invoice) return;
+    const amt = Number(whatsAppAmount) || 0;
+    const upiId = whatsAppUpiId.trim() || paymentInfo?.upi_id || '';
     const bizName = business?.name || 'BillingMaster';
     const custName = customer?.name || 'Customer';
-    const linesSummary = items.map((it) => `• ${it.product_name || 'Item'} x${it.quantity} = ₹${it.total}`).join('\n');
 
-    const hasPaymentDetails = Boolean(paymentInfo?.upi_id || paymentInfo?.bank_name || paymentInfo?.account_number);
-    let paySummary = '';
-    if (!isPaid && hasPaymentDetails) {
-      paySummary += '\n\n*💳 Payment Options:*';
-      if (paymentInfo?.upi_id) paySummary += `\n📲 *UPI ID:* ${paymentInfo.upi_id}`;
-      if (paymentInfo?.upi_number) paySummary += `\n📱 *UPI Mobile:* ${paymentInfo.upi_number}`;
-      if (paymentInfo?.account_number && paymentInfo?.ifsc_code) {
-        paySummary += `\n🏦 *Bank Transfer:*\n• *Bank:* ${paymentInfo.bank_name || 'Bank'}\n• *A/C Name:* ${paymentInfo.account_holder_name || bizName}\n• *A/C No:* ${paymentInfo.account_number}\n• *IFSC:* ${paymentInfo.ifsc_code}`;
-        if (paymentInfo.branch_name) paySummary += `\n• *Branch:* ${paymentInfo.branch_name}`;
-      }
+    let upiPayUri = '';
+    let qrImageUrl = '';
+    if (upiId) {
+      upiPayUri = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(bizName)}&am=${amt.toFixed(2)}&cu=INR&tn=${encodeURIComponent(`Invoice ${invoice.invoice_number || ''}`)}`;
+      qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(upiPayUri)}`;
     }
 
-    const text =
-      `*INVOICE: ${invoice.invoice_number}*\n` +
-      `🏢 *${bizName}*\n` +
-      `👤 *Customer:* ${custName}\n` +
-      `📅 *Date:* ${invoice.issue_date}\n` +
-      `------------------------\n` +
-      (linesSummary ? `${linesSummary}\n------------------------\n` : '') +
-      `💰 *Total Amount:* ₹${Number(invoice.total || 0).toFixed(2)}\n` +
-      `📌 *Status:* ${isPaid ? '✅ PAID' : '⏳ DUE / UNPAID'}\n` +
-      (isPaid && invoice.payment_method ? `💳 Method: ${invoice.payment_method}\n` : '') +
-      paySummary +
-      `\n\nThank you for doing business with us!`;
+    const billUrl = typeof window !== 'undefined'
+      ? `${window.location.origin}/invoices/${invoice.id}`
+      : '';
 
-    const phone = (customer?.phone || '').replace(/[^0-9]/g, '');
-    const waUrl = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
+    let text = `*💳 PAYMENT REQUEST - ${bizName}*\n`;
+    text += `Dear ${custName},\n`;
+    text += `Here is your payment request for Invoice *#${invoice.invoice_number || 'INV'}*.\n\n`;
+    text += `💰 *Payable Amount:* ₹${amt.toFixed(2)}\n`;
+    if (upiId) {
+      text += `📲 *UPI ID:* ${upiId}\n\n`;
+      text += `*📲 Direct Pay via UPI (GPay/PhonePe/Paytm):*\n${upiPayUri}\n\n`;
+      text += `*🖼️ View / Scan Payment QR Code:* \n${qrImageUrl}\n\n`;
+    }
+    if (paymentInfo?.account_number && paymentInfo?.ifsc_code) {
+      text += `*🏦 Bank Transfer Details:*\n`;
+      text += `• *Bank:* ${paymentInfo.bank_name || 'Bank'}\n`;
+      text += `• *A/C No:* ${paymentInfo.account_number}\n`;
+      text += `• *IFSC:* ${paymentInfo.ifsc_code}\n`;
+      text += `• *A/C Name:* ${paymentInfo.account_holder_name || bizName}\n\n`;
+    }
+    if (billUrl) {
+      text += `📄 *View Full Bill Online:*\n${billUrl}\n\n`;
+    }
+    text += `Thank you for your business!`;
+
+    const cleanPhone = whatsAppPhone.replace(/[^0-9]/g, '');
+    const waUrl = cleanPhone
+      ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`
+      : `https://wa.me/?text=${encodeURIComponent(text)}`;
     window.open(waUrl, '_blank');
+    setWhatsAppModalOpen(false);
+  };
+
+  const handleSendWhatsAppMessage = () => {
+    if (!invoice) return;
+    const cleanPhone = whatsAppPhone.replace(/[^0-9]/g, '');
+    const msg = whatsAppCustomMessage.trim();
+    const waUrl = cleanPhone
+      ? (msg ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}` : `https://wa.me/${cleanPhone}`)
+      : (msg ? `https://wa.me/?text=${encodeURIComponent(msg)}` : `https://wa.me/`);
+    window.open(waUrl, '_blank');
+    setWhatsAppModalOpen(false);
   };
 
   const handleEmailShare = () => {
@@ -5304,8 +5893,10 @@ function InvoiceDetail() {
     );
   }
 
-  const isPaid = invoice.status === 'paid' || invoice.status === 'complete';
-  const isKhata = invoice.status === 'khata' || invoice.status === 'pay_later';
+  const statusLower = (invoice.status || '').toLowerCase();
+  const isCancelled = statusLower.includes('cancel');
+  const isPaid = statusLower === 'paid' || statusLower === 'complete';
+  const isKhata = statusLower === 'khata' || statusLower === 'pay_later';
   const isSettled = isPaid || isKhata;
   const timeMatch = invoice.notes?.match(/Time:\s*([0-9:]+\s*(?:AM|PM)?)/i);
   const timeStr = timeMatch ? timeMatch[1] : '';
@@ -5338,7 +5929,7 @@ function InvoiceDetail() {
           <div>
             <div className="flex items-center gap-2">
               <span className="mono text-base font-extrabold tracking-tight text-foreground">{invoice.invoice_number || 'INV-0001'}</span>
-              {invoice.status === 'cancelled' ? (
+              {isCancelled ? (
                 <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide bg-destructive/15 text-destructive border border-destructive/30">
                   <X size={11} className="stroke-[3]" /> Cancelled
                 </span>
@@ -5412,8 +6003,68 @@ function InvoiceDetail() {
         />
       </div>
 
-      {/* Item Returns & Refunds Section */}
-      {invoice.status !== 'cancelled' && (
+      {/* Pending Settlement Items Section - Products not yet delivered: Only Edit button, no Return/Replace */}
+      {!isPaid && !isCancelled && (
+        <div className="mt-4 rounded-2xl border border-border bg-card p-4 sm:p-5 shadow-sm print:hidden">
+          <div className="mb-3 flex items-center justify-between border-b border-border/60 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="grid h-8 w-8 place-items-center rounded-xl bg-primary/10 text-primary">
+                <Package size={16} />
+              </div>
+              <div>
+                <h3 className="text-sm font-extrabold text-foreground">Billed Items (Pending Settlement)</h3>
+                <p className="text-[11px] text-muted-foreground">Product not delivered yet. Edit invoice items or cancel if customer changes order.</p>
+              </div>
+            </div>
+            <span className="mono text-xs font-bold text-muted-foreground">{items.length} item{items.length === 1 ? '' : 's'}</span>
+          </div>
+
+          <div className="space-y-2.5">
+            {items.map((it, idx) => {
+              const totalQty = Number(it.quantity || 1);
+              const unitPrice = Number(it.unit_price || it.price || 0);
+              const lineTotal = Number(it.total || totalQty * unitPrice);
+
+              return (
+                <div
+                  key={it.id || idx}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-border/60 bg-muted/20 p-3 text-xs"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-extrabold text-foreground text-sm">{it.product_name || 'Item'}</span>
+                      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/25">
+                        <Clock size={11} /> Pending Delivery
+                      </span>
+                    </div>
+                    <div className="mt-1 flex items-center gap-3 text-[11px] text-muted-foreground flex-wrap">
+                      <span>Billed Qty: <strong className="text-foreground mono">{totalQty} {it.product_unit || 'pcs'}</strong></span>
+                      <span>Unit Price: <strong className="text-foreground mono">₹{unitPrice.toFixed(2)}</strong></span>
+                      <span>Total: <strong className="text-foreground mono">₹{lineTotal.toFixed(2)}</strong></span>
+                    </div>
+                  </div>
+
+                  {/* Only ONE button: Edit */}
+                  <div className="shrink-0 flex items-center">
+                    <Link
+                      href={`/invoices/new?edit=${invoice.id}`}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-primary/40 bg-primary/10 px-3.5 py-2 text-xs font-extrabold text-primary hover:bg-primary/20 active:scale-95 transition-all shadow-2xs no-underline cursor-pointer"
+                      data-testid={`button-edit-item-${it.id || idx}`}
+                      title="Edit this item on invoice"
+                    >
+                      <Pencil size={13} />
+                      <span>Edit</span>
+                    </Link>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Item Returns & Refunds Section (Only for paid / settled invoices where products have been delivered) */}
+      {isPaid && invoice.status !== 'cancelled' && (
         <div className="mt-4 rounded-2xl border border-border bg-card p-4 sm:p-5 shadow-sm print:hidden">
           <div className="mb-3 flex items-center justify-between border-b border-border/60 pb-3">
             <div className="flex items-center gap-2.5">
@@ -5722,51 +6373,31 @@ function InvoiceDetail() {
         </div>
       )}
 
-      {/* Dedicated Send Invoice Toolbar */}
-      <div className="mt-4 rounded-2xl border border-border bg-card p-4 shadow-sm print:hidden">
-        <div>
-          <span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block mb-2">
-            Send Invoice
-          </span>
-          <div className="flex items-center flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={handleEmailShare}
-              className="flex items-center gap-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs font-bold text-blue-700 dark:text-blue-300 hover:bg-blue-500/20 active:scale-95 transition-all shadow-2xs cursor-pointer"
-              title="Send via Email"
-              data-testid="button-send-email"
-            >
-              <Mail size={14} />
-              <span>Email</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleWhatsAppShare}
-              className="flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 active:scale-95 transition-all shadow-2xs cursor-pointer"
-              title="Share via WhatsApp"
-              data-testid="button-send-whatsapp"
-            >
-              <MessageCircle size={14} />
-              <span>WhatsApp</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleSMSShare}
-              className="flex items-center gap-1.5 rounded-xl border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-xs font-bold text-purple-700 dark:text-purple-300 hover:bg-purple-500/20 active:scale-95 transition-all shadow-2xs cursor-pointer"
-              title="Send via SMS / Message"
-              data-testid="button-send-sms"
-            >
-              <Send size={14} />
-              <span>SMS / Message</span>
-            </button>
+      {/* Dedicated Send via WhatsApp Toolbar */}
+      {!isCancelled && (
+        <div className="mt-4 rounded-2xl border border-border bg-card p-4 shadow-sm print:hidden">
+          <div>
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block mb-2">
+              Send via WhatsApp
+            </span>
+            <div className="flex items-center flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={openWhatsAppModal}
+                className="flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 px-4 py-2.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 active:scale-95 transition-all shadow-2xs cursor-pointer"
+                title="Send Payment QR Code or Message to Customer via WhatsApp"
+                data-testid="button-send-whatsapp"
+              >
+                <MessageCircle size={16} className="text-emerald-600 dark:text-emerald-400 stroke-[2.5]" />
+                <span>Send via WhatsApp</span>
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* 3 Review Settlement Action Buttons (When invoice is pending settlement) */}
-      {!isSettled ? (
+      {!isSettled && !isCancelled ? (
         <div className="mt-4 rounded-2xl border border-border/80 bg-card/95 p-3.5 shadow-md print:hidden flex items-center justify-between gap-3 sticky bottom-24 lg:bottom-4 z-40 backdrop-blur-md">
           {/* Left Side: Compact Pay Later & Cancel Invoice Buttons */}
           <div className="flex items-center gap-2 shrink-0">
@@ -5814,15 +6445,15 @@ function InvoiceDetail() {
           </div>
         </div>
       ) : (
-        /* Settlement Completed Banner (Disappears 3 action buttons) */
+        /* Settlement Completed or Cancelled Banner (Disappears 3 action buttons) */
         <div className={`mt-4 rounded-2xl border p-3.5 shadow-md print:hidden flex items-center justify-center gap-2 sticky bottom-24 lg:bottom-4 z-40 backdrop-blur-md ${
-          invoice.status === 'cancelled'
+          isCancelled
             ? 'border-destructive/30 bg-destructive/10 text-destructive font-extrabold'
             : 'border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 font-extrabold'
         }`}>
-          {invoice.status === 'cancelled' ? <XCircle size={20} className="stroke-[2.5]" /> : <CheckCircle2 size={20} className="stroke-[2.5]" />}
+          {isCancelled ? <XCircle size={20} className="stroke-[2.5]" /> : <CheckCircle2 size={20} className="stroke-[2.5]" />}
           <span className="font-extrabold text-sm sm:text-base tracking-tight">
-            {invoice.status === 'cancelled' ? 'Invoice Cancelled' : 'Payment Successful'}
+            {isCancelled ? 'Invoice Cancelled' : 'Payment Successful'}
           </span>
         </div>
       )}
@@ -6105,6 +6736,229 @@ function InvoiceDetail() {
         onClose={() => setTemplateModalOpen(false)}
         onSaved={(st) => setTemplateSettings(st)}
       />
+
+      {/* WhatsApp Sharing Modal (QR Code & Custom Message) */}
+      {whatsAppModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-sidebar/50 backdrop-blur-sm p-4 animate-in fade-in-0 print:hidden overflow-y-auto">
+          <div className="w-full max-w-lg rounded-2xl border border-emerald-500/30 bg-card p-5 sm:p-6 shadow-2xl relative my-8 overflow-hidden animate-rise">
+            {/* Header */}
+            <div className="mb-4 flex items-center justify-between pb-3 border-b border-border/60">
+              <div className="flex items-center gap-2.5">
+                <div className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                  <MessageCircle size={22} className="stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-foreground">Send via WhatsApp</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Invoice #{invoice.invoice_number || 'INV'} • {customer?.name || 'Customer'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWhatsAppModalOpen(false)}
+                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted cursor-pointer"
+                data-testid="button-close-whatsapp-modal"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Customer WhatsApp Number */}
+            <div className="mb-4">
+              <label className="mb-1 flex items-center gap-1.5 text-xs font-bold text-foreground">
+                <Phone size={13} className="text-emerald-600" />
+                <span>Customer WhatsApp Number</span>
+              </label>
+              <input
+                type="text"
+                value={whatsAppPhone}
+                onChange={(e) => setWhatsAppPhone(e.target.value)}
+                placeholder="e.g. 919876543210 (Country code + 10-digit number)"
+                className="input-shell w-full px-3 py-2 text-sm font-semibold mono"
+                data-testid="input-whatsapp-phone"
+              />
+              <p className="mt-1 text-[10px] text-muted-foreground">WhatsApp will open with this phone number</p>
+            </div>
+
+            {/* 2 Tabs: Send QR Code & Custom Message */}
+            <div className="mb-4 flex rounded-xl bg-muted/60 p-1 border border-border/60">
+              <button
+                type="button"
+                onClick={() => setWhatsAppTab('qr')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-extrabold rounded-lg transition-all cursor-pointer ${
+                  whatsAppTab === 'qr'
+                    ? 'bg-card text-emerald-600 dark:text-emerald-400 shadow-xs border border-emerald-500/30'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                data-testid="tab-whatsapp-qr"
+              >
+                <QrCode size={14} />
+                <span>Send QR Code</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setWhatsAppTab('message')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-extrabold rounded-lg transition-all cursor-pointer ${
+                  whatsAppTab === 'message'
+                    ? 'bg-card text-emerald-600 dark:text-emerald-400 shadow-xs border border-emerald-500/30'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                data-testid="tab-whatsapp-message"
+              >
+                <FileText size={14} />
+                <span>Message</span>
+              </button>
+            </div>
+
+            {/* Tab 1: Send QR Code */}
+            {whatsAppTab === 'qr' ? (
+              <div className="space-y-4">
+                {/* Amount Input */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-foreground">
+                      Payment Amount (₹) *
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const bal = invoice.balance !== undefined && invoice.balance !== null ? Number(invoice.balance) : Number(invoice.total || 0);
+                          setWhatsAppAmount(bal > 0 ? bal.toFixed(2) : Number(invoice.total || 0).toFixed(2));
+                        }}
+                        className="text-[10px] font-bold text-primary hover:underline cursor-pointer"
+                      >
+                        Due: ₹{Number(invoice.balance || invoice.total || 0).toFixed(2)}
+                      </button>
+                      <span className="text-muted-foreground text-[10px]">·</span>
+                      <button
+                        type="button"
+                        onClick={() => setWhatsAppAmount(Number(invoice.total || 0).toFixed(2))}
+                        className="text-[10px] font-bold text-primary hover:underline cursor-pointer"
+                      >
+                        Total: ₹{Number(invoice.total || 0).toFixed(2)}
+                      </button>
+                    </div>
+                  </div>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={whatsAppAmount}
+                    onChange={(e) => setWhatsAppAmount(e.target.value)}
+                    placeholder="Enter amount to pay..."
+                    className="input-shell w-full p-2.5 text-base font-extrabold mono text-foreground"
+                    data-testid="input-whatsapp-amount"
+                  />
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    QR code and payment request link will be generated for this exact amount.
+                  </p>
+                </div>
+
+                {/* UPI ID input */}
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-foreground">
+                    Merchant UPI ID (VPA)
+                  </label>
+                  <input
+                    type="text"
+                    value={whatsAppUpiId}
+                    onChange={(e) => setWhatsAppUpiId(e.target.value)}
+                    placeholder="e.g. 9876543210@paytm, store@upi"
+                    className="input-shell w-full px-3 py-2 text-xs font-semibold mono"
+                    data-testid="input-whatsapp-upi-id"
+                  />
+                  {!whatsAppUpiId && (
+                    <p className="mt-1 text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                      Enter UPI ID to let customer scan & pay instantly.
+                    </p>
+                  )}
+                </div>
+
+                {/* Live Dynamic QR Code Preview */}
+                {(() => {
+                  const amtVal = Number(whatsAppAmount) || 0;
+                  const upiIdVal = whatsAppUpiId.trim() || paymentInfo?.upi_id || '';
+                  const upiUri = upiIdVal
+                    ? `upi://pay?pa=${encodeURIComponent(upiIdVal)}&pn=${encodeURIComponent(business?.name || 'Merchant')}&am=${amtVal.toFixed(2)}&cu=INR&tn=${encodeURIComponent(`Inv ${invoice.invoice_number || ''}`)}`
+                    : '';
+                  const qrUrl = upiUri
+                    ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(upiUri)}`
+                    : (typeof window !== 'undefined'
+                        ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(`${window.location.origin}/invoices/${invoice.id}`)}`
+                        : '');
+
+                  return (
+                    <div className="rounded-xl border border-border/80 bg-muted/20 p-3.5 text-center flex flex-col items-center">
+                      <div className="bg-white p-2 rounded-xl shadow-xs border border-border inline-block">
+                        <img
+                          src={qrUrl}
+                          alt="Payment QR Code"
+                          className="h-32 w-32 object-contain"
+                        />
+                      </div>
+                      <div className="mt-2 text-xs font-extrabold text-foreground">
+                        Payment QR: ₹{amtVal.toFixed(2)}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Customer can scan this QR code or click the direct UPI payment link sent in WhatsApp.
+                      </p>
+                    </div>
+                  );
+                })()}
+
+                {/* Send Button for QR */}
+                <button
+                  type="button"
+                  onClick={handleSendWhatsAppQR}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white py-2.5 px-4 text-sm font-extrabold shadow-md transition-all cursor-pointer"
+                  data-testid="button-confirm-send-whatsapp-qr"
+                >
+                  <MessageCircle size={16} className="stroke-[2.5]" />
+                  <span>Send QR Code & Payment Link via WhatsApp</span>
+                </button>
+              </div>
+            ) : (
+              /* Tab 2: Custom Message */
+              <div className="space-y-4">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-foreground">
+                      WhatsApp Message Text
+                    </label>
+                    <span className="text-[10px] text-muted-foreground">
+                      Type any custom message you want
+                    </span>
+                  </div>
+                  <textarea
+                    rows={8}
+                    value={whatsAppCustomMessage}
+                    onChange={(e) => setWhatsAppCustomMessage(e.target.value)}
+                    placeholder="Type your WhatsApp message here..."
+                    className="input-shell w-full p-3 text-xs font-medium leading-relaxed resize-none"
+                    data-testid="textarea-whatsapp-custom-message"
+                  />
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    Type any custom message to send to the customer on WhatsApp.
+                  </p>
+                </div>
+
+                {/* Send Button for Message */}
+                <button
+                  type="button"
+                  onClick={handleSendWhatsAppMessage}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white py-2.5 px-4 text-sm font-extrabold shadow-md transition-all cursor-pointer"
+                  data-testid="button-confirm-send-whatsapp-message"
+                >
+                  <Send size={15} />
+                  <span>Send Message via WhatsApp</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -6132,6 +6986,54 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
   useBodyScrollLock(Boolean(showModal || showViewModal || showBarcodeModal || showUnitSettingsModal || showSearchBarcodeModal || noteModalData || deleteData));
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState<Record<string, any>>({});
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
+
+  const handleImageFile = (file: File) => {
+    if (!file) return;
+    const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
+    if (file.size > MAX_SIZE) {
+      toast.error('Image size exceeds 5 MB. Please choose a smaller photo.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const rawUrl = evt.target?.result as string;
+      if (!rawUrl) return;
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          let w = img.width;
+          let h = img.height;
+          const MAX_DIM = 800;
+          if (w > MAX_DIM || h > MAX_DIM) {
+            if (w > h) {
+              h = Math.round((h * MAX_DIM) / w);
+              w = MAX_DIM;
+            } else {
+              w = Math.round((w * MAX_DIM) / h);
+              h = MAX_DIM;
+            }
+          }
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, w, h);
+            const compressed = canvas.toDataURL('image/jpeg', 0.85);
+            setFormData((prev: any) => ({ ...prev, image_url: compressed }));
+          } else {
+            setFormData((prev: any) => ({ ...prev, image_url: rawUrl }));
+          }
+        } catch (err) {
+          setFormData((prev: any) => ({ ...prev, image_url: rawUrl }));
+        }
+      };
+      img.onerror = () => setFormData((prev: any) => ({ ...prev, image_url: rawUrl }));
+      img.src = rawUrl;
+    };
+    reader.readAsDataURL(file);
+  };
 
   const isCustomer = kind === 'customers';
 
@@ -6335,10 +7237,6 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
       }
       if (!isService && (formData.stock_quantity === undefined || formData.stock_quantity === null || String(formData.stock_quantity).trim() === '')) {
         toast.warning('Total Stock Quantity is required for physical products.');
-        return;
-      }
-      if (!isService && (formData.unit_value === undefined || formData.unit_value === null || String(formData.unit_value).trim() === '')) {
-        toast.warning('Base Content / Pack Size is required. Please enter a quantity (e.g. 1, 100, 250).');
         return;
       }
     }
@@ -6718,24 +7616,7 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
                               {Boolean(row.allow_custom_price) ? 'Custom Price at Billing' : (row.stock_quantity && row.stock_quantity < 999 ? `Capacity: ${row.stock_quantity}` : 'Unlimited Service')}
                             </span>
                           )}
-                          {(() => {
-                            let isCatVis = row.show_in_catalog !== false && row.show_in_catalog !== 0 && row.show_in_catalog !== '0' && row.show_in_catalog !== 'false';
-                            if (row.notes && (row.notes.startsWith('{') || row.notes.startsWith('['))) {
-                              try {
-                                const parsed = JSON.parse(row.notes);
-                                if (parsed.show_in_catalog !== undefined) isCatVis = Boolean(parsed.show_in_catalog);
-                              } catch (e) {}
-                            }
-                            return isCatVis ? (
-                              <span className="font-semibold px-2 py-0.5 rounded-md border bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/20">
-                                Catalog: <span className="font-bold">Visible</span>
-                              </span>
-                            ) : (
-                              <span className="font-semibold px-2 py-0.5 rounded-md border bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/30">
-                                Catalog: <span className="font-bold">POS Only</span>
-                              </span>
-                            );
-                          })()}
+
                         </div>
                       </>
                     )}
@@ -6975,7 +7856,7 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
                 {/* 1. Item Type Selector (Virtual Service vs. Physical Product) */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="block text-xs font-bold">Item Type *</label>
+                    <label className="block text-xs font-bold">Item Type</label>
                     {formData.id && (
                       <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1 bg-muted/80 px-2 py-0.5 rounded-md border border-border/60">
                         <Lock size={11} className="text-primary" />
@@ -6992,7 +7873,7 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
                         type: 'physical', 
                         unit: formData.unit === 'service' || formData.unit === 'hour' || formData.unit === 'project' ? 'pcs' : (formData.unit || 'pcs') 
                       })}
-                      className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-bold transition-all ${
+                      className={`flex items-center justify-center gap-2 p-2.5 rounded-xl border text-xs font-bold transition-all ${
                         formData.type !== 'service'
                           ? 'border-primary bg-primary/10 text-primary font-black shadow-sm ring-2 ring-primary/20'
                           : 'border-border bg-background text-muted-foreground hover:bg-muted'
@@ -7009,7 +7890,7 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
                         type: 'service', 
                         unit: formData.unit === 'pcs' || formData.unit === 'box' || formData.unit === 'kg' ? 'service' : (formData.unit || 'service') 
                       })}
-                      className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-bold transition-all ${
+                      className={`flex items-center justify-center gap-2 p-2.5 rounded-xl border text-xs font-bold transition-all ${
                         formData.type === 'service'
                           ? 'border-indigo-600 bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 font-black shadow-sm ring-2 ring-indigo-600/20'
                           : 'border-border bg-background text-muted-foreground hover:bg-muted'
@@ -7021,44 +7902,435 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
                   </div>
                 </div>
 
-                {/* 2. Product Name */}
-                <AppField 
-                  label={formData.type === 'service' ? "Service Name *" : "Product Name *"} 
-                  value={formData.name || ''} 
-                  onChange={(v) => setFormData({...formData, name: v})} 
-                  placeholder={formData.type === 'service' ? "e.g. Website Design & Development, SEO Consulting" : "e.g. Beauty Face Cream, Cotton Shirt"} 
-                  required 
-                />
+                {/* 2. Top Product Photo Section (Prominent, High-Quality, Professional) */}
+                <div className="pt-0.5">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                      <Camera size={14} className="text-primary" />
+                      <span>{formData.type === 'service' ? "Service Photo / Banner" : "Product Photo"}</span>
+                      <span className="text-muted-foreground font-normal text-[11px]">(Optional, Max 5 MB)</span>
+                    </label>
+                    {formData.image_url && (
+                      <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
+                        <CheckCircle2 size={11} />
+                        <span>Photo Attached</span>
+                      </span>
+                    )}
+                  </div>
 
-                {/* 3. Barcode / SKU Field (Physical Product only) */}
-                {formData.type !== 'service' && (
-                  <div>
-                    <label className="block text-xs font-bold mb-1">Barcode / SKU Number</label>
-                    <div className="flex gap-2">
+                  {formData.image_url ? (
+                    <div className="relative flex flex-col sm:flex-row items-center justify-between gap-3.5 p-3.5 sm:p-4 rounded-2xl border-2 border-primary/30 bg-primary/5 shadow-2xs transition-all">
+                      <div className="flex items-center gap-3.5 w-full sm:w-auto">
+                        <div className="relative shrink-0">
+                          <img
+                            src={formData.image_url}
+                            alt="Product Preview"
+                            className="h-16 w-16 sm:h-20 sm:w-20 rounded-xl object-cover border border-primary/20 bg-background shadow-xs"
+                          />
+                          <span className="absolute -bottom-1 -right-1 grid h-5 w-5 place-items-center rounded-full bg-emerald-600 text-white shadow-xs border-2 border-background">
+                            <CheckCircle2 size={12} />
+                          </span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs sm:text-sm font-extrabold text-foreground truncate">
+                            {formData.name || 'Product Photo Attached'}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground font-medium mt-0.5">
+                            Optimized for fast POS grid, receipt printing & catalog display
+                          </p>
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md mt-1.5">
+                            Auto-Optimized Image
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 w-full sm:w-auto justify-end border-t sm:border-t-0 pt-2 sm:pt-0 border-border/50 shrink-0">
+                        <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border bg-card hover:bg-muted text-foreground text-xs font-bold cursor-pointer transition-colors shadow-2xs">
+                          <RefreshCw size={13} className="text-primary" />
+                          <span>Change</span>
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,image/gif"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) handleImageFile(file);
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, image_url: '' })}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-destructive/30 bg-destructive/10 hover:bg-destructive hover:text-white text-destructive text-xs font-bold transition-colors cursor-pointer"
+                          title="Remove Photo"
+                        >
+                          <Trash2 size={13} />
+                          <span>Remove</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <label 
+                      onDragOver={(e) => { e.preventDefault(); setIsDraggingImage(true); }}
+                      onDragLeave={() => setIsDraggingImage(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setIsDraggingImage(false);
+                        const file = e.dataTransfer.files?.[0];
+                        if (file) handleImageFile(file);
+                      }}
+                      className={`relative flex flex-col sm:flex-row items-center justify-between gap-3 p-4 sm:p-4.5 rounded-2xl border-2 border-dashed transition-all cursor-pointer group ${
+                        isDraggingImage 
+                          ? 'border-primary bg-primary/15 scale-[1.01]' 
+                          : 'border-border hover:border-primary/60 bg-muted/20 hover:bg-muted/40'
+                      }`}
+                    >
                       <input
-                        type="text"
-                        value={formData.sku || ''}
-                        onChange={(e) => setFormData({ ...formData, sku: e.target.value, barcode: e.target.value })}
-                        placeholder="e.g. PRD-849201 or 8901234567890"
-                        className="input-shell flex-1 px-3 py-2 text-xs sm:text-sm font-semibold tracking-wide"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          openBarcodeVerifier();
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleImageFile(file);
+                          e.target.value = '';
                         }}
-                        className="px-3 py-2 text-xs font-bold rounded-xl border border-border bg-muted/60 text-foreground hover:bg-muted flex items-center gap-1.5 shrink-0 transition-colors"
-                        title="Scan Barcode with Camera"
-                      >
-                        <Camera size={14} className="text-primary" />
-                        <span className="hidden sm:inline">Scan</span>
-                      </button>
+                      />
+                      <div className="flex items-center gap-3.5 text-center sm:text-left">
+                        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-primary/10 text-primary border border-primary/20 group-hover:scale-105 group-hover:bg-primary group-hover:text-primary-foreground transition-all shrink-0">
+                          <ImagePlus size={22} />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 justify-center sm:justify-start">
+                            <span className="text-xs sm:text-sm font-extrabold text-foreground group-hover:text-primary transition-colors">
+                              Click to Upload Product Photo
+                            </span>
+                            <span className="hidden sm:inline-block text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded border border-border">
+                              Drag & Drop
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            JPEG, PNG, WebP or GIF up to 5 MB • Displays on POS terminal, barcode lookup & invoices
+                          </p>
+                        </div>
+                      </div>
+                      <div className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border bg-card text-foreground group-hover:border-primary group-hover:text-primary text-xs font-bold shadow-2xs transition-colors">
+                        <Upload size={13} />
+                        <span>Browse File</span>
+                      </div>
+                    </label>
+                  )}
+                </div>
+
+                {/* 3. Product Name & Barcode/SKU Grid */}
+                <div className={formData.type === 'service' ? "space-y-3 pt-1" : "grid gap-3.5 sm:grid-cols-2 pt-1"}>
+                  <AppField 
+                    label={formData.type === 'service' ? "Service Name" : "Product Name"} 
+                    value={formData.name || ''} 
+                    onChange={(v) => setFormData({...formData, name: v})} 
+                    placeholder={formData.type === 'service' ? "e.g. Website Design, SEO Consulting" : "e.g. Beauty Face Cream, Cotton Shirt"} 
+                    required 
+                  />
+
+                  {formData.type !== 'service' && (
+                    <div>
+                      <label className="block text-xs font-bold mb-1">Barcode / SKU Number</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={formData.sku || ''}
+                          onChange={(e) => setFormData({ ...formData, sku: e.target.value, barcode: e.target.value })}
+                          placeholder="e.g. PRD-849201 or 8901234567890"
+                          className="input-shell flex-1 px-3 py-2 text-xs sm:text-sm font-semibold tracking-wide"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            openBarcodeVerifier();
+                          }}
+                          className="px-3 py-2 text-xs font-bold rounded-xl border border-border bg-muted/60 text-foreground hover:bg-muted flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer"
+                          title="Scan Barcode with Camera"
+                        >
+                          <Camera size={14} className="text-primary" />
+                          <span className="hidden sm:inline">Scan</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. Price Configuration */}
+                {formData.type === 'service' ? (
+                  <div className="space-y-3 pt-1">
+                    {/* Toggle Switch: Allow Custom Amount at Billing */}
+                    <div className={`rounded-2xl border p-4 transition-all select-none ${
+                      formData.allow_custom_price
+                        ? 'border-indigo-500/30 bg-indigo-500/[0.03] dark:bg-indigo-500/[0.05] shadow-2xs'
+                        : 'border-border/60 bg-muted/15'
+                    }`}>
+                      <label className="flex cursor-pointer items-start justify-between gap-3 group">
+                        <div className="flex items-start gap-3">
+                          <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors ${
+                            formData.allow_custom_price
+                              ? 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400'
+                              : 'bg-muted text-muted-foreground'
+                          }`}>
+                            <CircleDollarSign className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs sm:text-sm font-bold text-foreground">Allow Custom Amount at Billing</span>
+                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full transition-colors ${
+                                formData.allow_custom_price 
+                                  ? 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20' 
+                                  : 'bg-muted text-muted-foreground border border-border/60'
+                              }`}>
+                                {formData.allow_custom_price ? 'Custom Pricing' : 'Fixed Price'}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground mt-0.5 leading-normal">
+                              {formData.allow_custom_price 
+                                ? 'Selling price is optional. Enter custom amount during invoice billing.' 
+                                : 'Use a fixed default selling price for this virtual service.'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="relative inline-flex items-center shrink-0 mt-0.5">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(formData.allow_custom_price)}
+                            onChange={(e) => setFormData({ ...formData, allow_custom_price: e.target.checked })}
+                            className="sr-only peer"
+                            data-testid="toggle-allow-custom-price"
+                          />
+                          <div className="h-6 w-11 rounded-full bg-input peer-checked:bg-indigo-600 transition-colors duration-200 relative cursor-pointer">
+                            <div className="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-200 peer-checked:translate-x-5" />
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+
+                    <AppField 
+                      label={formData.allow_custom_price ? "Default Selling Price (₹) (Optional)" : "Selling Price (₹)"} 
+                      type="number" 
+                      value={formData.price !== undefined ? formData.price : ''} 
+                      onChange={(v) => setFormData({...formData, price: v})} 
+                      placeholder={formData.allow_custom_price ? "0.00 (or leave empty for billing input)" : "0.00"} 
+                      required={formData.allow_custom_price ? undefined : true}
+                    />
+                  </div>
+                ) : (
+                  <div className="pt-1">
+                    {(() => {
+                      const bp = parseFloat(formData.buying_price);
+                      const sp = parseFloat(formData.price);
+                      const hasMargin = !isNaN(bp) && !isNaN(sp) && bp > 0 && sp > 0;
+                      const profit = hasMargin ? sp - bp : null;
+                      const marginPct = hasMargin && bp > 0 ? ((profit! / bp) * 100).toFixed(1) : null;
+                      return (
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-xs font-bold text-foreground">Pricing & Profit</span>
+                            {hasMargin && profit !== null && (
+                              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border flex items-center gap-1 ${
+                                profit >= 0 
+                                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' 
+                                  : 'border-destructive/30 bg-destructive/10 text-destructive'
+                              }`}>
+                                Profit: ₹{profit.toFixed(2)} ({profit >= 0 ? `+${marginPct}%` : `${marginPct}%`})
+                              </span>
+                            )}
+                          </div>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <AppField 
+                              label="Buying Price / Cost (₹)" 
+                              type="number" 
+                              value={formData.buying_price !== undefined ? formData.buying_price : ''} 
+                              onChange={(v) => setFormData({...formData, buying_price: v})} 
+                              placeholder="0.00" 
+                            />
+                            <AppField 
+                              label="Selling Price (₹)" 
+                              type="number" 
+                              value={formData.price !== undefined ? formData.price : ''} 
+                              onChange={(v) => setFormData({...formData, price: v})} 
+                              placeholder="0.00" 
+                              required
+                            />
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {/* 5. Total Stock & Unit Measurement (Physical Product only) */}
+                {formData.type !== 'service' && (
+                  <div className="space-y-4 pt-1">
+                    <div className="grid gap-3.5 sm:grid-cols-2">
+                      <AppField 
+                        label="Total Stock Quantity" 
+                        type="number" 
+                        value={formData.stock_quantity !== undefined ? formData.stock_quantity : ''} 
+                        onChange={(v) => setFormData({...formData, stock_quantity: v})} 
+                        placeholder="e.g. 10, 50, 100" 
+                        required
+                      />
+
+                      <label className="block text-xs font-bold">
+                        Unit of Measurement (Unit Type) <span className="text-destructive ml-0.5">*</span>
+                        <div className="mt-2">
+                          <CustomDropdown
+                            value={formData.unit || 'pcs'}
+                            onChange={(v) => setFormData({ ...formData, unit: v })}
+                            placeholder="Select unit type (e.g. Liter, Pcs, Kg)"
+                            options={getDropdownOptionsForUnits(enabledUnitCodes, formData.unit)}
+                          />
+                        </div>
+                      </label>
+                    </div>
+
+                    {/* Return Policy & Stock Restoration Section */}
+                    <div className={`rounded-2xl border transition-all p-4 select-none ${
+                      formData.is_returnable !== false
+                        ? 'border-border/80 bg-card shadow-2xs space-y-4'
+                        : 'border-border/60 bg-muted/15'
+                    }`}>
+                      {/* Main Toggle: Allow Product Return */}
+                      <label className="flex cursor-pointer items-start justify-between gap-3 group">
+                        <div className="flex items-start gap-3">
+                          <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors ${
+                            formData.is_returnable !== false
+                              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                              : 'bg-muted text-muted-foreground'
+                          }`}>
+                            <RotateCcw className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs sm:text-sm font-bold text-foreground">Allow Product Return</span>
+                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full transition-colors ${
+                                formData.is_returnable !== false
+                                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20'
+                                  : 'bg-muted text-muted-foreground border border-border/60'
+                              }`}>
+                                {formData.is_returnable !== false ? 'Returnable' : 'Non-Returnable'}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground mt-0.5 leading-normal">
+                              {formData.is_returnable !== false 
+                                ? 'Customer returns are accepted for this product.' 
+                                : 'Item is non-returnable. Stock will not be restored upon invoice return.'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="relative inline-flex items-center shrink-0 mt-0.5">
+                          <input
+                            type="checkbox"
+                            checked={formData.is_returnable !== false}
+                            onChange={(e) => setFormData({ ...formData, is_returnable: e.target.checked })}
+                            className="sr-only peer"
+                            data-testid="toggle-allow-product-return"
+                          />
+                          <div className="h-6 w-11 rounded-full bg-input peer-checked:bg-emerald-600 transition-colors duration-200 relative cursor-pointer">
+                            <div className="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-200 peer-checked:translate-x-5" />
+                          </div>
+                        </div>
+                      </label>
+
+                      {/* Conditional Sub-settings: Restock & Return Window */}
+                      {formData.is_returnable !== false && (
+                        <div className="pt-3.5 border-t border-border/60 space-y-3.5 pl-3 sm:pl-4 border-l-2 border-emerald-500/30 ml-2 sm:ml-2.5 animate-in fade-in duration-150">
+                          {/* Sub-Toggle: Restock Returned Items to Main Stock */}
+                          <div className={`rounded-xl border p-3.5 transition-all ${
+                            formData.restock_on_return !== false
+                              ? 'border-blue-500/25 bg-blue-500/[0.03] dark:bg-blue-500/[0.06]'
+                              : 'border-amber-500/25 bg-amber-500/[0.03] dark:bg-amber-500/[0.06]'
+                          }`}>
+                            <label className="flex cursor-pointer items-start justify-between gap-3 group">
+                              <div className="flex items-start gap-3">
+                                <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
+                                  formData.restock_on_return !== false
+                                    ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
+                                    : 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                                }`}>
+                                  <Boxes className="h-4 w-4" />
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold text-foreground">Restock Returned Items to Main Stock</span>
+                                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full transition-colors ${
+                                      formData.restock_on_return !== false
+                                        ? 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/20'
+                                        : 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/20'
+                                    }`}>
+                                      {formData.restock_on_return !== false ? 'Auto-Restock ON' : 'No Restock (Damaged/Used)'}
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-muted-foreground mt-0.5 leading-normal">
+                                    {formData.restock_on_return !== false
+                                      ? 'Returned quantities are automatically added back to Main Total Stock.'
+                                      : 'Customer can return item, but returned quantity will NOT be added back to Main Stock (e.g. damaged goods).'}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="relative inline-flex items-center shrink-0 mt-0.5">
+                                <input
+                                  type="checkbox"
+                                  checked={formData.restock_on_return !== false}
+                                  onChange={(e) => setFormData({ ...formData, restock_on_return: e.target.checked })}
+                                  className="sr-only peer"
+                                  data-testid="toggle-restock-on-return"
+                                />
+                                <div className="h-6 w-11 rounded-full bg-input peer-checked:bg-blue-600 transition-colors duration-200 relative cursor-pointer">
+                                  <div className="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-200 peer-checked:translate-x-5" />
+                                </div>
+                              </div>
+                            </label>
+                          </div>
+
+                          {/* Return Window Limit & Unit Selector */}
+                          <div className="space-y-2 pt-0.5">
+                            <label className="block text-xs font-bold text-foreground">
+                              Return Window Limit <span className="text-destructive ml-0.5">*</span>
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                min="1"
+                                value={formData.return_window_value !== undefined ? formData.return_window_value : (formData.return_window_days || '7')}
+                                onChange={(e) => setFormData({ ...formData, return_window_value: e.target.value })}
+                                placeholder={formData.return_window_unit === 'hours' ? "e.g. 24, 48" : "e.g. 7, 14, 30"}
+                                className="input-shell flex-1 px-3.5 text-sm font-extrabold mono"
+                                data-testid="input-return-window-value"
+                              />
+                              <div className="w-32 shrink-0">
+                                <CustomDropdown
+                                  value={formData.return_window_unit || 'days'}
+                                  onChange={(v) => setFormData({ ...formData, return_window_unit: v })}
+                                  options={[
+                                    { label: 'Days', value: 'days' },
+                                    { label: 'Hours', value: 'hours' },
+                                  ]}
+                                  className="relative"
+                                  testId="select-return-window-unit"
+                                />
+                              </div>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">
+                              {formData.return_window_unit === 'hours'
+                                ? 'Maximum number of hours from billing date within which customer returns are valid (e.g. 24 hours).'
+                                : 'Maximum number of days from billing date within which customer returns are valid (e.g. 7 days).'}
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
 
-                {/* 4. Product Description */}
-                <div>
+                {/* 6. Product Description */}
+                <div className="pt-1">
                   <label className="mb-1 block text-xs font-bold">
                     {formData.type === 'service' ? "Service Description" : "Product Description"}
                   </label>
@@ -7070,334 +8342,7 @@ function CrudPage({ kind }: { kind: 'customers' | 'products' }) {
                   />
                 </div>
 
-                {/* 4b. Product Image Upload (Optional, Max 5 MB) */}
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-bold text-foreground">
-                      {formData.type === 'service' ? "Service Image" : "Product Image"} <span className="text-muted-foreground font-normal">(Optional, Max 5 MB)</span>
-                    </label>
-                  </div>
 
-                  {formData.image_url ? (
-                    <div className="relative flex items-center gap-3.5 p-3 rounded-xl border border-primary/30 bg-primary/5 shadow-2xs">
-                      <img
-                        src={formData.image_url}
-                        alt="Product Preview"
-                        className="h-14 w-14 rounded-lg object-cover border border-border bg-card shadow-xs shrink-0"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-extrabold text-foreground truncate">Photo Attached Successfully</p>
-                        <p className="text-[11px] text-muted-foreground font-medium">Will be displayed in catalog & billing search</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setFormData({ ...formData, image_url: '' })}
-                        className="grid h-7 w-7 place-items-center rounded-full bg-background text-muted-foreground hover:bg-destructive hover:text-white border border-border transition-colors cursor-pointer shrink-0"
-                        title="Remove Photo"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ) : (
-                    <label className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-dashed border-border hover:border-primary/50 bg-muted/20 hover:bg-muted/40 transition-all cursor-pointer group">
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp,image/gif"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
-                          if (file.size > MAX_SIZE) {
-                            toast.error('Image size exceeds 5 MB. Please choose a smaller photo.');
-                            e.target.value = '';
-                            return;
-                          }
-                          const reader = new FileReader();
-                          reader.onload = (evt) => {
-                            const rawUrl = evt.target?.result as string;
-                            if (!rawUrl) return;
-                            const img = new Image();
-                            img.onload = () => {
-                              try {
-                                const canvas = document.createElement('canvas');
-                                let w = img.width;
-                                let h = img.height;
-                                const MAX_DIM = 800;
-                                if (w > MAX_DIM || h > MAX_DIM) {
-                                  if (w > h) {
-                                    h = Math.round((h * MAX_DIM) / w);
-                                    w = MAX_DIM;
-                                  } else {
-                                    w = Math.round((w * MAX_DIM) / h);
-                                    h = MAX_DIM;
-                                  }
-                                }
-                                canvas.width = w;
-                                canvas.height = h;
-                                const ctx = canvas.getContext('2d');
-                                if (ctx) {
-                                  ctx.drawImage(img, 0, 0, w, h);
-                                  const compressed = canvas.toDataURL('image/jpeg', 0.85);
-                                  setFormData((prev: any) => ({ ...prev, image_url: compressed }));
-                                } else {
-                                  setFormData((prev: any) => ({ ...prev, image_url: rawUrl }));
-                                }
-                              } catch (err) {
-                                setFormData((prev: any) => ({ ...prev, image_url: rawUrl }));
-                              }
-                            };
-                            img.onerror = () => setFormData((prev: any) => ({ ...prev, image_url: rawUrl }));
-                            img.src = rawUrl;
-                          };
-                          reader.readAsDataURL(file);
-                        }}
-                      />
-                      <div className="flex items-center gap-2 text-muted-foreground group-hover:text-primary transition-colors">
-                        <ImagePlus size={20} />
-                        <span className="text-xs font-bold">Click to Upload Product Photo</span>
-                      </div>
-                      <p className="text-[11px] text-muted-foreground mt-1">JPEG, PNG, WebP or GIF up to 5 MB</p>
-                    </label>
-                  )}
-                </div>
-
-                {/* 5 & 6. Price Configuration for Virtual Service */}
-                {formData.type === 'service' ? (
-                  <div className="space-y-3 pt-1">
-                    {/* Toggle Switch: Allow Custom Amount at Billing */}
-                    <label className={`flex cursor-pointer items-start justify-between gap-3 rounded-xl border p-3.5 transition-colors select-none ${
-                      formData.allow_custom_price
-                        ? 'border-indigo-600/50 bg-indigo-600/10 text-foreground'
-                        : 'border-border bg-muted/20 text-muted-foreground'
-                    }`}>
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-extrabold text-foreground">Allow Custom Amount at Billing</span>
-                          <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded ${
-                            formData.allow_custom_price ? 'bg-indigo-600/20 text-indigo-600 dark:text-indigo-400' : 'bg-muted text-muted-foreground'
-                          }`}>
-                            {formData.allow_custom_price ? 'Virtual Service Feature' : 'Fixed Price'}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-muted-foreground mt-0.5 leading-normal">
-                          {formData.allow_custom_price 
-                            ? 'Selling price is optional. Enter custom amount during invoice billing.' 
-                            : 'Use a fixed default selling price for this virtual service.'}
-                        </p>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={Boolean(formData.allow_custom_price)}
-                        onChange={(e) => setFormData({ ...formData, allow_custom_price: e.target.checked })}
-                        className="mt-1 h-4 w-4 rounded border-border text-indigo-600 accent-indigo-600 cursor-pointer"
-                        data-testid="toggle-allow-custom-price"
-                      />
-                    </label>
-
-                    <AppField 
-                      label={formData.allow_custom_price ? "Default Selling Price (₹) (Optional)" : "Selling Price (₹) *"} 
-                      type="number" 
-                      value={formData.price !== undefined ? formData.price : ''} 
-                      onChange={(v) => setFormData({...formData, price: v})} 
-                      placeholder={formData.allow_custom_price ? "0.00 (or leave empty for billing input)" : "0.00"} 
-                      required={formData.allow_custom_price ? undefined : true}
-                    />
-                  </div>
-                ) : (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <AppField 
-                      label="Buying Price / Cost (₹)" 
-                      type="number" 
-                      value={formData.buying_price !== undefined ? formData.buying_price : ''} 
-                      onChange={(v) => setFormData({...formData, buying_price: v})} 
-                      placeholder="0.00" 
-                    />
-                    <AppField 
-                      label="Selling Price (₹) *" 
-                      type="number" 
-                      value={formData.price !== undefined ? formData.price : ''} 
-                      onChange={(v) => setFormData({...formData, price: v})} 
-                      placeholder="0.00" 
-                      required
-                    />
-                  </div>
-                )}
-
-                {/* 7. Total Stock & Unit Measurement (Physical Product only) */}
-                {formData.type !== 'service' && (
-                  <div className="space-y-4 pt-1">
-                    <div className="grid gap-3.5 sm:grid-cols-3">
-                      <AppField 
-                        label="Total Stock Quantity *" 
-                        type="number" 
-                        value={formData.stock_quantity !== undefined ? formData.stock_quantity : ''} 
-                        onChange={(v) => setFormData({...formData, stock_quantity: v})} 
-                        placeholder="e.g. 10, 50, 100" 
-                        required
-                      />
-
-                      <label className="block text-xs font-bold">
-                        Unit of Measurement (Unit Type) *
-                        <CustomDropdown
-                          value={formData.unit || 'pcs'}
-                          onChange={(v) => setFormData({ ...formData, unit: v })}
-                          placeholder="Select unit type (e.g. Liter, Pcs, Kg)"
-                          options={getDropdownOptionsForUnits(enabledUnitCodes, formData.unit)}
-                        />
-                      </label>
-
-                      <AppField 
-                        label="Base Content / Pack Size *" 
-                        type="text" 
-                        value={formData.unit_value !== undefined ? formData.unit_value : ''} 
-                        onChange={(v) => setFormData({...formData, unit_value: v})} 
-                        placeholder={
-                          formData.unit === 'litre' || formData.unit === 'l' ? "e.g. 1, 2, 5 (for 1L, 5L)" :
-                          formData.unit === 'ml' ? "e.g. 250, 500, 750 (for 250ml)" :
-                          formData.unit === 'kg' ? "e.g. 1, 5, 10 (for 10kg)" :
-                          formData.unit === 'g' ? "e.g. 100, 250, 500 (for 100g price)" :
-                          formData.unit === 'ft' ? "e.g. 10, 20, 50 (for 10 ft)" :
-                          formData.unit === 'sqft' ? "e.g. 100, 500, 1000 (for 100 sq ft)" :
-                          formData.unit === 'yd' ? "e.g. 2, 5, 10 (for 5 yd)" :
-                          formData.unit === 'plate' ? "e.g. 1, 2, 5 (for 1 Plate)" :
-                          "e.g. 250, 500, 10"
-                        } 
-                        required
-                        hint="Base quantity/portion size that price applies to (e.g. 100g, 1L, 1 Plate, 250ml)."
-                      />
-                    </div>
-
-                    {/* Toggle Switch: Allow Product Return */}
-                    <label className={`flex cursor-pointer items-start justify-between gap-3 rounded-xl border p-3.5 transition-colors select-none ${
-                      formData.is_returnable !== false
-                        ? 'border-emerald-600/50 bg-emerald-600/10 text-foreground'
-                        : 'border-border bg-muted/20 text-muted-foreground'
-                    }`}>
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-extrabold text-foreground">Allow Product Return</span>
-                          <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded ${
-                            formData.is_returnable !== false ? 'bg-emerald-600/20 text-emerald-700 dark:text-emerald-300' : 'bg-muted text-muted-foreground'
-                          }`}>
-                            {formData.is_returnable !== false ? 'Returnable' : 'Non-Returnable'}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-muted-foreground mt-0.5 leading-normal">
-                          {formData.is_returnable !== false 
-                            ? 'Customer returns are accepted for this product.' 
-                            : 'Item is non-returnable. Stock will not be restored upon invoice return.'}
-                        </p>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={formData.is_returnable !== false}
-                        onChange={(e) => setFormData({ ...formData, is_returnable: e.target.checked })}
-                        className="mt-1 h-4 w-4 rounded border-border text-emerald-600 accent-emerald-600 cursor-pointer"
-                        data-testid="toggle-allow-product-return"
-                      />
-                    </label>
-
-                    {/* Conditional Sub-Toggle: Restock Returned Items to Main Stock */}
-                    {formData.is_returnable !== false && (
-                      <label className={`ml-4 flex cursor-pointer items-start justify-between gap-3 rounded-xl border p-3.5 transition-colors select-none animate-in fade-in duration-150 ${
-                        formData.restock_on_return !== false
-                          ? 'border-blue-500/50 bg-blue-500/10 text-foreground'
-                          : 'border-amber-500/40 bg-amber-500/10 text-foreground'
-                      }`}>
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-extrabold text-foreground">Restock Returned Items to Main Stock</span>
-                            <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded ${
-                              formData.restock_on_return !== false ? 'bg-blue-500/20 text-blue-700 dark:text-blue-300' : 'bg-amber-500/20 text-amber-700 dark:text-amber-300'
-                            }`}>
-                              {formData.restock_on_return !== false ? 'Auto-Restock ON' : 'No Restock (Damaged/Used)'}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-muted-foreground mt-0.5 leading-normal">
-                            {formData.restock_on_return !== false
-                              ? 'Returned quantities are automatically added back to Main Total Stock.'
-                              : 'Customer can return item, but returned quantity will NOT be added back to Main Stock (e.g. damaged goods).'}
-                          </p>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={formData.restock_on_return !== false}
-                          onChange={(e) => setFormData({ ...formData, restock_on_return: e.target.checked })}
-                          className="mt-1 h-4 w-4 rounded border-border text-blue-600 accent-blue-600 cursor-pointer"
-                          data-testid="toggle-restock-on-return"
-                        />
-                      </label>
-                    )}
-
-                    {/* Conditional Return Window Limit & Unit Selector */}
-                    {formData.is_returnable !== false && (
-                      <div className="ml-4 pt-1 animate-in fade-in duration-150 space-y-2">
-                        <label className="block text-xs font-bold text-foreground">
-                          Return Window Limit *
-                        </label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            min="1"
-                            value={formData.return_window_value !== undefined ? formData.return_window_value : (formData.return_window_days || '7')}
-                            onChange={(e) => setFormData({ ...formData, return_window_value: e.target.value })}
-                            placeholder={formData.return_window_unit === 'hours' ? "e.g. 24, 48" : "e.g. 7, 14, 30"}
-                            className="input-shell flex-1 px-3.5 text-sm font-extrabold mono"
-                            data-testid="input-return-window-value"
-                          />
-                          <div className="w-32 shrink-0">
-                            <CustomDropdown
-                              value={formData.return_window_unit || 'days'}
-                              onChange={(v) => setFormData({ ...formData, return_window_unit: v })}
-                              options={[
-                                { label: 'Days', value: 'days' },
-                                { label: 'Hours', value: 'hours' },
-                              ]}
-                              className="relative"
-                              testId="select-return-window-unit"
-                            />
-                          </div>
-                        </div>
-                        <p className="text-[11px] text-muted-foreground">
-                          {formData.return_window_unit === 'hours'
-                            ? 'Maximum number of hours from billing date within which customer returns are valid (e.g. 24 hours).'
-                            : 'Maximum number of days from billing date within which customer returns are valid (e.g. 7 days).'}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Toggle Switch: Show in Online Store Catalog */}
-                <label className={`flex cursor-pointer items-start justify-between gap-3 rounded-xl border p-3.5 transition-colors select-none ${
-                  formData.show_in_catalog !== false
-                    ? 'border-teal-500/50 bg-teal-500/10 text-foreground'
-                    : 'border-border bg-muted/20 text-muted-foreground'
-                }`}>
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-extrabold text-foreground">Show in Online Store Catalog</span>
-                      <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded ${
-                        formData.show_in_catalog !== false ? 'bg-teal-500/20 text-teal-700 dark:text-teal-300' : 'bg-muted text-muted-foreground'
-                      }`}>
-                        {formData.show_in_catalog !== false ? 'Catalog Visible' : 'POS Only (Hidden)'}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground mt-0.5 leading-normal">
-                      {formData.show_in_catalog !== false 
-                        ? 'This item will be visible to online customers in your public store catalog & link.' 
-                        : 'This item will be hidden from online customers and only available for in-store POS billing.'}
-                    </p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={formData.show_in_catalog !== false}
-                    onChange={(e) => setFormData({ ...formData, show_in_catalog: e.target.checked })}
-                    className="mt-1 h-4 w-4 rounded border-border text-teal-600 accent-teal-600 cursor-pointer"
-                    data-testid="toggle-show-in-catalog"
-                  />
-                </label>
               </div>
             )}
           </div>

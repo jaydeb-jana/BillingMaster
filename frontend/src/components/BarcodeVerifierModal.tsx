@@ -24,6 +24,7 @@ import {
 import { db, getSupabaseErrorMessage, getProductBarcode, generateInternalSku } from '@/lib/api';
 import { useLocation } from 'wouter';
 import { useBodyScrollLock } from '@/lib/useScrollReset';
+import { stopAllVideoElementStreams, stopMediaStream } from '@/lib/camera';
 
 type ProductRow = Record<string, any>;
 
@@ -186,24 +187,24 @@ export function BarcodeVerifierModal({
     }
     if (streamRef.current) {
       try {
-        streamRef.current.getTracks().forEach((t) => {
-          t.stop();
-        });
+        stopMediaStream(streamRef.current);
       } catch (e) {}
       streamRef.current = null;
     }
     if (videoRef.current) {
       try {
         if (videoRef.current.srcObject) {
-          const srcStream = videoRef.current.srcObject as MediaStream;
-          srcStream.getTracks?.().forEach((t) => t.stop());
+          stopMediaStream(videoRef.current.srcObject as MediaStream);
         }
+        videoRef.current.pause();
+        videoRef.current.srcObject = null;
       } catch (e) {}
-      videoRef.current.srcObject = null;
     }
+    // Also stop any other video element streams in the document to turn off camera LED
+    stopAllVideoElementStreams();
+
     if (html5ScannerRef.current) {
       try {
-        await html5ScannerRef.current.stop().catch(() => {});
         html5ScannerRef.current.clear();
       } catch (e) {}
       html5ScannerRef.current = null;
@@ -212,6 +213,11 @@ export function BarcodeVerifierModal({
     setIsScanning(false);
     setIsTorchOn(false);
     setHasTorchSupport(false);
+  };
+
+  const handleCloseModal = async () => {
+    await stopCamera();
+    onClose();
   };
 
   // Toggle camera flashlight (torch) and brightness boost
@@ -326,6 +332,11 @@ export function BarcodeVerifierModal({
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play().catch(() => {});
+      }
+
+      if (isCameraCanceledRef.current || !isOpen || activeTab !== 'scan') {
+        void stopCamera();
+        return;
       }
 
       setIsCameraActive(true);
@@ -570,13 +581,13 @@ export function BarcodeVerifierModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-sidebar/60 backdrop-blur-xs p-0 sm:p-4 print:hidden animate-in fade-in-0 duration-200">
-      <div className="w-full max-w-lg max-h-[90vh] rounded-t-3xl sm:rounded-2xl border border-border bg-card shadow-float relative flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
+      <div className="w-full max-w-lg max-h-[92vh] rounded-t-3xl sm:rounded-3xl border border-border bg-card shadow-float relative flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
         
         {/* Modal Header */}
-        <div className="flex items-center justify-between p-4 sm:px-6 sm:py-4 border-b border-border/70 bg-card shrink-0">
+        <div className="flex items-center justify-between p-4 sm:px-5 sm:py-3.5 border-b border-border/70 bg-card shrink-0">
           <div className="flex items-center gap-3 min-w-0 pr-2">
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary border border-primary/20">
-              <ScanLine size={20} />
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary border border-primary/20">
+              <ScanLine size={19} />
             </div>
             <div className="min-w-0">
               <h3 className="text-sm sm:text-base font-black text-foreground tracking-tight truncate">
@@ -589,7 +600,7 @@ export function BarcodeVerifierModal({
           </div>
           <button 
             type="button" 
-            onClick={onClose} 
+            onClick={() => void handleCloseModal()} 
             className="rounded-xl p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0 cursor-pointer"
             title="Close modal"
           >
@@ -598,27 +609,27 @@ export function BarcodeVerifierModal({
         </div>
 
         {/* Modal Body */}
-        <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 custom-scrollbar">
+        <div className="p-4 sm:p-5 space-y-3.5 overflow-y-auto flex-1 custom-scrollbar">
           
           {/* Target Product Summary Box (Only shown when no barcode is set yet or when changing) */}
           {targetProduct && !currentProductBarcode && (
-            <div className="rounded-2xl border border-border/80 bg-muted/30 p-4 space-y-3">
+            <div className="rounded-2xl border border-border/80 bg-muted/30 p-3 sm:p-3.5 space-y-2">
               <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
                     <Package size={18} />
                   </div>
-                  <div>
-                    <div className="font-black text-foreground text-sm sm:text-base">{targetProduct.name}</div>
+                  <div className="min-w-0">
+                    <div className="font-black text-foreground text-sm truncate">{targetProduct.name}</div>
                     <div className="text-xs text-muted-foreground">
                       Price: <span className="mono font-bold text-foreground">₹{Number(targetProduct.price || 0).toFixed(2)}</span>
                       {' • '}
-                      Stock: <span className="mono font-bold text-foreground">{targetProduct.stock_quantity ?? 0}</span>
+                      Stock: <span className="mono font-bold text-foreground">{Number(targetProduct.stock_quantity ?? 0)}</span>
                     </div>
                   </div>
                 </div>
 
-                <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-lg">
+                <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-lg shrink-0">
                   No Barcode Set
                 </span>
               </div>
@@ -696,7 +707,7 @@ export function BarcodeVerifierModal({
                     </button>
                     <button
                       type="button"
-                      onClick={onClose}
+                      onClick={() => void handleCloseModal()}
                       className="btn-primary py-2.5 px-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
                     >
                       <Check size={14} />
@@ -801,7 +812,7 @@ export function BarcodeVerifierModal({
                     </div>
                   ) : (
                     /* LIVE CAMERA SCANNER */
-                    <div className="relative overflow-hidden rounded-2xl border-2 border-primary/30 bg-black aspect-4/3 flex flex-col items-center justify-center shadow-inner">
+                    <div className="relative overflow-hidden rounded-2xl border-2 border-primary/30 bg-black h-[180px] sm:h-[200px] w-full flex flex-col items-center justify-center shadow-inner">
                       <video
                         ref={videoRef}
                         playsInline
@@ -816,7 +827,7 @@ export function BarcodeVerifierModal({
                       <button
                         type="button"
                         onClick={toggleTorch}
-                        className={`absolute top-3 right-3 z-30 flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black shadow-lg backdrop-blur-md transition-all active:scale-90 border cursor-pointer ${
+                        className={`absolute top-2.5 right-2.5 z-30 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black shadow-lg backdrop-blur-md transition-all active:scale-90 border cursor-pointer ${
                           isTorchOn
                             ? 'bg-amber-400 text-black border-amber-300 shadow-amber-500/50 ring-2 ring-amber-400/40'
                             : 'bg-black/65 text-white border-white/25 hover:bg-black/85'
@@ -824,22 +835,31 @@ export function BarcodeVerifierModal({
                         title="Toggle Flashlight / Light Boost"
                       >
                         {isTorchOn ? (
-                          <Zap size={16} className="fill-black text-black animate-pulse" />
+                          <Zap size={15} className="fill-black text-black animate-pulse" />
                         ) : (
-                          <Zap size={16} className="text-amber-300" />
+                          <Zap size={15} className="text-amber-300" />
                         )}
                         <span>{isTorchOn ? 'Flash ON' : 'Flashlight'}</span>
                       </button>
 
                       {isCameraActive && (
-                        <>
-                          <div className="pointer-events-none absolute inset-x-8 top-1/2 -translate-y-1/2 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent shadow-[0_0_14px_#f97316] animate-pulse" />
-                          <div className="pointer-events-none absolute inset-x-10 inset-y-6 border-2 border-dashed border-primary/70 rounded-xl flex items-center justify-center">
-                            <span className="bg-black/65 backdrop-blur-xs text-white text-[11px] font-bold px-3 py-1 rounded-full border border-white/15 shadow-sm">
-                              Align Barcode in Viewfinder
-                            </span>
+                        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                          <div className="relative w-[82%] h-[72%]">
+                            {/* Four Corner Brackets */}
+                            <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-primary rounded-tl-lg" />
+                            <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-primary rounded-tr-lg" />
+                            <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-primary rounded-bl-lg" />
+                            <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-primary rounded-br-lg" />
+                            {/* Animated Center Laser Line */}
+                            <div className="absolute inset-x-2 top-1/2 -translate-y-1/2 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent shadow-[0_0_12px_#0d9488] animate-pulse" />
+                            {/* Viewfinder Badge */}
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <span className="bg-black/70 backdrop-blur-xs text-white text-[10px] sm:text-[11px] font-bold px-3 py-1 rounded-full border border-white/20 shadow-md">
+                                Align Barcode in Viewfinder
+                              </span>
+                            </div>
                           </div>
-                        </>
+                        </div>
                       )}
 
                       {!isCameraActive && !scannerError && (
@@ -900,37 +920,19 @@ export function BarcodeVerifierModal({
                   )}
 
                   {!scannedCode && (
-                    <div className="flex items-center justify-between text-xs text-muted-foreground px-1 pt-1">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground px-1 pt-0.5">
                       <span>Auto-scans 1D barcodes and QR codes</span>
-                      <div className="flex items-center gap-3">
-                        {isCameraActive && (
-                          <button
-                            type="button"
-                            onClick={toggleTorch}
-                            className={`inline-flex items-center gap-1 font-bold transition-all cursor-pointer ${
-                              isTorchOn ? 'text-amber-500 font-extrabold' : 'text-foreground/80 hover:text-foreground'
-                            }`}
-                          >
-                            {isTorchOn ? (
-                              <Zap size={13} className="fill-amber-500 text-amber-500" />
-                            ) : (
-                              <ZapOff size={13} />
-                            )}
-                            <span>{isTorchOn ? 'Flashlight: ON' : 'Flashlight: OFF'}</span>
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setScannedCode(null);
-                            void startCamera();
-                          }}
-                          className="inline-flex items-center gap-1 font-bold text-primary hover:underline cursor-pointer"
-                        >
-                          <RefreshCw size={12} />
-                          <span>Restart</span>
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setScannedCode(null);
+                          void startCamera();
+                        }}
+                        className="inline-flex items-center gap-1 font-bold text-primary hover:underline cursor-pointer"
+                      >
+                        <RefreshCw size={12} />
+                        <span>Restart Camera</span>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -995,7 +997,7 @@ export function BarcodeVerifierModal({
                       <span>Barcode Already in Use!</span>
                     </div>
                     <p className="text-xs text-foreground/90 leading-relaxed">
-                      This barcode (<strong className="mono font-black">{barcodeInput.trim()}</strong>) is already assigned to product <strong className="text-foreground font-black">"{duplicateConflictProduct.name}"</strong> (Price: ₹{Number(duplicateConflictProduct.price || 0).toFixed(2)} • Stock: {duplicateConflictProduct.stock_quantity ?? 0}).
+                      This barcode (<strong className="mono font-black">{barcodeInput.trim()}</strong>) is already assigned to product <strong className="text-foreground font-black">"{duplicateConflictProduct.name}"</strong> (Price: ₹{Number(duplicateConflictProduct.price || 0).toFixed(2)} • Stock: {Number(duplicateConflictProduct.stock_quantity ?? 0)}).
                     </p>
                     <p className="text-[11px] font-bold text-rose-600 dark:text-rose-400">
                       Duplicate barcodes are not allowed. Please enter or scan a unique barcode for "{targetProduct?.name || 'this product'}".
@@ -1010,7 +1012,15 @@ export function BarcodeVerifierModal({
                       type="button"
                       disabled={!barcodeInput.trim() || isSaving || barcodeInput.trim() === currentProductBarcode || !!duplicateConflictProduct}
                       onClick={handleSaveBarcodeToTarget}
-                      className="btn-primary w-full py-3 text-sm font-extrabold rounded-xl flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 transition-all active:scale-[0.98]"
+                      className={`w-full py-3 text-sm font-extrabold rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all ${
+                        !barcodeInput.trim()
+                          ? 'bg-muted/70 text-muted-foreground border border-border/80 cursor-not-allowed'
+                          : duplicateConflictProduct
+                            ? 'bg-rose-600 hover:bg-rose-700 text-white cursor-not-allowed shadow-rose-600/20'
+                            : isSaving
+                              ? 'btn-primary text-white cursor-wait opacity-80'
+                              : 'btn-primary text-white shadow-md hover:shadow-lg active:scale-[0.98] cursor-pointer'
+                      }`}
                     >
                       <CheckCircle2 size={18} />
                       <span>
@@ -1018,7 +1028,9 @@ export function BarcodeVerifierModal({
                           ? 'Saving to Product…' 
                           : duplicateConflictProduct
                             ? 'Barcode Already In Use'
-                            : 'Confirm & Save Barcode'
+                            : !barcodeInput.trim()
+                              ? 'Scan or Enter Barcode to Attach'
+                              : 'Confirm & Save Barcode'
                         }
                       </span>
                     </button>
@@ -1075,7 +1087,8 @@ export function BarcodeVerifierModal({
                   <div className="grid grid-cols-2 gap-2 pt-1">
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
+                        await stopCamera();
                         onClose();
                         setLocation('/invoices/new');
                       }}
@@ -1087,7 +1100,8 @@ export function BarcodeVerifierModal({
                     {onEditProduct && (
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={async () => {
+                          await stopCamera();
                           onClose();
                           onEditProduct(matchedProduct);
                         }}
@@ -1111,7 +1125,8 @@ export function BarcodeVerifierModal({
                   {onOpenAddProductWithBarcode && (
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
+                        await stopCamera();
                         onClose();
                         onOpenAddProductWithBarcode(barcodeInput.trim());
                       }}

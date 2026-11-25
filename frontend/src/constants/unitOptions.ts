@@ -3,9 +3,9 @@ export interface MasterUnit {
   label: string;
   category: 
     | 'Count & Packaging'
+    | 'Length & Linear'
     | 'Weight & Mass'
     | 'Volume & Liquid'
-    | 'Length & Linear'
     | 'Area & Surface'
     | 'Food & Serving'
     | 'Time & Service'
@@ -16,118 +16,95 @@ export interface MasterUnit {
 }
 
 export const MASTER_UNITS_LIST: MasterUnit[] = [
-  // --- Count & Packaging ---
-  { value: 'pcs', label: 'Pcs — Pieces / Units', category: 'Count & Packaging', hint: 'Countable individual items (Shirts, Bottles, Cables)', defaultEnabled: true },
-  { value: 'box', label: 'Box — Box / Case', category: 'Count & Packaging', hint: 'Cartons, boxes, or multi-item packages', defaultEnabled: true },
-  { value: 'pkt', label: 'Pkt — Packet / Pouch', category: 'Count & Packaging', hint: 'Sealed pouches, snack bags, or packets', defaultEnabled: true },
-  { value: 'btl', label: 'Btl — Bottle', category: 'Count & Packaging', hint: 'Bottled liquids, drinks, cosmetics, oils', defaultEnabled: true },
-  { value: 'dzn', label: 'Dzn — Dozen (12 pcs)', category: 'Count & Packaging', hint: 'Pack or set of 12 items (Eggs, Bananas)', defaultEnabled: true },
-  { value: 'set', label: 'Set — Set / Kit', category: 'Count & Packaging', hint: 'Matching pair or multi-piece tool/garment sets', defaultEnabled: true },
-  { value: 'pr', label: 'Pair — Pair', category: 'Count & Packaging', hint: 'Two matching items (Shoes, Socks, Gloves)', defaultEnabled: true },
-  { value: 'roll', label: 'Roll — Roll', category: 'Count & Packaging', hint: 'Rolls of tape, foil, paper, or carpet', defaultEnabled: true },
-  { value: 'bndl', label: 'Bndl — Bundle', category: 'Count & Packaging', hint: 'Bundled rods, pipes, planks, paper sheets', defaultEnabled: true },
-  { value: 'jar', label: 'Jar — Jar / Container', category: 'Count & Packaging', hint: 'Glass or plastic jars (Jam, Pickle, Cream)', defaultEnabled: true },
-  { value: 'can', label: 'Can — Can / Tin', category: 'Count & Packaging', hint: 'Metal cans (Beverages, Paint, Ghee)', defaultEnabled: true },
-  { value: 'bag', label: 'Bag — Bag / Sack', category: 'Count & Packaging', hint: 'Bags or sacks (Rice, Flour, Cement)', defaultEnabled: true },
-  { value: 'strip', label: 'Strip — Strip / Blister', category: 'Count & Packaging', hint: 'Medicine tablet strips or blister packs', defaultEnabled: true },
-  { value: 'crate', label: 'Crate — Crate', category: 'Count & Packaging', hint: 'Plastic or wooden crates (Milk, Fruit)', defaultEnabled: false },
-  { value: 'ctn', label: 'Carton — Shipping Carton', category: 'Count & Packaging', hint: 'Bulk corrugated shipping boxes', defaultEnabled: false },
-  { value: 'tube', label: 'Tube — Squeeze Tube', category: 'Count & Packaging', hint: 'Ointments, toothpaste, paste, sealant', defaultEnabled: false },
-  { value: 'tin', label: 'Tin — Tin Container', category: 'Count & Packaging', hint: 'Sealed metal tin containers', defaultEnabled: false },
-  { value: 'bucket', label: 'Bucket — Bucket / Pail', category: 'Count & Packaging', hint: 'Pails of paint, chemicals, or grease', defaultEnabled: false },
-  { value: 'barrel', label: 'Barrel — Barrel / Drum', category: 'Count & Packaging', hint: 'Large liquid drums or oil barrels', defaultEnabled: false },
-  { value: 'sheet', label: 'Sheet — Sheet / Board', category: 'Count & Packaging', hint: 'Plywood, metal sheets, paper boards', defaultEnabled: false },
-  { value: 'tray', label: 'Tray — Tray', category: 'Count & Packaging', hint: 'Egg trays, seedling trays, bakery trays', defaultEnabled: false },
-  { value: 'sachet', label: 'Sachet — Sachet', category: 'Count & Packaging', hint: 'Single-use shampoo, ketchup, or tea sachets', defaultEnabled: false },
-  { value: 'bale', label: 'Bale — Compressed Bale', category: 'Count & Packaging', hint: 'Cotton bales, scrap bales', defaultEnabled: false },
+  // ==========================================
+  // 1. COUNT & PACKAGING
+  // ==========================================
+  { value: 'pcs', label: 'Pcs — Pieces (Single Item)', category: 'Count & Packaging', hint: 'For single items: Shirts, Pants, Mobile, Tools, Toys', defaultEnabled: true },
+  { value: 'pr', label: 'Pair — Pair (2 Items)', category: 'Count & Packaging', hint: 'For paired items: Shoes, Slippers, Sandals, Socks, Gloves', defaultEnabled: true },
+  { value: 'box', label: 'Box — Box / Case', category: 'Count & Packaging', hint: 'For boxed goods: Sweet boxes, Mobile box, Medicine box', defaultEnabled: true },
+  { value: 'pkt', label: 'Pkt — Packet / Pouch', category: 'Count & Packaging', hint: 'For packets: Biscuits, Spices, Chips, Tea pouches', defaultEnabled: true },
+  { value: 'dzn', label: 'Dzn — Dozen (12 Items)', category: 'Count & Packaging', hint: 'For 12 items: Eggs, Bananas, Socks, Handkerchiefs', defaultEnabled: true },
+  { value: 'unt', label: 'Unt — Device / Unit', category: 'Count & Packaging', hint: 'For devices & gadgets: Phones, Laptops, Machines', defaultEnabled: true },
 
-  // --- Weight & Mass ---
-  { value: 'kg', label: 'kg — Kilograms', category: 'Weight & Mass', hint: 'Standard mass (Rice, Sugar, Atta, Vegetables)', defaultEnabled: true },
-  { value: 'g', label: 'g — Grams', category: 'Weight & Mass', hint: 'Small weight (Spices, Tea, Soap, Biscuits)', defaultEnabled: true },
-  { value: 'mg', label: 'mg — Milligrams', category: 'Weight & Mass', hint: 'Fine precision weight (Pharma, Powders)', defaultEnabled: false },
-  { value: 'qtl', label: 'Qtl — Quintal (100 kg)', category: 'Weight & Mass', hint: 'Agricultural bulk produce (Grain sacks)', defaultEnabled: false },
-  { value: 'ton', label: 'Ton — Metric Ton (1000 kg)', category: 'Weight & Mass', hint: 'Heavy industrial materials (Steel, Coal, Cement)', defaultEnabled: false },
-  { value: 'lb', label: 'lb — Pound', category: 'Weight & Mass', hint: 'Weight in pounds (Supplements, Imports)', defaultEnabled: false },
-  { value: 'oz', label: 'oz — Ounce', category: 'Weight & Mass', hint: 'Precious metals, gourmet spices', defaultEnabled: false },
+  // ==========================================
+  // 2. WEIGHT & MASS (Grocery & Hardware)
+  // ==========================================
+  { value: 'kg', label: 'Kg — Kilogram (Weight)', category: 'Weight & Mass', hint: 'For solid weight: Rice, Dal, Sugar, Potatoes, Nails, Steel', defaultEnabled: true },
+  { value: 'g', label: 'Gm — Gram (Light Weight)', category: 'Weight & Mass', hint: 'For light weight: Tea, Spices, Soap, Cardamom, Dry fruits', defaultEnabled: true },
+  { value: 'qtl', label: 'Qtl — Quintal (100 Kg)', category: 'Weight & Mass', hint: 'For bulk goods: 100 kg grain bags, TMT steel rods', defaultEnabled: true },
+  { value: 'ton', label: 'Ton — Metric Ton (1000 Kg)', category: 'Weight & Mass', hint: 'For heavy bulk: Sand, Stones, Iron rods, Cement', defaultEnabled: true },
 
-  // --- Volume & Liquid ---
-  { value: 'litre', label: 'L / Litre — Litres', category: 'Volume & Liquid', hint: 'Liquid volume (Oil, Milk, Juice, Paint)', defaultEnabled: true },
-  { value: 'ml', label: 'ml — Millilitres', category: 'Volume & Liquid', hint: 'Small liquid volume (250 ml, 500 ml bottles)', defaultEnabled: true },
-  { value: 'cl', label: 'cl — Centilitres', category: 'Volume & Liquid', hint: 'Beverage and liquor bottle volumes', defaultEnabled: false },
-  { value: 'gal', label: 'Gal — Gallon', category: 'Volume & Liquid', hint: 'Large fluid containers (Paint, Chemicals)', defaultEnabled: false },
-  { value: 'pt', label: 'Pint — Pint', category: 'Volume & Liquid', hint: 'Beverage or dairy servings', defaultEnabled: false },
-  { value: 'fl_oz', label: 'fl oz — Fluid Ounce', category: 'Volume & Liquid', hint: 'Cosmetic fluids and perfumes', defaultEnabled: false },
-  { value: 'm3', label: 'm³ — Cubic Meter', category: 'Volume & Liquid', hint: 'Concrete, timber, bulk gas volume', defaultEnabled: false },
+  // ==========================================
+  // 3. VOLUME & LIQUID (Grocery & Hardware)
+  // ==========================================
+  { value: 'litre', label: 'Ltr — Litre (Liquid)', category: 'Volume & Liquid', hint: 'For liquids: Cooking oil, Milk, Paint, Water, Coolant', defaultEnabled: true },
+  { value: 'ml', label: 'ml — Millilitre (Liquid)', category: 'Volume & Liquid', hint: 'For small liquid bottles: Hair oil, Syrup, Soft drinks', defaultEnabled: true },
+  { value: 'cft', label: 'CFT — Cubic Feet (Sand & Wood)', category: 'Volume & Liquid', hint: 'For timber & sand: Wood logs, Sand, Stone chips, Marble', defaultEnabled: true },
 
-  // --- Length & Linear ---
-  { value: 'mtr', label: 'Mtr — Meters', category: 'Length & Linear', hint: 'Fabric, cable, wire, piping length', defaultEnabled: true },
-  { value: 'ft', label: 'Ft — Feet / Foot', category: 'Length & Linear', hint: 'Linear measurement (Timber, Banner, Wire)', defaultEnabled: true },
-  { value: 'yd', label: 'Yd — Yard / Yards', category: 'Length & Linear', hint: 'Cloth, fencing wire, rope', defaultEnabled: true },
-  { value: 'cm', label: 'cm — Centimeters', category: 'Length & Linear', hint: 'Ribbons, zippers, small hardware', defaultEnabled: false },
-  { value: 'mm', label: 'mm — Millimeters', category: 'Length & Linear', hint: 'Precision screws, wire gauges', defaultEnabled: false },
-  { value: 'in', label: 'In — Inches', category: 'Length & Linear', hint: 'Pipe diameters, glass cuts, screen sizes', defaultEnabled: false },
-  { value: 'km', label: 'km — Kilometers', category: 'Length & Linear', hint: 'Transport distance, cabling routes', defaultEnabled: false },
+  // ==========================================
+  // 4. LENGTH, LINEAR & TEXTILE (Cloth, Hardware, Pipes)
+  // ==========================================
+  { value: 'mtr', label: 'Mtr — Meter (Length)', category: 'Length & Linear', hint: 'For cloth & wire: Fabric length, Electric cable, PVC pipe', defaultEnabled: true },
+  { value: 'yd', label: 'Yd — Yard / Gaj (Cloth)', category: 'Length & Linear', hint: 'For cloth shops: 2-Yard cloth, Ribbon, Lace, Borders', defaultEnabled: true },
+  { value: 'thn', label: 'Than — Fabric Bolt (Full Roll)', category: 'Length & Linear', hint: 'For cloth shops: Full roll of cloth (Than / 20m - 40m)', defaultEnabled: true },
+  { value: 'ft', label: 'Ft — Feet / Foot (Length)', category: 'Length & Linear', hint: 'For linear length: Timber wood, PVC pipes, Banners', defaultEnabled: true },
+  { value: 'in', label: 'In — Inch (Length)', category: 'Length & Linear', hint: 'For small measurements: Screws, Pipe width, Display size', defaultEnabled: true },
+  { value: 'cm', label: 'cm — Centimeter', category: 'Length & Linear', hint: 'For tailoring: Small cloth borders, Ribbons, Zippers', defaultEnabled: true },
+  { value: 'mm', label: 'mm — Millimeter', category: 'Length & Linear', hint: 'For precision hardware: Nut-bolts, Screws, Drill bits', defaultEnabled: true },
+  { value: 'len', label: 'Len — Length (Pipe / Rod)', category: 'Length & Linear', hint: 'For full length rods: 10 ft or 20 ft PVC pipe, Conduit pipe', defaultEnabled: true },
 
-  // --- Area & Surface ---
-  { value: 'sqft', label: 'Sq Ft — Square Feet', category: 'Area & Surface', hint: 'Tiles, flooring, glass, plywood, granite', defaultEnabled: true },
-  { value: 'sqm', label: 'Sq M — Square Meters', category: 'Area & Surface', hint: 'Roofing, carpets, land plots', defaultEnabled: false },
-  { value: 'sqyd', label: 'Sq Yd — Square Yards', category: 'Area & Surface', hint: 'Real estate plots, lawn grass', defaultEnabled: false },
-  { value: 'acre', label: 'Acre — Acre', category: 'Area & Surface', hint: 'Agricultural land, real estate', defaultEnabled: false },
-  { value: 'hectare', label: 'Hectare — Hectare', category: 'Area & Surface', hint: 'Large farm land, forestry', defaultEnabled: false },
-  { value: 'sqin', label: 'Sq In — Square Inches', category: 'Area & Surface', hint: 'Small glass cuts, stickers, labels', defaultEnabled: false },
-
-  // --- Food & Serving ---
-  { value: 'plate', label: 'Plate — Plate / Serving', category: 'Food & Serving', hint: 'Restaurant meals, snacks, catering portions', defaultEnabled: true },
-  { value: 'cup', label: 'Cup — Cup / Mug', category: 'Food & Serving', hint: 'Hot beverages, ice cream, soup', defaultEnabled: false },
-  { value: 'bowl', label: 'Bowl — Bowl', category: 'Food & Serving', hint: 'Curry, soup, dessert servings', defaultEnabled: false },
-  { value: 'glass', label: 'Glass — Glass', category: 'Food & Serving', hint: 'Juice, lassi, beverage drinks', defaultEnabled: false },
-  { value: 'portion', label: 'Portion — Portion', category: 'Food & Serving', hint: 'Buffet or meal portions', defaultEnabled: false },
-  { value: 'scoop', label: 'Scoop — Scoop', category: 'Food & Serving', hint: 'Ice cream scoops, protein powder', defaultEnabled: false },
-  { value: 'slice', label: 'Slice — Slice', category: 'Food & Serving', hint: 'Pizza, cake, bread slices', defaultEnabled: false },
-
-  // --- Time & Service ---
-  { value: 'hr', label: 'Hr — Hours', category: 'Time & Service', hint: 'Hourly service, labor, rental time', defaultEnabled: true },
-  { value: 'day', label: 'Day — Days', category: 'Time & Service', hint: 'Daily rental, vehicle hire', defaultEnabled: false },
-  { value: 'service', label: 'Service — Service Call', category: 'Time & Service', hint: 'Maintenance, installation, repair jobs', defaultEnabled: true },
-  { value: 'visit', label: 'Visit — Service Visit', category: 'Time & Service', hint: 'Consultation, technician home visits', defaultEnabled: false },
-  { value: 'project', label: 'Project — Fixed Project', category: 'Time & Service', hint: 'Fixed contract scope or design project', defaultEnabled: false },
-  { value: 'mo', label: 'Month — Monthly Sub', category: 'Time & Service', hint: 'Monthly retainers or subscriptions', defaultEnabled: false },
-
-  // --- Digital & Data ---
-  { value: 'gb', label: 'GB — Gigabytes', category: 'Digital & Data', hint: 'Data packages, cloud storage', defaultEnabled: false },
-  { value: 'mb', label: 'MB — Megabytes', category: 'Digital & Data', hint: 'Mobile internet data plans', defaultEnabled: false },
-  { value: 'tb', label: 'TB — Terabytes', category: 'Digital & Data', hint: 'Server backup storage', defaultEnabled: false },
-  { value: 'license', label: 'License — User License', category: 'Digital & Data', hint: 'SaaS user licenses, app seats', defaultEnabled: false },
+  // ==========================================
+  // 5. AREA & SURFACE (Tiles, Plywood, Glass)
+  // ==========================================
+  { value: 'sqft', label: 'Sq Ft — Square Feet (Area)', category: 'Area & Surface', hint: 'For surface area: Floor tiles, Wall tiles, Plywood, Glass', defaultEnabled: true },
+  { value: 'sqm', label: 'Sq M — Square Meter', category: 'Area & Surface', hint: 'For large area: Floor carpets, Roofing sheets, Big mats', defaultEnabled: true },
 ];
 
 const STORAGE_KEY_ENABLED = 'billingmaster_enabled_units';
 const STORAGE_KEY_CUSTOM = 'billingmaster_custom_units';
 const STORAGE_KEY_STARRED = 'billingmaster_starred_units';
 
+const EXCLUDED_CODES = new Set([
+  'lic', 'service', 'hr', 'day', 'visit', 'project',
+  'set', 'pack', 'grs', 'bag', 'ctn', 'bndl', 'roll', 'coil', 'can', 'bucket', 'jar', 'sheet', 'strip', 'sachet', 'tray', 'crate', 'barrel', 'bale', 'tube', 'tin',
+  'mg', 'lb', 'oz',
+  'plate', 'cup', 'glass', 'bowl', 'portion', 'scoop', 'slice',
+  'mo', 'gb', 'mb', 'tb',
+  'cl', 'gal', 'fl_oz', 'm3', 'sqyd', 'sqin', 'acre', 'decimal', 'km'
+]);
+
 export function getDefaultEnabledCodes(): string[] {
   return MASTER_UNITS_LIST.filter(u => u.defaultEnabled).map(u => u.value);
 }
 
 export function getDefaultStarredCodes(): string[] {
-  return ['pcs', 'kg', 'litre', 'box', 'pkt', 'btl', 'dzn', 'ft', 'sqft', 'plate'];
+  return [
+    'pcs', 'kg', 'g', 'litre', 'ml', 
+    'mtr', 'yd', 'thn', 'ft', 'in', 
+    'sqft', 'cft', 
+    'box', 'pkt', 'pr', 'dzn', 'qtl', 'ton'
+  ];
 }
 
 export function getStoredStarredCodes(): string[] {
+  const defaultStarred = getDefaultStarredCodes().filter(c => !EXCLUDED_CODES.has(c));
   try {
     const raw = localStorage.getItem(STORAGE_KEY_STARRED);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return Array.from(new Set([...defaultStarred, ...parsed])).filter(c => !EXCLUDED_CODES.has(c));
+      }
     }
   } catch (e) {
     console.error('Failed to parse stored starred unit codes:', e);
   }
-  return getDefaultStarredCodes();
+  return defaultStarred;
 }
 
 export function saveStarredCodes(starredCodes: string[]) {
   try {
-    localStorage.setItem(STORAGE_KEY_STARRED, JSON.stringify(starredCodes));
+    localStorage.setItem(STORAGE_KEY_STARRED, JSON.stringify(starredCodes.filter(c => !EXCLUDED_CODES.has(c))));
   } catch (e) {
     console.error('Failed to save starred unit codes:', e);
   }
@@ -138,7 +115,7 @@ export function getStoredCustomUnits(): MasterUnit[] {
     const raw = localStorage.getItem(STORAGE_KEY_CUSTOM);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) return parsed.filter(u => !EXCLUDED_CODES.has(u.value));
     }
   } catch (e) {
     console.error('Failed to parse stored custom units:', e);
@@ -147,24 +124,27 @@ export function getStoredCustomUnits(): MasterUnit[] {
 }
 
 export function getStoredEnabledCodes(): string[] {
+  const defaultCodes = getDefaultEnabledCodes().filter(c => !EXCLUDED_CODES.has(c));
   try {
     const raw = localStorage.getItem(STORAGE_KEY_ENABLED);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return Array.from(new Set([...defaultCodes, ...parsed])).filter(c => !EXCLUDED_CODES.has(c));
+      }
     }
   } catch (e) {
     console.error('Failed to parse stored enabled unit codes:', e);
   }
-  return getDefaultEnabledCodes();
+  return defaultCodes;
 }
 
 export function saveUnitSettings(enabledCodes: string[], customUnits: MasterUnit[], starredCodes?: string[]) {
   try {
-    localStorage.setItem(STORAGE_KEY_ENABLED, JSON.stringify(enabledCodes));
-    localStorage.setItem(STORAGE_KEY_CUSTOM, JSON.stringify(customUnits));
+    localStorage.setItem(STORAGE_KEY_ENABLED, JSON.stringify(enabledCodes.filter(c => !EXCLUDED_CODES.has(c))));
+    localStorage.setItem(STORAGE_KEY_CUSTOM, JSON.stringify(customUnits.filter(u => !EXCLUDED_CODES.has(u.value))));
     if (starredCodes) {
-      localStorage.setItem(STORAGE_KEY_STARRED, JSON.stringify(starredCodes));
+      localStorage.setItem(STORAGE_KEY_STARRED, JSON.stringify(starredCodes.filter(c => !EXCLUDED_CODES.has(c))));
     }
   } catch (e) {
     console.error('Failed to save unit settings to localStorage:', e);
@@ -172,7 +152,7 @@ export function saveUnitSettings(enabledCodes: string[], customUnits: MasterUnit
 }
 
 export function getCombinedUnits(customUnits: MasterUnit[] = getStoredCustomUnits()): MasterUnit[] {
-  return [...MASTER_UNITS_LIST, ...customUnits];
+  return [...MASTER_UNITS_LIST, ...customUnits].filter(u => !EXCLUDED_CODES.has(u.value));
 }
 
 export function getDropdownOptionsForUnits(
@@ -181,23 +161,24 @@ export function getDropdownOptionsForUnits(
   starredCodes: string[] = getStoredStarredCodes()
 ): { label: string; value: string; hint: string }[] {
   const allUnits = getCombinedUnits();
-  const enabledSet = new Set(enabledCodes);
+  const defaultCodes = getDefaultEnabledCodes().filter(c => !EXCLUDED_CODES.has(c));
+  const enabledSet = new Set([...defaultCodes, ...enabledCodes]);
   const starredSet = new Set(starredCodes);
 
-  let list = allUnits.filter(u => enabledSet.has(u.value));
+  let list = allUnits.filter(u => enabledSet.has(u.value) && !EXCLUDED_CODES.has(u.value));
 
   // If existing product has a unit that's not currently enabled, keep it visible so data isn't hidden
   if (currentUnit) {
     const lower = currentUnit.toLowerCase();
     const alreadyIncluded = list.some(u => u.value.toLowerCase() === lower);
-    if (!alreadyIncluded) {
+    if (!alreadyIncluded && !EXCLUDED_CODES.has(lower)) {
       const existingInMaster = allUnits.find(u => u.value.toLowerCase() === lower);
       if (existingInMaster) {
         list.push(existingInMaster);
       } else {
         list.push({
           value: currentUnit,
-          label: `${currentUnit.toUpperCase()} — Custom`,
+          label: `${currentUnit.toUpperCase()} — Custom Unit`,
           category: 'Custom',
           hint: 'Existing product unit'
         });

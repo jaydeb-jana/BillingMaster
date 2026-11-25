@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 import { getProductBarcode, getProductUniqueId } from '@/lib/api';
 import { getStoredProductSettings } from '@/constants/productSettings';
 import { useBodyScrollLock } from '@/lib/useScrollReset';
+import { safeStopHtml5Qrcode, stopAllVideoElementStreams } from '@/lib/camera';
 
 type ProductRow = Record<string, any>;
 
@@ -89,15 +90,45 @@ export const ProductBarcodeSearchModal: React.FC<ProductBarcodeSearchModalProps>
   const [cameraError, setCameraError] = useState('');
 
   const html5QrcodeRef = useRef<Html5Qrcode | null>(null);
+  const isCancelledRef = useRef<boolean>(false);
   const scannerContainerId = 'product-barcode-search-viewfinder';
+
+  const stopScanner = async () => {
+    isCancelledRef.current = true;
+    // 1. Immediately kill active video element tracks to turn off camera light
+    stopAllVideoElementStreams(document.getElementById(scannerContainerId));
+
+    if (torchOn && html5QrcodeRef.current) {
+      try {
+        await html5QrcodeRef.current.applyVideoConstraints({
+          advanced: [{ torch: false }] as any
+        }).catch(() => {});
+      } catch {}
+    }
+    setTorchOn(false);
+
+    const scanner = html5QrcodeRef.current;
+    html5QrcodeRef.current = null;
+    if (scanner) {
+      await safeStopHtml5Qrcode(scanner, scannerContainerId);
+    }
+    stopAllVideoElementStreams(document.getElementById(scannerContainerId));
+    setIsScanning(false);
+  };
+
+  const handleCloseModal = async () => {
+    await stopScanner();
+    onClose();
+  };
 
   useEffect(() => {
     if (!isOpen) {
-      stopScanner();
+      void stopScanner();
       setScannedCode('');
       setMatchedProduct(null);
       setHasSearched(false);
     } else {
+      isCancelledRef.current = false;
       setActiveTab('camera');
       setScannedCode('');
       setMatchedProduct(null);
@@ -106,39 +137,40 @@ export const ProductBarcodeSearchModal: React.FC<ProductBarcodeSearchModalProps>
   }, [isOpen]);
 
   useEffect(() => {
+    let timer: any = null;
     if (isOpen && activeTab === 'camera') {
-      const timer = setTimeout(() => {
-        startScanner();
+      isCancelledRef.current = false;
+      timer = setTimeout(() => {
+        if (!isCancelledRef.current && isOpen) {
+          void startScanner();
+        }
       }, 200);
-      return () => {
-        clearTimeout(timer);
-        stopScanner();
-      };
     } else {
-      stopScanner();
+      void stopScanner();
     }
+    return () => {
+      isCancelledRef.current = true;
+      if (timer) clearTimeout(timer);
+      void stopScanner();
+    };
   }, [isOpen, activeTab]);
 
-  const stopScanner = async () => {
-    if (html5QrcodeRef.current) {
-      try {
-        if (html5QrcodeRef.current.isScanning) {
-          await html5QrcodeRef.current.stop();
-        }
-        html5QrcodeRef.current.clear();
-      } catch (e) {
-        console.error('Stop scanner error:', e);
-      } finally {
-        html5QrcodeRef.current = null;
-        setIsScanning(false);
-        setTorchOn(false);
-      }
-    }
-  };
+  useEffect(() => {
+    return () => {
+      isCancelledRef.current = true;
+      void stopScanner();
+    };
+  }, []);
 
   const startScanner = async () => {
     setCameraError('');
+    isCancelledRef.current = false;
     await stopScanner();
+    isCancelledRef.current = false;
+
+    if (!isOpen || activeTab !== 'camera') {
+      return;
+    }
 
     const element = document.getElementById(scannerContainerId);
     if (!element) return;
@@ -181,6 +213,15 @@ export const ProductBarcodeSearchModal: React.FC<ProductBarcodeSearchModalProps>
         }
       );
 
+      // Check if scanner was cancelled or closed while starting
+      if (isCancelledRef.current || !isOpen || activeTab !== 'camera') {
+        await safeStopHtml5Qrcode(instance, scannerContainerId);
+        stopAllVideoElementStreams(document.getElementById(scannerContainerId));
+        html5QrcodeRef.current = null;
+        setIsScanning(false);
+        return;
+      }
+
       setIsScanning(true);
 
       // Check torch capabilities
@@ -195,7 +236,10 @@ export const ProductBarcodeSearchModal: React.FC<ProductBarcodeSearchModalProps>
     } catch (err: any) {
       console.error('Camera start error:', err);
       setIsScanning(false);
-      setCameraError(err?.message || 'Unable to access camera sensor. Please check camera permissions.');
+      stopAllVideoElementStreams(document.getElementById(scannerContainerId));
+      if (!isCancelledRef.current) {
+        setCameraError(err?.message || 'Unable to access camera sensor. Please check camera permissions.');
+      }
     }
   };
 
@@ -261,8 +305,9 @@ export const ProductBarcodeSearchModal: React.FC<ProductBarcodeSearchModalProps>
     lookupProduct(scannedCode);
   };
 
-  const handleFilterList = () => {
+  const handleFilterList = async () => {
     if (scannedCode) {
+      await stopScanner();
       onSelectProductForSearch(scannedCode);
       onClose();
     }
@@ -287,7 +332,7 @@ export const ProductBarcodeSearchModal: React.FC<ProductBarcodeSearchModalProps>
           </div>
           <button 
             type="button" 
-            onClick={onClose}
+            onClick={() => void handleCloseModal()}
             className="rounded-xl p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors cursor-pointer"
           >
             <X size={20} />
@@ -310,7 +355,10 @@ export const ProductBarcodeSearchModal: React.FC<ProductBarcodeSearchModalProps>
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab('manual')}
+            onClick={() => {
+              void stopScanner();
+              setActiveTab('manual');
+            }}
             className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-black border-b-2 transition-all cursor-pointer ${
               activeTab === 'manual'
                 ? 'border-primary text-primary bg-primary/5'
@@ -449,7 +497,8 @@ export const ProductBarcodeSearchModal: React.FC<ProductBarcodeSearchModalProps>
                     {onViewProduct && (
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={async () => {
+                          await stopScanner();
                           onViewProduct(matchedProduct);
                           onClose();
                         }}
@@ -463,7 +512,8 @@ export const ProductBarcodeSearchModal: React.FC<ProductBarcodeSearchModalProps>
                     {onEditProduct && (
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={async () => {
+                          await stopScanner();
                           onEditProduct(matchedProduct);
                           onClose();
                         }}
@@ -491,7 +541,8 @@ export const ProductBarcodeSearchModal: React.FC<ProductBarcodeSearchModalProps>
                   {onOpenAddProductWithBarcode && scannedCode && (
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
+                        await stopScanner();
                         onOpenAddProductWithBarcode(scannedCode);
                         onClose();
                       }}

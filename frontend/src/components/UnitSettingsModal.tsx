@@ -25,8 +25,6 @@ import {
   VolumeX,
   Package,
   Sparkles,
-  ShieldAlert,
-  Layers,
   Settings,
   RefreshCw,
   Cpu,
@@ -57,7 +55,7 @@ interface ProductSettingsModalProps {
   onSaveSuccess: () => void;
 }
 
-type TabType = 'units' | 'hardware' | 'defaults';
+type TabType = 'units' | 'hardware';
 
 const UNIT_CATEGORIES = [
   { id: 'Starred', label: 'Starred Favorites', icon: Star },
@@ -171,36 +169,6 @@ export const ProductSettingsModal: React.FC<ProductSettingsModalProps> = ({
     return list;
   }, [allCombinedUnits, selectedCategory, searchQuery, starredCodes, enabledCodes]);
 
-  const activeUnitsForDefault = useMemo(() => {
-    const enabledSet = new Set(enabledCodes);
-    const starredSet = new Set(starredCodes);
-
-    let list = allCombinedUnits.filter(u => enabledSet.has(u.value));
-    if (list.length === 0) {
-      list = allCombinedUnits.filter(u => u.defaultEnabled);
-    }
-
-    // Sort starred units to the top!
-    list.sort((a, b) => {
-      const aStarred = starredSet.has(a.value);
-      const bStarred = starredSet.has(b.value);
-      if (aStarred && !bStarred) return -1;
-      if (!aStarred && bStarred) return 1;
-      return 0;
-    });
-
-    return list;
-  }, [allCombinedUnits, enabledCodes, starredCodes]);
-
-  useEffect(() => {
-    if (activeUnitsForDefault.length > 0) {
-      const isCurrentValid = activeUnitsForDefault.some(u => u.value === hwSettings.defaultUnit);
-      if (!isCurrentValid) {
-        setHwSettings(prev => ({ ...prev, defaultUnit: activeUnitsForDefault[0].value }));
-      }
-    }
-  }, [activeUnitsForDefault, hwSettings.defaultUnit]);
-
   if (!isOpen) return null;
 
   const toggleUnit = (val: string) => {
@@ -306,7 +274,7 @@ export const ProductSettingsModal: React.FC<ProductSettingsModalProps> = ({
                 <span>Product & Hardware Control Settings</span>
               </h3>
               <p className="text-xs text-muted-foreground font-medium">
-                Configure measurement units, camera scanners, USB barcode machines, and inventory defaults.
+                Configure measurement units, camera scanners, and USB barcode hardware.
               </p>
             </div>
           </div>
@@ -346,19 +314,6 @@ export const ProductSettingsModal: React.FC<ProductSettingsModalProps> = ({
           >
             <Barcode size={15} />
             <span>Barcode & Scanner Hardware</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('defaults')}
-            className={`flex items-center gap-2 px-4 py-3.5 text-xs font-black border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'defaults'
-                ? 'border-primary text-primary bg-primary/5'
-                : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40'
-            }`}
-          >
-            <Layers size={15} />
-            <span>Product & Inventory Defaults</span>
           </button>
         </div>
 
@@ -793,93 +748,7 @@ export const ProductSettingsModal: React.FC<ProductSettingsModalProps> = ({
           </div>
         )}
 
-        {/* --- TAB CONTENT 3: PRODUCT DEFAULTS & INVENTORY --- */}
-        {activeTab === 'defaults' && (
-          <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5">
-            <h4 className="text-xs font-black text-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
-              <Layers size={15} className="text-primary" />
-              <span>New Product Form Defaults</span>
-            </h4>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              {/* Default Unit */}
-              <div>
-                <label className="block text-xs font-bold mb-1">Default Unit of Measurement</label>
-                <select
-                  value={hwSettings.defaultUnit}
-                  onChange={(e) => setHwSettings({ ...hwSettings, defaultUnit: e.target.value })}
-                  className="w-full rounded-xl border border-border bg-card p-2.5 text-xs font-semibold"
-                >
-                  {activeUnitsForDefault.map(u => (
-                    <option key={u.value} value={u.value}>
-                      {starredCodes.includes(u.value) ? `⭐ ${u.label}` : u.label}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[11px] text-muted-foreground mt-1">Pre-selected unit when creating a new product.</p>
-              </div>
-
-              {/* Default Item Type */}
-              <div>
-                <label className="block text-xs font-bold mb-1">Default Item Type</label>
-                <select
-                  value={hwSettings.defaultItemType}
-                  onChange={(e) => setHwSettings({ ...hwSettings, defaultItemType: e.target.value as any })}
-                  className="w-full rounded-xl border border-border bg-card p-2.5 text-xs font-semibold"
-                >
-                  <option value="physical">Physical Product (Stock tracked)</option>
-                  <option value="service">Virtual Service (Consulting / Labor)</option>
-                </select>
-                <p className="text-[11px] text-muted-foreground mt-1">Default selected type in Add Product modal.</p>
-              </div>
-
-              {/* Auto Barcode Prefix */}
-              <div>
-                <label className="block text-xs font-bold mb-1">Auto Barcode / SKU Prefix</label>
-                <input
-                  type="text"
-                  value={hwSettings.barcodePrefix}
-                  onChange={(e) => setHwSettings({ ...hwSettings, barcodePrefix: e.target.value.toUpperCase() })}
-                  placeholder="e.g. PRD-, SKU-, ITEM-"
-                  className="w-full rounded-xl border border-border bg-card p-2.5 text-xs font-semibold uppercase"
-                />
-                <p className="text-[11px] text-muted-foreground mt-1">Prefix added when auto-generating barcode numbers.</p>
-              </div>
-
-              {/* Default Return Days */}
-              <div>
-                <label className="block text-xs font-bold mb-1">Default Product Return Window (Days)</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="365"
-                  value={hwSettings.defaultReturnDays}
-                  onChange={(e) => setHwSettings({ ...hwSettings, defaultReturnDays: parseInt(e.target.value, 10) || 7 })}
-                  className="w-full rounded-xl border border-border bg-card p-2.5 text-xs font-semibold"
-                />
-                <p className="text-[11px] text-muted-foreground mt-1">Default return eligibility days for invoice items.</p>
-              </div>
-
-              {/* Low Stock Threshold */}
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-bold mb-1 flex items-center gap-1.5">
-                  <ShieldAlert size={14} className="text-amber-500" />
-                  <span>Low Stock Warning Threshold (Quantity)</span>
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={hwSettings.lowStockThreshold}
-                  onChange={(e) => setHwSettings({ ...hwSettings, lowStockThreshold: parseInt(e.target.value, 10) || 5 })}
-                  className="w-full rounded-xl border border-border bg-card p-2.5 text-xs font-semibold"
-                />
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  Products with stock quantity falling to or below this threshold will display a low stock alert tag.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Footer */}
         <div className="px-6 py-4 border-t border-border/80 bg-muted/20 flex items-center justify-between gap-4 shrink-0">

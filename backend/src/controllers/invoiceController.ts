@@ -92,7 +92,11 @@ export async function createInvoiceTransaction(req: AuthRequest, res: Response) 
 
     subtotal = Math.round(subtotal * 100) / 100;
     const taxAmount = Math.round((subtotal * taxRate / 100) * 100) / 100;
-    const totalAmount = Math.round((subtotal + taxAmount) * 100) / 100;
+    const previousDueAmount = Number(invoice_data?.previous_due || invoice_data?.previous_due_amount || 0);
+    const storeCreditAmount = Number(invoice_data?.store_credit || invoice_data?.store_credit_amount || 0);
+    const totalAmount = invoice_data?.total !== undefined
+      ? Number(invoice_data.total)
+      : Math.round((subtotal + taxAmount + previousDueAmount - storeCreditAmount) * 100) / 100;
 
     const initialPayAmount = initial_payment?.amount ? Number(initial_payment.amount) : 0;
     if (initialPayAmount < 0 || initialPayAmount > totalAmount) {

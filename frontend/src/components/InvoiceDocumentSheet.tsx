@@ -99,14 +99,39 @@ export function InvoiceDocumentSheet({
 }: InvoiceDocumentSheetProps) {
   const activeTplId: InvoiceTemplateId = templateSettings?.template_id || 'standard';
   const printSize = templateSettings?.print_size || 'A4';
+  const isCancelled = String(invoice?.status || '').toLowerCase().includes('cancel');
 
-  const subtotal = Number(invoice?.total || items.reduce((acc, it) => acc + (Number(it.total) || (Number(it.quantity || 1) * Number(it.unit_price || 0))), 0));
+  const notesText = String(invoice?.notes || '');
+  const previousDueMatch = notesText.match(/Previous Khata Due Billed:\s*\+?₹?([0-9.]+)/i);
+  const previousDueBilled = Number(invoice?.previous_due || (previousDueMatch ? previousDueMatch[1] : 0)) || 0;
+
+  const discountMatch = notesText.match(/Discount applied:\s*([^\n\r]+)/i);
+  const discountStr = discountMatch ? discountMatch[1] : '';
+
+  const discountAmtMatch = notesText.match(/Discount applied:[^(]*\(-₹?([0-9.]+)\)/i);
+  const discountAmt = discountAmtMatch ? Number(discountAmtMatch[1]) : 0;
+
+  const storeCreditMatch = notesText.match(/Store Credit \/ Wallet Redeemed:\s*-?₹?([0-9.]+)/i);
+  const storeCreditRedeemed = Number(invoice?.store_credit || (storeCreditMatch ? storeCreditMatch[1] : 0)) || 0;
+
+  // Real items merchandise subtotal
+  const itemsSubtotal = items.reduce((acc, it) => acc + (Number(it.total) || (Number(it.quantity || 1) * Number(it.unit_price || 0))), 0);
+  const invoiceTotal = Number(invoice?.total || (itemsSubtotal + previousDueBilled - storeCreditRedeemed));
+
+  // Current invoice merchandise net total (strictly WITHOUT previous due)
+  const currentInvoiceNet = previousDueBilled > 0
+    ? Math.max(0, invoiceTotal - previousDueBilled + storeCreditRedeemed)
+    : (itemsSubtotal > 0 ? itemsSubtotal : invoiceTotal);
+
+  const subtotal = currentInvoiceNet;
+  const grandTotal = invoiceTotal;
+
   const hasTax = Boolean(business?.gstin || paymentInfo?.gstin || activeTplId === 'gst-pro' || activeTplId === 'b2b-enterprise');
   
-  // Tax calculations for GST templates
-  const taxableVal = hasTax ? subtotal / 1.18 : subtotal;
-  const cgstVal = hasTax ? (subtotal - taxableVal) / 2 : 0;
-  const sgstVal = hasTax ? (subtotal - taxableVal) / 2 : 0;
+  // Tax calculations for GST templates: STRICTLY on current merchandise, NEVER on previous due!
+  const taxableVal = hasTax ? currentInvoiceNet / 1.18 : currentInvoiceNet;
+  const cgstVal = hasTax ? (currentInvoiceNet - taxableVal) / 2 : 0;
+  const sgstVal = hasTax ? (currentInvoiceNet - taxableVal) / 2 : 0;
 
   const bizName = business?.name || 'BillingMaster Store';
   const bizPhone = business?.phone || paymentInfo?.upi_number || '';
@@ -334,7 +359,7 @@ export function InvoiceDocumentSheet({
           {renderBankDetails()}
           <div className="space-y-2 bg-emerald-50/70 p-3.5 rounded-lg border border-emerald-200 text-xs">
             <div className="flex justify-between text-slate-600">
-              <span>Taxable Amount:</span>
+              <span>Taxable Amount (Merchandise):</span>
               <span className="mono font-bold text-slate-900">₹{taxableVal.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-slate-600">
@@ -345,9 +370,15 @@ export function InvoiceDocumentSheet({
               <span>SGST (9%):</span>
               <span className="mono font-bold text-slate-900">₹{sgstVal.toFixed(2)}</span>
             </div>
+            {previousDueBilled > 0 && (
+              <div className="flex justify-between text-amber-900 font-bold border-t border-emerald-200 pt-1.5">
+                <span>Previous Khata Due (0% Tax):</span>
+                <span className="mono font-black">+₹{previousDueBilled.toFixed(2)}</span>
+              </div>
+            )}
             <div className="bg-emerald-800 text-white p-3 rounded-md flex justify-between font-black text-sm border border-emerald-900 shadow-xs">
-              <span>GRAND TOTAL (INCL. GST)</span>
-              <span className="mono text-emerald-200 font-extrabold text-base">₹{subtotal.toFixed(2)}</span>
+              <span>GRAND TOTAL PAYABLE</span>
+              <span className="mono text-emerald-200 font-extrabold text-base">₹{grandTotal.toFixed(2)}</span>
             </div>
           </div>
         </div>
@@ -436,9 +467,23 @@ export function InvoiceDocumentSheet({
         {/* Summary & Sign-off */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {renderBankDetails()}
-          <div className="bg-purple-900 text-white p-4 rounded-xl flex justify-between items-center font-black shadow-md">
-            <span>AUDITED B2B TOTAL</span>
-            <span className="mono text-xl text-purple-200">₹{subtotal.toFixed(2)}</span>
+          <div className="bg-purple-900 text-white p-4 rounded-xl shadow-md space-y-1.5">
+            {previousDueBilled > 0 && (
+              <div className="flex justify-between text-xs text-purple-200 border-b border-purple-700/60 pb-1">
+                <span>Current B2B Bill:</span>
+                <span className="mono font-bold">₹{currentInvoiceNet.toFixed(2)}</span>
+              </div>
+            )}
+            {previousDueBilled > 0 && (
+              <div className="flex justify-between text-xs text-amber-300 border-b border-purple-700/60 pb-1 font-bold">
+                <span>Previous Khata Due (0% Tax):</span>
+                <span className="mono font-black">+₹{previousDueBilled.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between items-center font-black pt-0.5">
+              <span>AUDITED B2B TOTAL</span>
+              <span className="mono text-xl text-purple-200">₹{grandTotal.toFixed(2)}</span>
+            </div>
           </div>
         </div>
 
@@ -478,8 +523,8 @@ export function InvoiceDocumentSheet({
           </div>
           <div className="text-right">
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">STATUS</span>
-            <span className={`inline-block px-3 py-1 rounded-full font-black text-[10px] uppercase ${isPaid ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-              {isPaid ? '✓ PAID ONLINE' : 'DUE / UNPAID'}
+            <span className={`inline-block px-3 py-1 rounded-full font-black text-[10px] uppercase ${isCancelled ? 'bg-rose-100 text-rose-800 border border-rose-300' : isPaid ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+              {isCancelled ? '✗ CANCELLED' : isPaid ? '✓ PAID ONLINE' : 'DUE / UNPAID'}
             </span>
           </div>
         </div>
@@ -517,9 +562,21 @@ export function InvoiceDocumentSheet({
             {renderOnlinePaymentQrBlock()}
           </div>
           <div className="flex flex-col items-end gap-3">
-            <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl text-right min-w-[200px]">
-              <div className="text-[10px] font-black uppercase tracking-wider text-blue-600">GRAND TOTAL</div>
-              <div className="mono text-2xl font-black text-blue-600 mt-0.5">₹{subtotal.toFixed(2)}</div>
+            <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl text-right min-w-[210px] space-y-1">
+              {previousDueBilled > 0 && (
+                <div className="flex justify-between gap-3 text-[11px] text-slate-600">
+                  <span>Current Bill:</span>
+                  <span className="mono font-bold">₹{currentInvoiceNet.toFixed(2)}</span>
+                </div>
+              )}
+              {previousDueBilled > 0 && (
+                <div className="flex justify-between gap-3 text-[11px] text-amber-800 font-bold">
+                  <span>Prev. Due (0% Tax):</span>
+                  <span className="mono font-black">+₹{previousDueBilled.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="text-[10px] font-black uppercase tracking-wider text-blue-600 pt-1 border-t border-blue-200/60">GRAND TOTAL</div>
+              <div className="mono text-2xl font-black text-blue-600 mt-0.5">₹{grandTotal.toFixed(2)}</div>
             </div>
             {renderSignatureSeal('Authorized Signatory')}
           </div>
@@ -557,9 +614,21 @@ export function InvoiceDocumentSheet({
 
         {/* Grand Total */}
         <div className="border-b-2 border-dashed border-slate-400 pb-2 space-y-1">
-          <div className="flex justify-between font-black text-sm">
-            <span>TOTAL PAID</span>
-            <span className="mono">₹{subtotal.toFixed(2)}</span>
+          {previousDueBilled > 0 && (
+            <div className="flex justify-between text-[11px]">
+              <span>Bill Subtotal:</span>
+              <span className="mono">₹{currentInvoiceNet.toFixed(2)}</span>
+            </div>
+          )}
+          {previousDueBilled > 0 && (
+            <div className="flex justify-between text-[11px] font-bold">
+              <span>Prev. Khata Due:</span>
+              <span className="mono">+₹{previousDueBilled.toFixed(2)}</span>
+            </div>
+          )}
+          <div className="flex justify-between font-black text-sm pt-0.5 border-t border-dashed border-slate-300">
+            <span>TOTAL PAYABLE</span>
+            <span className="mono">₹{grandTotal.toFixed(2)}</span>
           </div>
           <div className="flex justify-between text-[10px] text-slate-600">
             <span>Payment Mode:</span>
@@ -643,9 +712,23 @@ export function InvoiceDocumentSheet({
         </div>
 
         {/* Executive Total */}
-        <div className="flex justify-between items-center border-2 border-double border-amber-600/70 p-3 bg-amber-50/50 font-serif font-black text-amber-950 text-sm">
-          <span>OFFICIAL CONTRACT TOTAL</span>
-          <span className="mono text-xl text-amber-900">₹{subtotal.toFixed(2)}</span>
+        <div className="border-2 border-double border-amber-600/70 p-3 bg-amber-50/50 font-serif font-black text-amber-950 text-sm space-y-1">
+          {previousDueBilled > 0 && (
+            <div className="flex justify-between text-xs text-amber-800">
+              <span>Contract Bill:</span>
+              <span className="mono font-bold">₹{currentInvoiceNet.toFixed(2)}</span>
+            </div>
+          )}
+          {previousDueBilled > 0 && (
+            <div className="flex justify-between text-xs text-amber-900 font-bold">
+              <span>Previous Khata Due (0% Tax):</span>
+              <span className="mono font-black">+₹{previousDueBilled.toFixed(2)}</span>
+            </div>
+          )}
+          <div className="flex justify-between items-center pt-0.5 border-t border-amber-300">
+            <span>OFFICIAL CONTRACT TOTAL</span>
+            <span className="mono text-xl text-amber-900">₹{grandTotal.toFixed(2)}</span>
+          </div>
         </div>
 
         {/* Signatures & Payment QR */}
@@ -720,9 +803,23 @@ export function InvoiceDocumentSheet({
         </div>
 
         {/* Gold Total */}
-        <div className="bg-amber-500/15 border-2 border-amber-400 p-4 rounded-xl flex justify-between items-center font-serif text-amber-950 font-black text-base shadow-sm">
-          <span>GRAND TOTAL</span>
-          <span className="mono text-2xl text-amber-900">₹{subtotal.toFixed(2)}</span>
+        <div className="bg-amber-500/15 border-2 border-amber-400 p-4 rounded-xl font-serif text-amber-950 font-black text-base shadow-sm space-y-1">
+          {previousDueBilled > 0 && (
+            <div className="flex justify-between text-xs text-amber-800">
+              <span>Items Total:</span>
+              <span className="mono font-bold">₹{currentInvoiceNet.toFixed(2)}</span>
+            </div>
+          )}
+          {previousDueBilled > 0 && (
+            <div className="flex justify-between text-xs text-amber-900 font-bold">
+              <span>Previous Khata Due (0% Tax):</span>
+              <span className="mono font-black">+₹{previousDueBilled.toFixed(2)}</span>
+            </div>
+          )}
+          <div className="flex justify-between items-center pt-0.5 border-t border-amber-300">
+            <span>GRAND TOTAL</span>
+            <span className="mono text-2xl text-amber-900">₹{grandTotal.toFixed(2)}</span>
+          </div>
         </div>
 
         {/* Signature & Payment QR */}
@@ -797,9 +894,23 @@ export function InvoiceDocumentSheet({
         </div>
 
         {/* Neon Total */}
-        <div className="bg-slate-950 border border-emerald-500/50 p-4 rounded-lg flex justify-between items-center text-emerald-400 font-black text-base shadow-sm">
-          <span>&gt; TOTAL_AMOUNT</span>
-          <span className="text-xl">₹{subtotal.toFixed(2)}</span>
+        <div className="bg-slate-950 border border-emerald-500/50 p-4 rounded-lg text-emerald-400 font-black text-base shadow-sm space-y-1">
+          {previousDueBilled > 0 && (
+            <div className="flex justify-between text-xs text-slate-400 font-mono">
+              <span>&gt; CURRENT_BILL:</span>
+              <span>₹{currentInvoiceNet.toFixed(2)}</span>
+            </div>
+          )}
+          {previousDueBilled > 0 && (
+            <div className="flex justify-between text-xs text-amber-400 font-mono">
+              <span>&gt; PREV_KHATA_DUE:</span>
+              <span>+₹{previousDueBilled.toFixed(2)}</span>
+            </div>
+          )}
+          <div className="flex justify-between items-center pt-0.5 border-t border-emerald-500/30">
+            <span>&gt; TOTAL_AMOUNT</span>
+            <span className="text-xl">₹{grandTotal.toFixed(2)}</span>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
@@ -873,9 +984,23 @@ export function InvoiceDocumentSheet({
         </div>
 
         {/* Soft Pink Total Box */}
-        <div className="bg-rose-100/80 border border-rose-300 p-4 rounded-2xl flex justify-between items-center font-black text-rose-950 text-base">
-          <span>TOTAL AMOUNT</span>
-          <span className="mono text-2xl text-rose-900">₹{subtotal.toFixed(2)}</span>
+        <div className="bg-rose-100/80 border border-rose-300 p-4 rounded-2xl font-black text-rose-950 text-base space-y-1">
+          {previousDueBilled > 0 && (
+            <div className="flex justify-between text-xs text-rose-800">
+              <span>Current Items Total:</span>
+              <span className="mono font-bold">₹{currentInvoiceNet.toFixed(2)}</span>
+            </div>
+          )}
+          {previousDueBilled > 0 && (
+            <div className="flex justify-between text-xs text-amber-900 font-bold">
+              <span>Previous Khata Due (0% Tax):</span>
+              <span className="mono font-black">+₹{previousDueBilled.toFixed(2)}</span>
+            </div>
+          )}
+          <div className="flex justify-between items-center pt-0.5 border-t border-rose-300">
+            <span>TOTAL AMOUNT</span>
+            <span className="mono text-2xl text-rose-900">₹{grandTotal.toFixed(2)}</span>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
@@ -942,9 +1067,23 @@ export function InvoiceDocumentSheet({
         </div>
 
         {/* Total Summary */}
-        <div className="bg-teal-50 border border-teal-300 p-3 rounded-lg flex justify-between items-center font-extrabold text-teal-950">
-          <span>VOUCHER TOTAL</span>
-          <span className="mono text-lg font-black text-teal-800">₹{subtotal.toFixed(2)}</span>
+        <div className="bg-teal-50 border border-teal-300 p-3 rounded-lg font-extrabold text-teal-950 space-y-1">
+          {previousDueBilled > 0 && (
+            <div className="flex justify-between text-xs text-teal-800">
+              <span>Voucher Items Total:</span>
+              <span className="mono font-bold">₹{currentInvoiceNet.toFixed(2)}</span>
+            </div>
+          )}
+          {previousDueBilled > 0 && (
+            <div className="flex justify-between text-xs text-amber-900 font-bold">
+              <span>Previous Khata Due (0% Tax):</span>
+              <span className="mono font-black">+₹{previousDueBilled.toFixed(2)}</span>
+            </div>
+          )}
+          <div className="flex justify-between items-center pt-0.5 border-t border-teal-200">
+            <span>VOUCHER TOTAL</span>
+            <span className="mono text-lg font-black text-teal-800">₹{grandTotal.toFixed(2)}</span>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
@@ -988,30 +1127,20 @@ export function InvoiceDocumentSheet({
           <div className="text-[9px] font-black uppercase tracking-wider text-orange-600">TAX INVOICE</div>
           <div className="mono text-base font-black tracking-tight text-slate-900">{invNumber}</div>
           <div className="text-[11px] text-slate-500 mt-0.5">{invDate} {timeStr ? `• ${timeStr}` : ''}</div>
-          <div className="mt-1 text-[10px] font-extrabold uppercase text-emerald-600">
-            {isPaid ? '✓ PAID IN FULL' : 'COMMERCIAL BILL'}
+          <div className={`mt-1 text-[10px] font-extrabold uppercase ${isCancelled ? 'text-rose-600 font-black' : isPaid ? 'text-emerald-600' : 'text-slate-600'}`}>
+            {isCancelled ? '✗ INVOICE CANCELLED' : isPaid ? '✓ PAID IN FULL' : 'COMMERCIAL BILL'}
           </div>
         </div>
       </div>
 
       {/* Customer Billed To */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+      <div className="text-xs">
         <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3">
           <span className="text-[9px] font-black uppercase tracking-wider text-orange-600">BILLED TO</span>
           <div className="mt-0.5 text-xs font-bold text-slate-900 truncate">{custName}</div>
           <div className="mt-1 space-y-0.5 text-[11px] text-slate-600">
             {custPhone && <div className="flex items-center gap-1"><Phone size={11} /> {custPhone}</div>}
             {custAddress && <div className="flex items-center gap-1"><MapPin size={11} /> {custAddress}</div>}
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 flex flex-col justify-between">
-          <div>
-            <span className="text-[9px] font-black uppercase tracking-wider text-orange-600">PAYMENT & DISPATCH</span>
-            <div className="mt-1 text-[11px] text-slate-600 space-y-0.5">
-              <div>Status: <strong className={isPaid ? 'text-emerald-600' : 'text-amber-600'}>{isPaid ? 'Paid' : 'Pending'}</strong></div>
-              {invoice?.payment_method && <div>Method: {invoice.payment_method}</div>}
-            </div>
           </div>
         </div>
       </div>
@@ -1048,12 +1177,18 @@ export function InvoiceDocumentSheet({
 
         <div className="space-y-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-right">
           <div className="flex justify-between text-slate-600">
-            <span>Subtotal:</span>
+            <span>Items Subtotal:</span>
             <span className="mono font-bold text-slate-900">₹{subtotal.toFixed(2)}</span>
           </div>
+          {previousDueBilled > 0 && (
+            <div className="flex justify-between text-amber-900 font-bold">
+              <span>Previous Khata Due (0% Tax):</span>
+              <span className="mono font-black text-amber-800">+₹{previousDueBilled.toFixed(2)}</span>
+            </div>
+          )}
           <div className="flex justify-between border-t border-amber-200 pt-1.5 font-black text-slate-900 text-sm">
             <span>Grand Total:</span>
-            <span className="mono text-orange-600 text-base font-black">₹{subtotal.toFixed(2)}</span>
+            <span className="mono text-orange-600 text-base font-black">₹{grandTotal.toFixed(2)}</span>
           </div>
         </div>
       </div>

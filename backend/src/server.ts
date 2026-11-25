@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { initDb } from './db/mysql.js';
@@ -54,7 +54,7 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(authenticateToken);
 
 // Health check
-app.get('/api/health', (_req, res) => {
+app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', name: 'BillingMaster API (Node.js + Express + MySQL)', timestamp: new Date().toISOString() });
 });
 

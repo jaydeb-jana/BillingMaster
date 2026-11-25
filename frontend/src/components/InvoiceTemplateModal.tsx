@@ -3,7 +3,9 @@ import {
   X, Check, Printer, FileText, LayoutTemplate,
   Smartphone, CheckCircle2, Layers, Palette, Eye,
   Crown, Cpu, Sparkles, Building2, Ticket, ShieldCheck,
-  Landmark, QrCode, PenTool, Upload, Image as ImageIcon, Trash2
+  Landmark, QrCode, PenTool, Upload, Image as ImageIcon, Trash2,
+  MessageCircle, Mail, Send, BellRing, PhoneCall, Zap, Share2,
+  CheckCheck, AlertCircle, Copy, ExternalLink, HelpCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { db, auth, supabase } from '@/lib/api';
@@ -39,6 +41,24 @@ export interface InvoiceTemplateSettings {
   enable_tax?: boolean;
   tax_name?: string;
   tax_rate?: string;
+
+  // Delivery & Confirmation Channels
+  enable_whatsapp_confirmation?: boolean;
+  enable_email_confirmation?: boolean;
+  enable_sms_confirmation?: boolean;
+  whatsapp_include_pdf_link?: boolean;
+  whatsapp_include_upi?: boolean;
+  whatsapp_auto_prompt?: boolean;
+  whatsapp_custom_msg?: string;
+  email_attach_pdf?: boolean;
+  email_send_payment_receipt?: boolean;
+  email_sender_name?: string;
+  email_subject_template?: string;
+  sms_include_short_link?: boolean;
+  sms_sender_id?: string;
+  notify_on_new_invoice?: boolean;
+  notify_on_payment_received?: boolean;
+  notify_on_khata_due?: boolean;
 }
 
 export const DEFAULT_TEMPLATE_SETTINGS: InvoiceTemplateSettings = {
@@ -58,6 +78,24 @@ export const DEFAULT_TEMPLATE_SETTINGS: InvoiceTemplateSettings = {
   enable_tax: false,
   tax_name: 'Tax',
   tax_rate: '18',
+
+  // Delivery & Confirmation defaults
+  enable_whatsapp_confirmation: true,
+  enable_email_confirmation: true,
+  enable_sms_confirmation: false,
+  whatsapp_include_pdf_link: true,
+  whatsapp_include_upi: true,
+  whatsapp_auto_prompt: true,
+  whatsapp_custom_msg: '',
+  email_attach_pdf: true,
+  email_send_payment_receipt: true,
+  email_sender_name: '',
+  email_subject_template: '',
+  sms_include_short_link: true,
+  sms_sender_id: '',
+  notify_on_new_invoice: true,
+  notify_on_payment_received: true,
+  notify_on_khata_due: true,
 };
 
 export const INVOICE_TEMPLATES = [
@@ -260,9 +298,10 @@ interface InvoiceTemplateModalProps {
 export function InvoiceTemplateModal({ isOpen, onClose, onSaved }: InvoiceTemplateModalProps) {
   useScrollReset(isOpen);
   useBodyScrollLock(isOpen);
-  const [activeTab, setActiveTab] = useState<'templates' | 'sizes' | 'signature'>('templates');
+  const [activeTab, setActiveTab] = useState<'templates' | 'sizes' | 'signature' | 'delivery'>('templates');
   const [sigMode, setSigMode] = useState<'draw' | 'upload'>('draw');
   const [previewModalTemplate, setPreviewModalTemplate] = useState<InvoiceTemplateId | null>(null);
+  const [testRecipientPhone, setTestRecipientPhone] = useState('');
 
   const [settings, setSettings] = useState<InvoiceTemplateSettings>(() => {
     try {
@@ -689,7 +728,7 @@ export function InvoiceTemplateModal({ isOpen, onClose, onSaved }: InvoiceTempla
                   {selectedTemplate.name} • {selectedPrintSize.id}
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground">Select invoice design templates & configure print page dimensions</p>
+              <p className="text-xs text-muted-foreground">Select invoice design templates, print sizes, signatures & customer confirmation channels</p>
             </div>
           </div>
           <button
@@ -701,44 +740,57 @@ export function InvoiceTemplateModal({ isOpen, onClose, onSaved }: InvoiceTempla
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex items-center gap-2 px-4 sm:px-5 py-2.5 bg-muted/40 border-b border-border">
+        <div className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2.5 bg-muted/40 border-b border-border overflow-x-auto no-scrollbar">
           <button
             type="button"
             onClick={() => setActiveTab('templates')}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+            className={`flex-1 min-w-[125px] sm:min-w-0 flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'templates'
                 ? 'bg-card text-foreground shadow-xs border border-border ring-1 ring-primary/30'
                 : 'text-muted-foreground hover:text-foreground hover:bg-card/50'
             }`}
           >
             <Palette size={14} className={activeTab === 'templates' ? 'text-primary' : ''} />
-            <span>1. Invoice Templates ({INVOICE_TEMPLATES.length})</span>
+            <span>1. Templates ({INVOICE_TEMPLATES.length})</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('sizes')}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+            className={`flex-1 min-w-[125px] sm:min-w-0 flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'sizes'
                 ? 'bg-card text-foreground shadow-xs border border-border ring-1 ring-primary/30'
                 : 'text-muted-foreground hover:text-foreground hover:bg-card/50'
             }`}
           >
             <Printer size={14} className={activeTab === 'sizes' ? 'text-primary' : ''} />
-            <span>2. Print Page Size ({selectedPrintSize.id})</span>
+            <span>2. Page Size ({selectedPrintSize.id})</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('signature')}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+            className={`flex-1 min-w-[125px] sm:min-w-0 flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'signature'
                 ? 'bg-card text-foreground shadow-xs border border-border ring-1 ring-primary/30'
                 : 'text-muted-foreground hover:text-foreground hover:bg-card/50'
             }`}
           >
             <PenTool size={14} className={activeTab === 'signature' ? 'text-primary' : ''} />
-            <span>3. Digital Signature & Seal</span>
+            <span>3. Signature & Seal</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('delivery')}
+            className={`flex-1 min-w-[135px] sm:min-w-0 flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'delivery'
+                ? 'bg-card text-foreground shadow-xs border border-border ring-1 ring-primary/30'
+                : 'text-muted-foreground hover:text-foreground hover:bg-card/50'
+            }`}
+          >
+            <Send size={14} className={activeTab === 'delivery' ? 'text-primary' : ''} />
+            <span>4. Delivery & Confirmation</span>
           </button>
         </div>
 
@@ -1169,6 +1221,368 @@ export function InvoiceTemplateModal({ isOpen, onClose, onSaved }: InvoiceTempla
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* TAB 4: DELIVERY & CONFIRMATION CHANNELS */}
+          {activeTab === 'delivery' && (
+            <div className="space-y-6 animate-fade-in">
+              {/* Header Banner */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 pb-2 border-b border-border/60">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm sm:text-base font-extrabold text-foreground">Customer Confirmation & Delivery Channels</h4>
+                    <span className="rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[10px] font-black px-2 py-0.5">
+                      Multi-Channel
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                    Configure which automated channels (WhatsApp, Email, SMS) will deliver bill confirmations, digital invoice links, and payment receipts.
+                  </p>
+                </div>
+              </div>
+
+              {/* Automated Triggers Card */}
+              <div className="rounded-2xl border border-border bg-muted/30 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary">
+                    <Zap size={14} />
+                  </div>
+                  <div>
+                    <h5 className="text-xs font-black text-foreground">Automated Trigger Events</h5>
+                    <p className="text-[11px] text-muted-foreground">Select when confirmations should be prepared and dispatched</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                  <label className="flex items-start gap-2.5 p-3 rounded-xl border border-border/80 bg-card hover:bg-muted/40 cursor-pointer transition-all">
+                    <input
+                      type="checkbox"
+                      checked={settings.notify_on_new_invoice ?? true}
+                      onChange={(e) => setSettings({ ...settings, notify_on_new_invoice: e.target.checked })}
+                      className="mt-0.5 h-4 w-4 rounded accent-primary cursor-pointer border-border"
+                    />
+                    <div>
+                      <div className="text-xs font-extrabold text-foreground">New Invoice Generation</div>
+                      <div className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">Send digital invoice link & total immediately when bill is created.</div>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-2.5 p-3 rounded-xl border border-border/80 bg-card hover:bg-muted/40 cursor-pointer transition-all">
+                    <input
+                      type="checkbox"
+                      checked={settings.notify_on_payment_received ?? true}
+                      onChange={(e) => setSettings({ ...settings, notify_on_payment_received: e.target.checked })}
+                      className="mt-0.5 h-4 w-4 rounded accent-primary cursor-pointer border-border"
+                    />
+                    <div>
+                      <div className="text-xs font-extrabold text-foreground">Payment Received</div>
+                      <div className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">Send payment confirmation receipt whenever customer pays.</div>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-2.5 p-3 rounded-xl border border-border/80 bg-card hover:bg-muted/40 cursor-pointer transition-all">
+                    <input
+                      type="checkbox"
+                      checked={settings.notify_on_khata_due ?? true}
+                      onChange={(e) => setSettings({ ...settings, notify_on_khata_due: e.target.checked })}
+                      className="mt-0.5 h-4 w-4 rounded accent-primary cursor-pointer border-border"
+                    />
+                    <div>
+                      <div className="text-xs font-extrabold text-foreground">Khata (Pay Later) Due</div>
+                      <div className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">Send pending balance alert when goods are purchased on credit.</div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* CHANNEL 1: WHATSAPP */}
+              <div className={`rounded-2xl border transition-all ${
+                settings.enable_whatsapp_confirmation ?? true
+                  ? 'border-emerald-500/40 bg-emerald-500/5 shadow-xs'
+                  : 'border-border bg-card opacity-80'
+              } p-4 sm:p-5 space-y-4`}>
+                <div className="flex items-center justify-between pb-3 border-b border-border/60">
+                  <div className="flex items-center gap-3">
+                    <div className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                      <MessageCircle size={22} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h5 className="text-sm font-extrabold text-foreground">WhatsApp Confirmation</h5>
+                        <span className="rounded-md bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px] font-black px-2 py-0.5">
+                          Most Popular
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Deliver bill summary, digital PDF link & instant UPI QR directly to customer WhatsApp</p>
+                    </div>
+                  </div>
+
+                  <label className="relative inline-flex items-center cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={settings.enable_whatsapp_confirmation ?? true}
+                      onChange={(e) => setSettings({ ...settings, enable_whatsapp_confirmation: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+
+                {(settings.enable_whatsapp_confirmation ?? true) && (
+                  <div className="space-y-3.5 pt-1 animate-fade-in">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border/70 bg-card/70 text-xs font-semibold text-foreground cursor-pointer hover:bg-card">
+                        <input
+                          type="checkbox"
+                          checked={settings.whatsapp_include_pdf_link ?? true}
+                          onChange={(e) => setSettings({ ...settings, whatsapp_include_pdf_link: e.target.checked })}
+                          className="h-4 w-4 rounded border-border accent-emerald-600"
+                        />
+                        <span>Include PDF Download Link</span>
+                      </label>
+
+                      <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border/70 bg-card/70 text-xs font-semibold text-foreground cursor-pointer hover:bg-card">
+                        <input
+                          type="checkbox"
+                          checked={settings.whatsapp_include_upi ?? true}
+                          onChange={(e) => setSettings({ ...settings, whatsapp_include_upi: e.target.checked })}
+                          className="h-4 w-4 rounded border-border accent-emerald-600"
+                        />
+                        <span>Include UPI QR & Pay Link</span>
+                      </label>
+
+                      <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border/70 bg-card/70 text-xs font-semibold text-foreground cursor-pointer hover:bg-card">
+                        <input
+                          type="checkbox"
+                          checked={settings.whatsapp_auto_prompt ?? true}
+                          onChange={(e) => setSettings({ ...settings, whatsapp_auto_prompt: e.target.checked })}
+                          className="h-4 w-4 rounded border-border accent-emerald-600"
+                        />
+                        <span>Auto-Prompt on Invoice Save</span>
+                      </label>
+                    </div>
+
+                    {/* WhatsApp Message Preview */}
+                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-950/10 dark:bg-emerald-950/30 p-3.5 space-y-2">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                        <span className="flex items-center gap-1.5"><MessageCircle size={12} /> WhatsApp Message Format Preview</span>
+                        <span className="text-[10px] text-muted-foreground font-normal">Formatted for WhatsApp Web & Mobile</span>
+                      </div>
+                      <div className="rounded-lg bg-card p-3.5 text-xs font-mono border border-border text-foreground/90 whitespace-pre-line leading-relaxed shadow-xs">
+                        {`🧾 *INVOICE CONFIRMATION*
+
+👋 Hello *[Customer Name]*,
+Thank you for your business! Your bill has been generated successfully.
+
+📋 *Invoice:* #[INV-0001]
+💰 *Total Amount:* ₹420.00
+${(settings.whatsapp_include_pdf_link ?? true) ? '🔗 *View / Download PDF:* https://.../invoices/[id]\n' : ''}${(settings.whatsapp_include_upi ?? true) ? '💳 *Pay Now via UPI:* upi://pay?pa=store@upi&am=420.00\n' : ''}
+Have questions? Simply reply to this chat.`}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* CHANNEL 2: EMAIL */}
+              <div className={`rounded-2xl border transition-all ${
+                settings.enable_email_confirmation ?? true
+                  ? 'border-blue-500/40 bg-blue-500/5 shadow-xs'
+                  : 'border-border bg-card opacity-80'
+              } p-4 sm:p-5 space-y-4`}>
+                <div className="flex items-center justify-between pb-3 border-b border-border/60">
+                  <div className="flex items-center gap-3">
+                    <div className="grid h-10 w-10 place-items-center rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-400">
+                      <Mail size={22} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h5 className="text-sm font-extrabold text-foreground">Email Confirmation & PDF Delivery</h5>
+                        <span className="rounded-md bg-blue-500/20 text-blue-700 dark:text-blue-300 text-[10px] font-black px-2 py-0.5">
+                          Standard Business
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Send official tax invoice PDF document directly to customer's email address</p>
+                    </div>
+                  </div>
+
+                  <label className="relative inline-flex items-center cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={settings.enable_email_confirmation ?? true}
+                      onChange={(e) => setSettings({ ...settings, enable_email_confirmation: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+
+                {(settings.enable_email_confirmation ?? true) && (
+                  <div className="space-y-3.5 pt-1 animate-fade-in">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border/70 bg-card/70 text-xs font-semibold text-foreground cursor-pointer hover:bg-card">
+                        <input
+                          type="checkbox"
+                          checked={settings.email_attach_pdf ?? true}
+                          onChange={(e) => setSettings({ ...settings, email_attach_pdf: e.target.checked })}
+                          className="h-4 w-4 rounded border-border accent-blue-600"
+                        />
+                        <span>Attach Official PDF Document</span>
+                      </label>
+
+                      <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border/70 bg-card/70 text-xs font-semibold text-foreground cursor-pointer hover:bg-card">
+                        <input
+                          type="checkbox"
+                          checked={settings.email_send_payment_receipt ?? true}
+                          onChange={(e) => setSettings({ ...settings, email_send_payment_receipt: e.target.checked })}
+                          className="h-4 w-4 rounded border-border accent-blue-600"
+                        />
+                        <span>Send Payment Receipt on Settlement</span>
+                      </label>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-foreground mb-1">
+                          Sender Business Display Name
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. BillingMaster Store / My Brand"
+                          value={settings.email_sender_name || ''}
+                          onChange={(e) => setSettings({ ...settings, email_sender_name: e.target.value })}
+                          className="input-shell w-full px-3 py-2 text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-foreground mb-1">
+                          Email Subject Line Template
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Tax Invoice #{invoice_number} from {business_name}"
+                          value={settings.email_subject_template || ''}
+                          onChange={(e) => setSettings({ ...settings, email_subject_template: e.target.value })}
+                          className="input-shell w-full px-3 py-2 text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* CHANNEL 3: SMS TEXT MESSAGE */}
+              <div className={`rounded-2xl border transition-all ${
+                settings.enable_sms_confirmation
+                  ? 'border-purple-500/40 bg-purple-500/5 shadow-xs'
+                  : 'border-border bg-card opacity-80'
+              } p-4 sm:p-5 space-y-4`}>
+                <div className="flex items-center justify-between pb-3 border-b border-border/60">
+                  <div className="flex items-center gap-3">
+                    <div className="grid h-10 w-10 place-items-center rounded-xl bg-purple-500/15 text-purple-600 dark:text-purple-400">
+                      <Smartphone size={22} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h5 className="text-sm font-extrabold text-foreground">SMS Bill Confirmation</h5>
+                        <span className="rounded-md bg-purple-500/20 text-purple-700 dark:text-purple-300 text-[10px] font-black px-2 py-0.5">
+                          Direct Cellular SMS
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Send cellular SMS receipt with bill amount and shortened invoice URL to any mobile number</p>
+                    </div>
+                  </div>
+
+                  <label className="relative inline-flex items-center cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={settings.enable_sms_confirmation ?? false}
+                      onChange={(e) => setSettings({ ...settings, enable_sms_confirmation: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                  </label>
+                </div>
+
+                {settings.enable_sms_confirmation && (
+                  <div className="space-y-3 pt-1 animate-fade-in">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border/70 bg-card/70 text-xs font-semibold text-foreground cursor-pointer hover:bg-card">
+                        <input
+                          type="checkbox"
+                          checked={settings.sms_include_short_link ?? true}
+                          onChange={(e) => setSettings({ ...settings, sms_include_short_link: e.target.checked })}
+                          className="h-4 w-4 rounded border-border accent-purple-600"
+                        />
+                        <span>Include Shortened Link to View Invoice</span>
+                      </label>
+
+                      <div>
+                        <input
+                          type="text"
+                          placeholder="Sender ID (e.g. BILLMS)"
+                          maxLength={6}
+                          value={settings.sms_sender_id || ''}
+                          onChange={(e) => setSettings({ ...settings, sms_sender_id: e.target.value.toUpperCase() })}
+                          className="input-shell w-full px-3 py-2 text-xs uppercase"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-purple-500/20 bg-purple-950/10 dark:bg-purple-950/30 p-3 text-xs font-mono text-foreground/80">
+                      💬 <strong>SMS Format (132 chars):</strong> "Dear Customer, bill #INV-0001 for Rs.420.00 is generated. View invoice: https://bit.ly/inv-001. Thank you for your business!"
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Interactive Test Confirmation Box */}
+              <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/15 text-primary shrink-0">
+                    <Share2 size={20} />
+                  </div>
+                  <div>
+                    <h5 className="text-xs sm:text-sm font-extrabold text-foreground">Test Confirmation Dispatch</h5>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Verify your channels by simulating a real invoice confirmation message.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <input
+                    type="text"
+                    placeholder="Enter phone or email"
+                    value={testRecipientPhone}
+                    onChange={(e) => setTestRecipientPhone(e.target.value)}
+                    className="input-shell px-3 py-2 text-xs w-full sm:w-48 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const recipient = testRecipientPhone.trim() || 'Customer';
+                      const channels = [];
+                      if (settings.enable_whatsapp_confirmation ?? true) channels.push('WhatsApp');
+                      if (settings.enable_email_confirmation ?? true) channels.push('Email');
+                      if (settings.enable_sms_confirmation) channels.push('SMS');
+                      
+                      if (channels.length === 0) {
+                        toast.error('Please enable at least one confirmation channel (WhatsApp, Email, or SMS).');
+                        return;
+                      }
+                      
+                      toast.success(`Simulated confirmation test sent to ${recipient} via ${channels.join(', ')}!`);
+                    }}
+                    className="btn-primary rounded-xl px-4 py-2 text-xs font-bold shrink-0 cursor-pointer flex items-center gap-1.5 shadow-xs"
+                  >
+                    <Send size={13} />
+                    <span>Send Test</span>
+                  </button>
+                </div>
+              </div>
+
             </div>
           )}
 

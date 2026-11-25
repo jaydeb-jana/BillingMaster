@@ -256,6 +256,23 @@ export async function initDb(): Promise<boolean> {
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
           );
+
+          CREATE TABLE IF NOT EXISTS returns (
+            id VARCHAR(36) PRIMARY KEY,
+            business_id VARCHAR(36),
+            invoice_id VARCHAR(36) NOT NULL,
+            invoice_number VARCHAR(100),
+            invoice_item_id VARCHAR(36),
+            product_id VARCHAR(36),
+            product_name VARCHAR(255),
+            product_unit VARCHAR(50),
+            returned_qty DECIMAL(10,2) DEFAULT 0,
+            unit_price DECIMAL(10,2) DEFAULT 0,
+            refund_amount DECIMAL(10,2) DEFAULT 0,
+            refund_method VARCHAR(50),
+            refund_note TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          );
         `);
       } catch (e) {}
 

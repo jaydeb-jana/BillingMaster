@@ -36,6 +36,27 @@ export function safeLocalStorageSet(key: string, value: string): boolean {
   }
 }
 
+// Clear stale local storage store caches from previous dummy data runs
+if (typeof window !== 'undefined') {
+  try {
+    const cleanedFlag = localStorage.getItem('bm_dummy_cleaned_v2');
+    if (!cleanedFlag) {
+      const keysToRemove = [
+        'arventa_store_customers',
+        'arventa_store_products',
+        'arventa_store_invoices',
+        'arventa_store_expenses',
+        'arventa_store_khata_entries',
+        'arventa_store_stock_transactions',
+        'arventa_store_payments',
+        'arventa_store_purchases'
+      ];
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+      localStorage.setItem('bm_dummy_cleaned_v2', 'true');
+    }
+  } catch (e) {}
+}
+
 export function getApiBaseUrl(): string {
   if (typeof window !== 'undefined') {
     const saved = localStorage.getItem('billingmaster_api_url');
@@ -560,12 +581,8 @@ export const db = {
         if (activeQuery.limit !== undefined || activeQuery.offset !== undefined || activeQuery.search || activeQuery.q) {
           return { data: res.data, total: totalCount };
         }
-        const locals = getLocalStore<T>(table);
-        const remoteIds = new Set(res.data.map((r: any) => r.id));
-        const missingLocals = locals.filter((l: any) => l.id && !remoteIds.has(l.id));
-        const combined = [...res.data, ...missingLocals];
-        setLocalStore(table, combined);
-        return { data: filterLocals(combined, activeQuery), total: totalCount };
+        setLocalStore(table, res.data);
+        return { data: filterLocals(res.data, activeQuery), total: totalCount };
       }
       const locals = getLocalStore<T>(table);
       const filtered = locals.length > 0 ? filterLocals(locals, activeQuery) : [];
