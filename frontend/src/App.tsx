@@ -3368,17 +3368,6 @@ function InvoiceNew() {
     } catch {}
     return true;
   });
-  const [notifyPhoneCall, setNotifyPhoneCall] = useState(() => {
-    try {
-      const raw = localStorage.getItem('arventa_invoice_template_settings');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed.default_preselect_phone !== undefined) return Boolean(parsed.default_preselect_phone);
-        if (parsed.enable_phone_confirmation !== undefined) return Boolean(parsed.enable_phone_confirmation);
-      }
-    } catch {}
-    return false;
-  });
   const [notifySms, setNotifySms] = useState(() => {
     try {
       const raw = localStorage.getItem('arventa_invoice_template_settings');
@@ -3406,9 +3395,6 @@ function InvoiceNew() {
 
           if (raw.default_preselect_sms !== undefined) setNotifySms(Boolean(raw.default_preselect_sms));
           else if (raw.enable_sms_confirmation !== undefined) setNotifySms(Boolean(raw.enable_sms_confirmation));
-
-          if (raw.default_preselect_phone !== undefined) setNotifyPhoneCall(Boolean(raw.default_preselect_phone));
-          else if (raw.enable_phone_confirmation !== undefined) setNotifyPhoneCall(Boolean(raw.enable_phone_confirmation));
         }
       } catch {}
     };
@@ -3562,7 +3548,6 @@ function InvoiceNew() {
           if (notifMatch) {
             setNotifyWhatsApp(notifMatch[1].includes('WhatsApp'));
             setNotifyEmail(notifMatch[1].includes('Email'));
-            setNotifyPhoneCall(notifMatch[1].includes('Phone Call'));
             setNotifySms(notifMatch[1].includes('SMS'));
           }
 
@@ -3816,7 +3801,6 @@ function InvoiceNew() {
       if (notifyWhatsApp) notifChannels.push('WhatsApp');
       if (notifyEmail) notifChannels.push('Email');
       if (notifySms) notifChannels.push('SMS');
-      if (notifyPhoneCall) notifChannels.push('Phone Call');
       if (notifChannels.length > 0) {
         notesParts.push(`Notifications: ${notifChannels.join(', ')}`);
       }
@@ -4908,42 +4892,6 @@ function InvoiceNew() {
                 checked={notifySms}
                 onChange={(e) => setNotifySms(e.target.checked)}
                 className="h-4 w-4 rounded border-border text-purple-600 accent-purple-600 cursor-pointer"
-              />
-            </label>
-
-            {/* Phone Call - Selectable */}
-            <label
-              className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2.5 transition-colors select-none ${
-                notifyPhoneCall
-                  ? 'border-sky-500/40 bg-sky-500/10 text-foreground'
-                  : 'border-border/60 bg-background/60 hover:bg-muted/40 text-muted-foreground'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <div
-                  className={`flex h-7 w-7 items-center justify-center rounded-md ${
-                    notifyPhoneCall ? 'bg-sky-500/20 text-sky-600 dark:text-sky-400' : 'bg-muted text-muted-foreground'
-                  }`}
-                >
-                  <PhoneCall size={14} />
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className={`text-xs font-bold ${notifyPhoneCall ? 'text-foreground' : ''}`}>Phone Call</span>
-                    {notifyPhoneCall && (
-                      <span className="rounded bg-sky-500/20 px-1.5 py-0.5 text-[9px] font-bold text-sky-600 dark:text-sky-400">
-                        Selected
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-[10px] text-muted-foreground">Automated voice confirmation call</span>
-                </div>
-              </div>
-              <input
-                type="checkbox"
-                checked={notifyPhoneCall}
-                onChange={(e) => setNotifyPhoneCall(e.target.checked)}
-                className="h-4 w-4 rounded border-border text-sky-600 accent-sky-600 cursor-pointer"
               />
             </label>
           </div>
