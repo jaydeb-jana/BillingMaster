@@ -21,6 +21,7 @@ import {
   RefreshCw, Search, Send, Settings as SettingsIcon, ShoppingCart, SlidersHorizontal, Sparkles, Store, Trash2, Eye, EyeOff,
   Truck, UserRound, Users, Wallet, X, XCircle, AlertCircle, Share2, Copy, ScanLine, Barcode, ShieldCheck, ShieldAlert,
   AlertTriangle, CheckCheck, ExternalLink, Inbox, Info, BellRing, Filter, RotateCcw, History, Upload, Crown, Cpu, Ticket,
+  Smartphone,
 } from 'lucide-react';
 import { AnimatedValue } from '@/components/AnimatedValue';
 import { KhataBook } from '@/components/KhataBook';
