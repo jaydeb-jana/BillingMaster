@@ -46,6 +46,11 @@ export interface InvoiceTemplateSettings {
   enable_whatsapp_confirmation?: boolean;
   enable_email_confirmation?: boolean;
   enable_sms_confirmation?: boolean;
+  enable_phone_confirmation?: boolean;
+  default_preselect_whatsapp?: boolean;
+  default_preselect_email?: boolean;
+  default_preselect_sms?: boolean;
+  default_preselect_phone?: boolean;
   whatsapp_include_pdf_link?: boolean;
   whatsapp_include_upi?: boolean;
   whatsapp_auto_prompt?: boolean;
@@ -56,6 +61,8 @@ export interface InvoiceTemplateSettings {
   email_subject_template?: string;
   sms_include_short_link?: boolean;
   sms_sender_id?: string;
+  phone_automated_voice?: boolean;
+  phone_include_due_amount?: boolean;
   notify_on_new_invoice?: boolean;
   notify_on_payment_received?: boolean;
   notify_on_khata_due?: boolean;
@@ -83,6 +90,11 @@ export const DEFAULT_TEMPLATE_SETTINGS: InvoiceTemplateSettings = {
   enable_whatsapp_confirmation: true,
   enable_email_confirmation: true,
   enable_sms_confirmation: false,
+  enable_phone_confirmation: false,
+  default_preselect_whatsapp: true,
+  default_preselect_email: true,
+  default_preselect_sms: false,
+  default_preselect_phone: false,
   whatsapp_include_pdf_link: true,
   whatsapp_include_upi: true,
   whatsapp_auto_prompt: true,
@@ -93,6 +105,8 @@ export const DEFAULT_TEMPLATE_SETTINGS: InvoiceTemplateSettings = {
   email_subject_template: '',
   sms_include_short_link: true,
   sms_sender_id: '',
+  phone_automated_voice: true,
+  phone_include_due_amount: true,
   notify_on_new_invoice: true,
   notify_on_payment_received: true,
   notify_on_khata_due: true,
@@ -443,6 +457,10 @@ export function InvoiceTemplateModal({ isOpen, onClose, onSaved }: InvoiceTempla
           console.warn('DB settings upsert failed:', e);
         }
       }
+
+      try {
+        window.dispatchEvent(new CustomEvent('invoice-settings-updated', { detail: finalSettings }));
+      } catch (e) {}
 
       setSavedSuccess(true);
       toast.success('Invoice template settings saved successfully!');
@@ -1296,6 +1314,102 @@ export function InvoiceTemplateModal({ isOpen, onClose, onSaved }: InvoiceTempla
                 </div>
               </div>
 
+              {/* Default Pre-Selection for New Invoices Card */}
+              <div className="rounded-2xl border-2 border-primary/30 bg-primary/5 p-4 sm:p-5 space-y-3.5 shadow-xs">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="grid h-8 w-8 place-items-center rounded-xl bg-primary/20 text-primary">
+                      <CheckCheck size={18} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h5 className="text-sm font-black text-foreground">Default Channels on New Invoice Screen</h5>
+                        <span className="rounded-md bg-primary/20 text-primary text-[10px] font-black px-2 py-0.5">
+                          Auto-Select
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Choose which channels are pre-ticked by default when creating a bill, so you don't have to select them manually each time.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+                  {/* WhatsApp Pre-Select */}
+                  <label className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                    settings.default_preselect_whatsapp ?? true
+                      ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 shadow-xs'
+                      : 'border-border/80 bg-card hover:bg-muted/40 text-muted-foreground'
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <MessageCircle size={16} className={settings.default_preselect_whatsapp ?? true ? 'text-emerald-600 dark:text-emerald-400' : ''} />
+                      <span className="text-xs font-bold">WhatsApp</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.default_preselect_whatsapp ?? true}
+                      onChange={(e) => setSettings({ ...settings, default_preselect_whatsapp: e.target.checked })}
+                      className="h-4 w-4 rounded border-border accent-emerald-600 cursor-pointer"
+                    />
+                  </label>
+
+                  {/* Email Pre-Select */}
+                  <label className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                    settings.default_preselect_email ?? true
+                      ? 'border-blue-500/50 bg-blue-500/10 text-blue-700 dark:text-blue-300 shadow-xs'
+                      : 'border-border/80 bg-card hover:bg-muted/40 text-muted-foreground'
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <Mail size={16} className={settings.default_preselect_email ?? true ? 'text-blue-600 dark:text-blue-400' : ''} />
+                      <span className="text-xs font-bold">Email</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.default_preselect_email ?? true}
+                      onChange={(e) => setSettings({ ...settings, default_preselect_email: e.target.checked })}
+                      className="h-4 w-4 rounded border-border accent-blue-600 cursor-pointer"
+                    />
+                  </label>
+
+                  {/* SMS Pre-Select */}
+                  <label className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                    settings.default_preselect_sms ?? false
+                      ? 'border-purple-500/50 bg-purple-500/10 text-purple-700 dark:text-purple-300 shadow-xs'
+                      : 'border-border/80 bg-card hover:bg-muted/40 text-muted-foreground'
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <Smartphone size={16} className={settings.default_preselect_sms ? 'text-purple-600 dark:text-purple-400' : ''} />
+                      <span className="text-xs font-bold">SMS Text</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.default_preselect_sms ?? false}
+                      onChange={(e) => setSettings({ ...settings, default_preselect_sms: e.target.checked })}
+                      className="h-4 w-4 rounded border-border accent-purple-600 cursor-pointer"
+                    />
+                  </label>
+
+                  {/* Phone Call Pre-Select */}
+                  <label className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                    settings.default_preselect_phone ?? false
+                      ? 'border-sky-500/50 bg-sky-500/10 text-sky-700 dark:text-sky-300 shadow-xs'
+                      : 'border-border/80 bg-card hover:bg-muted/40 text-muted-foreground'
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <PhoneCall size={16} className={settings.default_preselect_phone ? 'text-sky-600 dark:text-sky-400' : ''} />
+                      <span className="text-xs font-bold">Phone Call</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.default_preselect_phone ?? false}
+                      onChange={(e) => setSettings({ ...settings, default_preselect_phone: e.target.checked })}
+                      className="h-4 w-4 rounded border-border accent-sky-600 cursor-pointer"
+                    />
+                  </label>
+                </div>
+              </div>
+
               {/* CHANNEL 1: WHATSAPP */}
               <div className={`rounded-2xl border transition-all ${
                 settings.enable_whatsapp_confirmation ?? true
@@ -1537,6 +1651,77 @@ Have questions? Simply reply to this chat.`}
                 )}
               </div>
 
+              {/* CHANNEL 4: AUTOMATED PHONE CALL */}
+              <div className={`rounded-2xl border transition-all ${
+                settings.enable_phone_confirmation
+                  ? 'border-sky-500/40 bg-sky-500/5 shadow-xs'
+                  : 'border-border bg-card opacity-80'
+              } p-4 sm:p-5 space-y-4`}>
+                <div className="flex items-center justify-between pb-3 border-b border-border/60">
+                  <div className="flex items-center gap-3">
+                    <div className="grid h-10 w-10 place-items-center rounded-xl bg-sky-500/15 text-sky-600 dark:text-sky-400">
+                      <PhoneCall size={22} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h5 className="text-sm font-extrabold text-foreground">Phone Call Voice Confirmation</h5>
+                        <span className="rounded-md bg-sky-500/20 text-sky-700 dark:text-sky-300 text-[10px] font-black px-2 py-0.5">
+                          Voice Gateway
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Automated IVR call to customer announcing bill total & confirming invoice delivery</p>
+                    </div>
+                  </div>
+
+                  <label className="relative inline-flex items-center cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={settings.enable_phone_confirmation ?? false}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setSettings({
+                          ...settings,
+                          enable_phone_confirmation: checked,
+                          default_preselect_phone: checked ? (settings.default_preselect_phone ?? true) : false
+                        });
+                      }}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
+                  </label>
+                </div>
+
+                {settings.enable_phone_confirmation && (
+                  <div className="space-y-3 pt-1 animate-fade-in">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border/70 bg-card/70 text-xs font-semibold text-foreground cursor-pointer hover:bg-card">
+                        <input
+                          type="checkbox"
+                          checked={settings.phone_automated_voice ?? true}
+                          onChange={(e) => setSettings({ ...settings, phone_automated_voice: e.target.checked })}
+                          className="h-4 w-4 rounded border-border accent-sky-600"
+                        />
+                        <span>Automated Voice Call on Bill Generation</span>
+                      </label>
+
+                      <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border/70 bg-card/70 text-xs font-semibold text-foreground cursor-pointer hover:bg-card">
+                        <input
+                          type="checkbox"
+                          checked={settings.phone_include_due_amount ?? true}
+                          onChange={(e) => setSettings({ ...settings, phone_include_due_amount: e.target.checked })}
+                          className="h-4 w-4 rounded border-border accent-sky-600"
+                        />
+                        <span>Announce Outstanding Khata Balance</span>
+                      </label>
+                    </div>
+
+                    <div className="rounded-xl border border-sky-500/20 bg-sky-950/10 dark:bg-sky-950/30 p-3 text-xs font-mono text-foreground/80">
+                      📞 <strong>Voice IVR Prompt:</strong> "Namaste! This is an automated bill confirmation from [Your Business]. Invoice INV-0001 for Rs.420.00 has been created for your purchase. Thank you!"
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Interactive Test Confirmation Box */}
               <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
@@ -1567,9 +1752,10 @@ Have questions? Simply reply to this chat.`}
                       if (settings.enable_whatsapp_confirmation ?? true) channels.push('WhatsApp');
                       if (settings.enable_email_confirmation ?? true) channels.push('Email');
                       if (settings.enable_sms_confirmation) channels.push('SMS');
+                      if (settings.enable_phone_confirmation) channels.push('Phone Call');
                       
                       if (channels.length === 0) {
-                        toast.error('Please enable at least one confirmation channel (WhatsApp, Email, or SMS).');
+                        toast.error('Please enable at least one confirmation channel (WhatsApp, Email, SMS, or Phone Call).');
                         return;
                       }
                       

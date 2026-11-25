@@ -3345,28 +3345,80 @@ function InvoiceNew() {
   const [issueDate, setIssueDate] = useState(getTodayDate());
   const [issueTime, setIssueTime] = useState(getCurrentTime());
 
-  // Confirmation & Notifications state
+  // Confirmation & Notifications state (synced with template settings defaults)
   const [notifyWhatsApp, setNotifyWhatsApp] = useState(() => {
     try {
       const raw = localStorage.getItem('arventa_invoice_template_settings');
       if (raw) {
         const parsed = JSON.parse(raw);
+        if (parsed.default_preselect_whatsapp !== undefined) return Boolean(parsed.default_preselect_whatsapp);
         if (parsed.enable_whatsapp_confirmation !== undefined) return Boolean(parsed.enable_whatsapp_confirmation);
+      }
+    } catch {}
+    return true;
+  });
+  const [notifyEmail, setNotifyEmail] = useState(() => {
+    try {
+      const raw = localStorage.getItem('arventa_invoice_template_settings');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.default_preselect_email !== undefined) return Boolean(parsed.default_preselect_email);
+        if (parsed.enable_email_confirmation !== undefined) return Boolean(parsed.enable_email_confirmation);
+      }
+    } catch {}
+    return true;
+  });
+  const [notifyPhoneCall, setNotifyPhoneCall] = useState(() => {
+    try {
+      const raw = localStorage.getItem('arventa_invoice_template_settings');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.default_preselect_phone !== undefined) return Boolean(parsed.default_preselect_phone);
+        if (parsed.enable_phone_confirmation !== undefined) return Boolean(parsed.enable_phone_confirmation);
       }
     } catch {}
     return false;
   });
-  const [notifyPhoneCall, setNotifyPhoneCall] = useState(false);
   const [notifySms, setNotifySms] = useState(() => {
     try {
       const raw = localStorage.getItem('arventa_invoice_template_settings');
       if (raw) {
         const parsed = JSON.parse(raw);
+        if (parsed.default_preselect_sms !== undefined) return Boolean(parsed.default_preselect_sms);
         if (parsed.enable_sms_confirmation !== undefined) return Boolean(parsed.enable_sms_confirmation);
       }
     } catch {}
     return false;
   });
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+
+  // Sync state whenever template settings change or are saved
+  useEffect(() => {
+    const handleSettingsSync = (e?: any) => {
+      try {
+        const raw = e?.detail || JSON.parse(localStorage.getItem('arventa_invoice_template_settings') || '{}');
+        if (raw) {
+          if (raw.default_preselect_whatsapp !== undefined) setNotifyWhatsApp(Boolean(raw.default_preselect_whatsapp));
+          else if (raw.enable_whatsapp_confirmation !== undefined) setNotifyWhatsApp(Boolean(raw.enable_whatsapp_confirmation));
+
+          if (raw.default_preselect_email !== undefined) setNotifyEmail(Boolean(raw.default_preselect_email));
+          else if (raw.enable_email_confirmation !== undefined) setNotifyEmail(Boolean(raw.enable_email_confirmation));
+
+          if (raw.default_preselect_sms !== undefined) setNotifySms(Boolean(raw.default_preselect_sms));
+          else if (raw.enable_sms_confirmation !== undefined) setNotifySms(Boolean(raw.enable_sms_confirmation));
+
+          if (raw.default_preselect_phone !== undefined) setNotifyPhoneCall(Boolean(raw.default_preselect_phone));
+          else if (raw.enable_phone_confirmation !== undefined) setNotifyPhoneCall(Boolean(raw.enable_phone_confirmation));
+        }
+      } catch {}
+    };
+    window.addEventListener('invoice-settings-updated', handleSettingsSync);
+    window.addEventListener('storage', handleSettingsSync);
+    return () => {
+      window.removeEventListener('invoice-settings-updated', handleSettingsSync);
+      window.removeEventListener('storage', handleSettingsSync);
+    };
+  }, []);
 
   const [useStoreCredit, setUseStoreCredit] = useState(false);
   const [appliedStoreCredit, setAppliedStoreCredit] = useState<string>('');
@@ -3508,8 +3560,10 @@ function InvoiceNew() {
 
           const notifMatch = inv.notes.match(/Notifications:\s*([^\n]+)/i);
           if (notifMatch) {
-            if (notifMatch[1].includes('WhatsApp')) setNotifyWhatsApp(true);
-            if (notifMatch[1].includes('Phone Call')) setNotifyPhoneCall(true);
+            setNotifyWhatsApp(notifMatch[1].includes('WhatsApp'));
+            setNotifyEmail(notifMatch[1].includes('Email'));
+            setNotifyPhoneCall(notifMatch[1].includes('Phone Call'));
+            setNotifySms(notifMatch[1].includes('SMS'));
           }
 
           const discMatch = inv.notes.match(/Discount applied:\s*([^\s(]+)/i);
@@ -3758,11 +3812,14 @@ function InvoiceNew() {
       if (issueTime) {
         notesParts.push(`Time: ${issueTime}`);
       }
-      const notifChannels = ['Email (Default)'];
+      const notifChannels: string[] = [];
       if (notifyWhatsApp) notifChannels.push('WhatsApp');
+      if (notifyEmail) notifChannels.push('Email');
       if (notifySms) notifChannels.push('SMS');
       if (notifyPhoneCall) notifChannels.push('Phone Call');
-      notesParts.push(`Notifications: ${notifChannels.join(', ')}`);
+      if (notifChannels.length > 0) {
+        notesParts.push(`Notifications: ${notifChannels.join(', ')}`);
+      }
 
       if (finalDiscount > 0) {
         const dText = discountType === 'percentage' ? `${discountValue}%` : `${discountValue}`;
@@ -4727,43 +4784,25 @@ function InvoiceNew() {
         {/* Confirmation & Notifications Section */}
         <div className="mt-5 rounded-xl border border-border/80 bg-muted/20 p-3.5">
           <div className="mb-2 flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-xs font-extrabold">
+            <div className="flex items-center gap-1.5 text-xs font-extrabold text-foreground">
               <Bell size={13} className="text-primary" />
-              <span>Confirmation</span>
+              <span>Confirmation & Delivery</span>
             </div>
-            <span className="text-[10px] font-bold text-muted-foreground">Notifications</span>
+            <button
+              type="button"
+              onClick={() => setTemplateModalOpen(true)}
+              className="text-[10px] font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+              title="Configure default automated delivery channels"
+            >
+              <SettingsIcon size={11} />
+              <span>Configure Defaults</span>
+            </button>
           </div>
           <p className="mb-2.5 text-[11px] text-muted-foreground leading-tight">
-            Select channels to send invoice confirmation & receipts:
+            Automated channels selected by default. Toggle any channel for this invoice:
           </p>
           
           <div className="space-y-2">
-            {/* Email - Default ON & Locked */}
-            <div className="flex items-center justify-between rounded-lg border border-primary/25 bg-primary/5 px-3 py-2.5">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 text-primary">
-                  <Mail size={14} />
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold">Email</span>
-                    <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-primary">Default</span>
-                  </div>
-                  <span className="text-[10px] text-muted-foreground">Always on · Cannot be disabled</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5" title="Email is locked on by default">
-                <Lock size={12} className="text-primary/70" />
-                <input
-                  type="checkbox"
-                  checked={true}
-                  disabled={true}
-                  readOnly
-                  className="h-4 w-4 rounded border-primary text-primary accent-primary cursor-not-allowed"
-                />
-              </div>
-            </div>
-
             {/* WhatsApp - Selectable */}
             <label
               className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2.5 transition-colors select-none ${
@@ -4789,7 +4828,7 @@ function InvoiceNew() {
                       </span>
                     )}
                   </div>
-                  <span className="text-[10px] text-muted-foreground">Send PDF to customer WhatsApp</span>
+                  <span className="text-[10px] text-muted-foreground">Send bill summary & PDF to customer WhatsApp</span>
                 </div>
               </div>
               <input
@@ -4800,10 +4839,10 @@ function InvoiceNew() {
               />
             </label>
 
-            {/* Phone Call - Selectable */}
+            {/* Email - Selectable & Toggleable */}
             <label
               className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2.5 transition-colors select-none ${
-                notifyPhoneCall
+                notifyEmail
                   ? 'border-blue-500/40 bg-blue-500/10 text-foreground'
                   : 'border-border/60 bg-background/60 hover:bg-muted/40 text-muted-foreground'
               }`}
@@ -4811,27 +4850,27 @@ function InvoiceNew() {
               <div className="flex items-center gap-2.5">
                 <div
                   className={`flex h-7 w-7 items-center justify-center rounded-md ${
-                    notifyPhoneCall ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400' : 'bg-muted text-muted-foreground'
+                    notifyEmail ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400' : 'bg-muted text-muted-foreground'
                   }`}
                 >
-                  <PhoneCall size={14} />
+                  <Mail size={14} />
                 </div>
                 <div>
                   <div className="flex items-center gap-1.5">
-                    <span className={`text-xs font-bold ${notifyPhoneCall ? 'text-foreground' : ''}`}>Phone Call</span>
-                    {notifyPhoneCall && (
+                    <span className={`text-xs font-bold ${notifyEmail ? 'text-foreground' : ''}`}>Email Confirmation</span>
+                    {notifyEmail && (
                       <span className="rounded bg-blue-500/20 px-1.5 py-0.5 text-[9px] font-bold text-blue-600 dark:text-blue-400">
                         Selected
                       </span>
                     )}
                   </div>
-                  <span className="text-[10px] text-muted-foreground">Automated voice confirmation</span>
+                  <span className="text-[10px] text-muted-foreground">Send official tax invoice PDF via email</span>
                 </div>
               </div>
               <input
                 type="checkbox"
-                checked={notifyPhoneCall}
-                onChange={(e) => setNotifyPhoneCall(e.target.checked)}
+                checked={notifyEmail}
+                onChange={(e) => setNotifyEmail(e.target.checked)}
                 className="h-4 w-4 rounded border-border text-blue-600 accent-blue-600 cursor-pointer"
               />
             </label>
@@ -4869,6 +4908,42 @@ function InvoiceNew() {
                 checked={notifySms}
                 onChange={(e) => setNotifySms(e.target.checked)}
                 className="h-4 w-4 rounded border-border text-purple-600 accent-purple-600 cursor-pointer"
+              />
+            </label>
+
+            {/* Phone Call - Selectable */}
+            <label
+              className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2.5 transition-colors select-none ${
+                notifyPhoneCall
+                  ? 'border-sky-500/40 bg-sky-500/10 text-foreground'
+                  : 'border-border/60 bg-background/60 hover:bg-muted/40 text-muted-foreground'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <div
+                  className={`flex h-7 w-7 items-center justify-center rounded-md ${
+                    notifyPhoneCall ? 'bg-sky-500/20 text-sky-600 dark:text-sky-400' : 'bg-muted text-muted-foreground'
+                  }`}
+                >
+                  <PhoneCall size={14} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-xs font-bold ${notifyPhoneCall ? 'text-foreground' : ''}`}>Phone Call</span>
+                    {notifyPhoneCall && (
+                      <span className="rounded bg-sky-500/20 px-1.5 py-0.5 text-[9px] font-bold text-sky-600 dark:text-sky-400">
+                        Selected
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-muted-foreground">Automated voice confirmation call</span>
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={notifyPhoneCall}
+                onChange={(e) => setNotifyPhoneCall(e.target.checked)}
+                className="h-4 w-4 rounded border-border text-sky-600 accent-sky-600 cursor-pointer"
               />
             </label>
           </div>
@@ -5112,6 +5187,11 @@ function InvoiceNew() {
       onUpdateQuantity={updateItemQuantityByDelta}
       onRemoveItem={removeItemFromInvoice}
       items={items}
+    />
+    {/* Invoice Template & Delivery Channels Settings Modal */}
+    <InvoiceTemplateModal
+      isOpen={templateModalOpen}
+      onClose={() => setTemplateModalOpen(false)}
     />
   </div>;
 }
