@@ -506,18 +506,61 @@ function CustomDropdown({
   );
 }
 
-function Logo() {
+function Logo({ 
+  variant = 'sidebar', 
+  className = '', 
+  size = 'md',
+  showText = true,
+}: { 
+  variant?: 'sidebar' | 'light' | 'dark' | 'icon'; 
+  className?: string;
+  size?: 'sm' | 'md' | 'lg';
+  showText?: boolean;
+} = {}) {
+  if (variant === 'icon' || !showText) {
+    const sizeClasses = size === 'sm' ? 'h-7 w-7' : size === 'lg' ? 'h-11 w-11' : 'h-9 w-9';
+    return (
+      <Link href="/dashboard" className={`flex items-center text-inherit no-underline transition-opacity hover:opacity-90 ${className}`} data-testid="link-logo">
+        <img 
+          src="/logo.png" 
+          alt="BillingMaster Logo" 
+          className={`${sizeClasses} rounded-xl object-contain shadow-xs`} 
+          onError={(e) => {
+            (e.target as HTMLImageElement).src = "/logo-mark.png";
+          }}
+        />
+      </Link>
+    );
+  }
+
+  if (variant === 'light') {
+    const heightClass = size === 'sm' ? 'h-7' : size === 'lg' ? 'h-11 sm:h-12' : 'h-9 sm:h-10';
+    return (
+      <Link href="/dashboard" className={`flex items-center text-inherit no-underline transition-opacity hover:opacity-90 ${className}`} data-testid="link-logo">
+        <img 
+          src="/logo-full-light.png" 
+          alt="BillingMaster" 
+          className={`${heightClass} w-auto max-w-[220px] object-contain drop-shadow-xs`} 
+          onError={(e) => {
+            (e.target as HTMLImageElement).src = "/logo-full.png";
+          }}
+        />
+      </Link>
+    );
+  }
+
+  // Default 'sidebar' or 'dark' (White 'Billing' + Cyan 'Master' + 3D Mark for dark background)
+  const heightClass = size === 'sm' ? 'h-7' : size === 'lg' ? 'h-10' : 'h-8 sm:h-9';
   return (
-    <Link href="/dashboard" className="flex items-center gap-2.5 text-inherit no-underline" data-testid="link-logo">
+    <Link href="/dashboard" className={`flex items-center text-inherit no-underline transition-opacity hover:opacity-90 ${className}`} data-testid="link-logo">
       <img 
-        src="/logo.png" 
-        alt="BillingMaster Logo" 
-        className="h-9 w-9 rounded-xl object-contain shadow-xs p-0.5" 
+        src="/logo-full-dark.png" 
+        alt="BillingMaster" 
+        className={`${heightClass} w-auto max-w-[200px] object-contain drop-shadow-xs`} 
         onError={(e) => {
-          (e.target as HTMLImageElement).src = "/logo.png";
+          (e.target as HTMLImageElement).src = "/logo-full.png";
         }}
       />
-      <span className="text-[15px] font-extrabold tracking-[-.04em]">BillingMaster<span className="text-secondary">.</span></span>
     </Link>
   );
 }
@@ -3357,17 +3400,6 @@ function InvoiceNew() {
     } catch {}
     return true;
   });
-  const [notifyEmail, setNotifyEmail] = useState(() => {
-    try {
-      const raw = localStorage.getItem('arventa_invoice_template_settings');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed.default_preselect_email !== undefined) return Boolean(parsed.default_preselect_email);
-        if (parsed.enable_email_confirmation !== undefined) return Boolean(parsed.enable_email_confirmation);
-      }
-    } catch {}
-    return true;
-  });
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
 
   // Sync state whenever template settings change or are saved
@@ -3378,9 +3410,6 @@ function InvoiceNew() {
         if (raw) {
           if (raw.default_preselect_whatsapp !== undefined) setNotifyWhatsApp(Boolean(raw.default_preselect_whatsapp));
           else if (raw.enable_whatsapp_confirmation !== undefined) setNotifyWhatsApp(Boolean(raw.enable_whatsapp_confirmation));
-
-          if (raw.default_preselect_email !== undefined) setNotifyEmail(Boolean(raw.default_preselect_email));
-          else if (raw.enable_email_confirmation !== undefined) setNotifyEmail(Boolean(raw.enable_email_confirmation));
         }
       } catch {}
     };
@@ -3533,7 +3562,6 @@ function InvoiceNew() {
           const notifMatch = inv.notes.match(/Notifications:\s*([^\n]+)/i);
           if (notifMatch) {
             setNotifyWhatsApp(notifMatch[1].includes('WhatsApp'));
-            setNotifyEmail(notifMatch[1].includes('Email'));
           }
 
           const discMatch = inv.notes.match(/Discount applied:\s*([^\s(]+)/i);
@@ -3784,7 +3812,6 @@ function InvoiceNew() {
       }
       const notifChannels: string[] = [];
       if (notifyWhatsApp) notifChannels.push('WhatsApp');
-      if (notifyEmail) notifChannels.push('Email');
       if (notifChannels.length > 0) {
         notesParts.push(`Notifications: ${notifChannels.join(', ')}`);
       }
@@ -4804,42 +4831,6 @@ function InvoiceNew() {
                 checked={notifyWhatsApp}
                 onChange={(e) => setNotifyWhatsApp(e.target.checked)}
                 className="h-4 w-4 rounded border-border text-emerald-600 accent-emerald-600 cursor-pointer"
-              />
-            </label>
-
-            {/* Email - Selectable & Toggleable */}
-            <label
-              className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2.5 transition-colors select-none ${
-                notifyEmail
-                  ? 'border-blue-500/40 bg-blue-500/10 text-foreground'
-                  : 'border-border/60 bg-background/60 hover:bg-muted/40 text-muted-foreground'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <div
-                  className={`flex h-7 w-7 items-center justify-center rounded-md ${
-                    notifyEmail ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400' : 'bg-muted text-muted-foreground'
-                  }`}
-                >
-                  <Mail size={14} />
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className={`text-xs font-bold ${notifyEmail ? 'text-foreground' : ''}`}>Email Confirmation</span>
-                    {notifyEmail && (
-                      <span className="rounded bg-blue-500/20 px-1.5 py-0.5 text-[9px] font-bold text-blue-600 dark:text-blue-400">
-                        Selected
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-[10px] text-muted-foreground">Send official tax invoice PDF via email</span>
-                </div>
-              </div>
-              <input
-                type="checkbox"
-                checked={notifyEmail}
-                onChange={(e) => setNotifyEmail(e.target.checked)}
-                className="h-4 w-4 rounded border-border text-blue-600 accent-blue-600 cursor-pointer"
               />
             </label>
           </div>
@@ -10008,7 +9999,7 @@ function Auth({ mode }: { mode: 'login' | 'signup' }) {
   return (
     <div className="noise flex min-h-[100dvh] items-center justify-center bg-background px-5 py-10">
       <div className="w-full max-w-sm animate-rise">
-        <div className="mb-10 flex justify-center"><Logo /></div>
+        <div className="mb-8 flex justify-center"><Logo variant="light" size="lg" /></div>
         <div className="card-shell p-6 sm:p-9">
           <h1 className="mb-6 text-center text-2xl font-extrabold tracking-tight">{mode === 'login' ? 'Sign in' : 'Create account'}</h1>
           {error && <div className="mb-4 rounded-xl bg-destructive/10 p-3 text-xs text-destructive font-bold">{error}</div>}
@@ -10461,7 +10452,7 @@ function Onboarding() {
   
   return <div className="noise flex min-h-[100dvh] items-center justify-center bg-background px-5 py-10">
     <div className="w-full max-w-lg animate-rise">
-      <div className="mb-10 flex justify-center"><Logo /></div>
+      <div className="mb-8 flex justify-center"><Logo variant="light" size="lg" /></div>
       <div className="card-shell p-6 sm:p-9">
         {onboardingStep === 'shop' ? (
           <>
