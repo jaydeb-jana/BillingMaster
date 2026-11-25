@@ -3368,17 +3368,6 @@ function InvoiceNew() {
     } catch {}
     return true;
   });
-  const [notifySms, setNotifySms] = useState(() => {
-    try {
-      const raw = localStorage.getItem('arventa_invoice_template_settings');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed.default_preselect_sms !== undefined) return Boolean(parsed.default_preselect_sms);
-        if (parsed.enable_sms_confirmation !== undefined) return Boolean(parsed.enable_sms_confirmation);
-      }
-    } catch {}
-    return false;
-  });
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
 
   // Sync state whenever template settings change or are saved
@@ -3392,9 +3381,6 @@ function InvoiceNew() {
 
           if (raw.default_preselect_email !== undefined) setNotifyEmail(Boolean(raw.default_preselect_email));
           else if (raw.enable_email_confirmation !== undefined) setNotifyEmail(Boolean(raw.enable_email_confirmation));
-
-          if (raw.default_preselect_sms !== undefined) setNotifySms(Boolean(raw.default_preselect_sms));
-          else if (raw.enable_sms_confirmation !== undefined) setNotifySms(Boolean(raw.enable_sms_confirmation));
         }
       } catch {}
     };
@@ -3548,7 +3534,6 @@ function InvoiceNew() {
           if (notifMatch) {
             setNotifyWhatsApp(notifMatch[1].includes('WhatsApp'));
             setNotifyEmail(notifMatch[1].includes('Email'));
-            setNotifySms(notifMatch[1].includes('SMS'));
           }
 
           const discMatch = inv.notes.match(/Discount applied:\s*([^\s(]+)/i);
@@ -3800,7 +3785,6 @@ function InvoiceNew() {
       const notifChannels: string[] = [];
       if (notifyWhatsApp) notifChannels.push('WhatsApp');
       if (notifyEmail) notifChannels.push('Email');
-      if (notifySms) notifChannels.push('SMS');
       if (notifChannels.length > 0) {
         notesParts.push(`Notifications: ${notifChannels.join(', ')}`);
       }
@@ -4856,42 +4840,6 @@ function InvoiceNew() {
                 checked={notifyEmail}
                 onChange={(e) => setNotifyEmail(e.target.checked)}
                 className="h-4 w-4 rounded border-border text-blue-600 accent-blue-600 cursor-pointer"
-              />
-            </label>
-
-            {/* SMS - Selectable */}
-            <label
-              className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2.5 transition-colors select-none ${
-                notifySms
-                  ? 'border-purple-500/40 bg-purple-500/10 text-foreground'
-                  : 'border-border/60 bg-background/60 hover:bg-muted/40 text-muted-foreground'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <div
-                  className={`flex h-7 w-7 items-center justify-center rounded-md ${
-                    notifySms ? 'bg-purple-500/20 text-purple-600 dark:text-purple-400' : 'bg-muted text-muted-foreground'
-                  }`}
-                >
-                  <Smartphone size={14} />
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className={`text-xs font-bold ${notifySms ? 'text-foreground' : ''}`}>SMS Confirmation</span>
-                    {notifySms && (
-                      <span className="rounded bg-purple-500/20 px-1.5 py-0.5 text-[9px] font-bold text-purple-600 dark:text-purple-400">
-                        Selected
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-[10px] text-muted-foreground">Cellular text receipt with bill link</span>
-                </div>
-              </div>
-              <input
-                type="checkbox"
-                checked={notifySms}
-                onChange={(e) => setNotifySms(e.target.checked)}
-                className="h-4 w-4 rounded border-border text-purple-600 accent-purple-600 cursor-pointer"
               />
             </label>
           </div>

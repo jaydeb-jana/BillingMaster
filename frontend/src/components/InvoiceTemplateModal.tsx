@@ -45,10 +45,8 @@ export interface InvoiceTemplateSettings {
   // Delivery & Confirmation Channels
   enable_whatsapp_confirmation?: boolean;
   enable_email_confirmation?: boolean;
-  enable_sms_confirmation?: boolean;
   default_preselect_whatsapp?: boolean;
   default_preselect_email?: boolean;
-  default_preselect_sms?: boolean;
   whatsapp_include_pdf_link?: boolean;
   whatsapp_include_upi?: boolean;
   whatsapp_auto_prompt?: boolean;
@@ -57,8 +55,6 @@ export interface InvoiceTemplateSettings {
   email_send_payment_receipt?: boolean;
   email_sender_name?: string;
   email_subject_template?: string;
-  sms_include_short_link?: boolean;
-  sms_sender_id?: string;
   notify_on_new_invoice?: boolean;
   notify_on_payment_received?: boolean;
   notify_on_khata_due?: boolean;
@@ -85,10 +81,8 @@ export const DEFAULT_TEMPLATE_SETTINGS: InvoiceTemplateSettings = {
   // Delivery & Confirmation defaults
   enable_whatsapp_confirmation: true,
   enable_email_confirmation: true,
-  enable_sms_confirmation: false,
   default_preselect_whatsapp: true,
   default_preselect_email: true,
-  default_preselect_sms: false,
   whatsapp_include_pdf_link: true,
   whatsapp_include_upi: true,
   whatsapp_auto_prompt: true,
@@ -97,8 +91,6 @@ export const DEFAULT_TEMPLATE_SETTINGS: InvoiceTemplateSettings = {
   email_send_payment_receipt: true,
   email_sender_name: '',
   email_subject_template: '',
-  sms_include_short_link: true,
-  sms_sender_id: '',
   notify_on_new_invoice: true,
   notify_on_payment_received: true,
   notify_on_khata_due: true,
@@ -1327,7 +1319,7 @@ export function InvoiceTemplateModal({ isOpen, onClose, onSaved }: InvoiceTempla
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
                   {/* WhatsApp Pre-Select */}
                   <label className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
                     settings.default_preselect_whatsapp ?? true
@@ -1361,24 +1353,6 @@ export function InvoiceTemplateModal({ isOpen, onClose, onSaved }: InvoiceTempla
                       checked={settings.default_preselect_email ?? true}
                       onChange={(e) => setSettings({ ...settings, default_preselect_email: e.target.checked })}
                       className="h-4 w-4 rounded border-border accent-blue-600 cursor-pointer"
-                    />
-                  </label>
-
-                  {/* SMS Pre-Select */}
-                  <label className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
-                    settings.default_preselect_sms ?? false
-                      ? 'border-purple-500/50 bg-purple-500/10 text-purple-700 dark:text-purple-300 shadow-xs'
-                      : 'border-border/80 bg-card hover:bg-muted/40 text-muted-foreground'
-                  }`}>
-                    <div className="flex items-center gap-2">
-                      <Smartphone size={16} className={settings.default_preselect_sms ? 'text-purple-600 dark:text-purple-400' : ''} />
-                      <span className="text-xs font-bold">SMS Text</span>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.default_preselect_sms ?? false}
-                      onChange={(e) => setSettings({ ...settings, default_preselect_sms: e.target.checked })}
-                      className="h-4 w-4 rounded border-border accent-purple-600 cursor-pointer"
                     />
                   </label>
                 </div>
@@ -1560,71 +1534,6 @@ Have questions? Simply reply to this chat.`}
                 )}
               </div>
 
-              {/* CHANNEL 3: SMS TEXT MESSAGE */}
-              <div className={`rounded-2xl border transition-all ${
-                settings.enable_sms_confirmation
-                  ? 'border-purple-500/40 bg-purple-500/5 shadow-xs'
-                  : 'border-border bg-card opacity-80'
-              } p-4 sm:p-5 space-y-4`}>
-                <div className="flex items-center justify-between pb-3 border-b border-border/60">
-                  <div className="flex items-center gap-3">
-                    <div className="grid h-10 w-10 place-items-center rounded-xl bg-purple-500/15 text-purple-600 dark:text-purple-400">
-                      <Smartphone size={22} />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h5 className="text-sm font-extrabold text-foreground">SMS Bill Confirmation</h5>
-                        <span className="rounded-md bg-purple-500/20 text-purple-700 dark:text-purple-300 text-[10px] font-black px-2 py-0.5">
-                          Direct Cellular SMS
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">Send cellular SMS receipt with bill amount and shortened invoice URL to any mobile number</p>
-                    </div>
-                  </div>
-
-                  <label className="relative inline-flex items-center cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={settings.enable_sms_confirmation ?? false}
-                      onChange={(e) => setSettings({ ...settings, enable_sms_confirmation: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
-                  </label>
-                </div>
-
-                {settings.enable_sms_confirmation && (
-                  <div className="space-y-3 pt-1 animate-fade-in">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border/70 bg-card/70 text-xs font-semibold text-foreground cursor-pointer hover:bg-card">
-                        <input
-                          type="checkbox"
-                          checked={settings.sms_include_short_link ?? true}
-                          onChange={(e) => setSettings({ ...settings, sms_include_short_link: e.target.checked })}
-                          className="h-4 w-4 rounded border-border accent-purple-600"
-                        />
-                        <span>Include Shortened Link to View Invoice</span>
-                      </label>
-
-                      <div>
-                        <input
-                          type="text"
-                          placeholder="Sender ID (e.g. BILLMS)"
-                          maxLength={6}
-                          value={settings.sms_sender_id || ''}
-                          onChange={(e) => setSettings({ ...settings, sms_sender_id: e.target.value.toUpperCase() })}
-                          className="input-shell w-full px-3 py-2 text-xs uppercase"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-purple-500/20 bg-purple-950/10 dark:bg-purple-950/30 p-3 text-xs font-mono text-foreground/80">
-                      💬 <strong>SMS Format (132 chars):</strong> "Dear Customer, bill #INV-0001 for Rs.420.00 is generated. View invoice: https://bit.ly/inv-001. Thank you for your business!"
-                    </div>
-                  </div>
-                )}
-              </div>
-
               {/* Interactive Test Confirmation Box */}
               <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
@@ -1654,10 +1563,9 @@ Have questions? Simply reply to this chat.`}
                       const channels = [];
                       if (settings.enable_whatsapp_confirmation ?? true) channels.push('WhatsApp');
                       if (settings.enable_email_confirmation ?? true) channels.push('Email');
-                      if (settings.enable_sms_confirmation) channels.push('SMS');
                       
                       if (channels.length === 0) {
-                        toast.error('Please enable at least one confirmation channel (WhatsApp, Email, or SMS).');
+                        toast.error('Please enable at least one confirmation channel (WhatsApp or Email).');
                         return;
                       }
                       
