@@ -55,7 +55,7 @@ app.use(authenticateToken);
 
 // Health check
 app.get('/api/health', (_req: Request, res: Response) => {
-  res.json({ status: 'ok', name: 'BillingMaster API (Node.js + Express + MySQL)', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', name: 'BillingMaster API (Node.js + Express + PostgreSQL)', timestamp: new Date().toISOString() });
 });
 
 // Business Catalog Handle Check Route
@@ -122,13 +122,13 @@ app.delete('/api/db/:table/:id', removeRecord);
 // Initialize DB and start server
 initDb().then((connected) => {
   if (connected) {
-    console.log('[Server] MySQL initialized and ready.');
+    console.log('[Server] PostgreSQL (Supabase) initialized and ready.');
     syncAllBusinessesSubscriptionState();
     setInterval(() => {
       syncAllBusinessesSubscriptionState();
     }, 15 * 60 * 1000);
   } else {
-    console.log('[Server] Running with mock/local store fallbacks until MySQL database connection is established.');
+    console.log('[Server] Running with mock/local store fallbacks until PostgreSQL database connection is established.');
   }
 
   app.listen(PORT, '0.0.0.0', () => {

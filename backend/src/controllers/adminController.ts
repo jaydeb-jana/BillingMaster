@@ -246,7 +246,7 @@ export async function getAdminOverviewStats(_req: Request, res: Response) {
         planBreakdownText: 'Free (1) • Starter (2) • Pro (2)',
         systemHealth: 'OPERATIONAL',
         uptimeSeconds: Math.floor(process.uptime()),
-        databaseEngine: 'MySQL 8.0 + Node Express',
+        databaseEngine: 'PostgreSQL 17 (Supabase) + Node Express',
         activeFeatureFlags: Object.values(mockFeatureFlags).filter((f) => f.is_enabled).length,
       },
     });
