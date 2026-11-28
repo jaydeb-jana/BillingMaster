@@ -517,14 +517,18 @@ function Logo({
   size?: 'sm' | 'md' | 'lg';
   showText?: boolean;
 } = {}) {
+  const isLight = variant === 'light';
+  const iconSize = size === 'sm' ? 'h-7 w-7' : size === 'lg' ? 'h-12 w-12' : 'h-9 w-9';
+  const textSize = size === 'sm' ? 'text-[15px]' : size === 'lg' ? 'text-2xl' : 'text-[17px]';
+  const swooshWidth = size === 'sm' ? 'w-24' : size === 'lg' ? 'w-36' : 'w-28';
+
   if (variant === 'icon' || !showText) {
-    const sizeClasses = size === 'sm' ? 'h-7 w-7' : size === 'lg' ? 'h-11 w-11' : 'h-9 w-9';
     return (
-      <Link href="/dashboard" className={`flex items-center text-inherit no-underline transition-opacity hover:opacity-90 ${className}`} data-testid="link-logo">
+      <Link href="/dashboard" className={`flex items-center text-inherit no-underline transition-transform hover:scale-105 ${className}`} data-testid="link-logo">
         <img 
           src="/logo.png" 
           alt="BillingMaster Logo" 
-          className={`${sizeClasses} rounded-xl object-contain shadow-xs`} 
+          className={`${iconSize} rounded-xl object-contain shadow-md`} 
           onError={(e) => {
             (e.target as HTMLImageElement).src = "/logo-mark.png";
           }}
@@ -533,34 +537,28 @@ function Logo({
     );
   }
 
-  if (variant === 'light') {
-    const heightClass = size === 'sm' ? 'h-7' : size === 'lg' ? 'h-11 sm:h-12' : 'h-9 sm:h-10';
-    return (
-      <Link href="/dashboard" className={`flex items-center text-inherit no-underline transition-opacity hover:opacity-90 ${className}`} data-testid="link-logo">
+  return (
+    <Link 
+      href="/dashboard" 
+      className={`group flex items-center gap-2.5 text-inherit no-underline select-none transition-opacity hover:opacity-95 ${className}`} 
+      data-testid="link-logo"
+    >
+      <div className="relative shrink-0">
         <img 
-          src="/logo-full-light.png" 
-          alt="BillingMaster" 
-          className={`${heightClass} w-auto max-w-[220px] object-contain drop-shadow-xs`} 
+          src="/logo.png" 
+          alt="BillingMaster Logo" 
+          className={`${iconSize} rounded-xl object-contain shadow-sm ring-1 ring-white/10 group-hover:scale-105 transition-transform`} 
           onError={(e) => {
-            (e.target as HTMLImageElement).src = "/logo-full.png";
+            (e.target as HTMLImageElement).src = "/logo-mark.png";
           }}
         />
-      </Link>
-    );
-  }
-
-  // Default 'sidebar' or 'dark' (White 'Billing' + Cyan 'Master' + 3D Mark for dark background)
-  const heightClass = size === 'sm' ? 'h-7' : size === 'lg' ? 'h-10' : 'h-8 sm:h-9';
-  return (
-    <Link href="/dashboard" className={`flex items-center text-inherit no-underline transition-opacity hover:opacity-90 ${className}`} data-testid="link-logo">
-      <img 
-        src="/logo-full-dark.png" 
-        alt="BillingMaster" 
-        className={`${heightClass} w-auto max-w-[200px] object-contain drop-shadow-xs`} 
-        onError={(e) => {
-          (e.target as HTMLImageElement).src = "/logo-full.png";
-        }}
-      />
+      </div>
+      <div className="flex flex-col">
+        <div className={`font-black tracking-[-0.03em] leading-none ${textSize} ${isLight ? 'text-slate-900' : 'text-white'}`}>
+          Billing<span className="text-[#00c5e6]">Master</span>
+        </div>
+        <div className={`mt-1 h-[2px] ${swooshWidth} rounded-full bg-gradient-to-r from-[#00c5e6] via-[#00c5e6]/80 to-transparent`} />
+      </div>
     </Link>
   );
 }
@@ -755,7 +753,8 @@ function Shell({ children }: { children: ReactNode }) {
           const profiles = await db.list<Row>('profiles', { id: session.user.id });
           if (active) {
             if (!profiles.length || !profiles[0]?.business_id) {
-              setLocation('/onboarding');
+              auth.signOut();
+              setLocation('/login');
               return;
             }
             const p = profiles[0];
@@ -10922,11 +10921,11 @@ function Home() {
           if (profiles && profiles.length > 0 && profiles[0]?.business_id) {
             setLocation('/dashboard');
           } else {
-            setLocation('/onboarding');
+            setLocation('/login');
           }
         }
       } catch (e) {
-        if (active) setLocation('/onboarding');
+        if (active) setLocation('/login');
       }
     });
     return () => { active = false; };
